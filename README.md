@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Next.js + Supabase + Prisma Starter Kit
 
-## Getting Started
+A beautiful, modern, feature-rich authentication and administration starter kit.
 
-First, run the development server:
+## 🚀 Built With
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Framework**: Next.js 15 (App Router)
+- **Database**: PostgreSQL (via Supabase)
+- **ORM**: Prisma
+- **Authentication**: Better Auth (Email/Password + Roles)
+- **UI Components**: Shadcn UI + Tailwind CSS v4
+- **State Management & Data Fetching**: TanStack Query
+- **Form Validation**: React Hook Form + Zod
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## ✨ Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Full Auth Flow**: Login, Register, Middleware Protection
+- **Role-Based Access**: Standard User and Admin roles builtin
+- **Admin Dashboard**:
+  - View all users
+  - Create new users manually
+  - Edit user roles & details
+  - Ban/Unban users with reasons
+  - Delete users permanently
+- **Beautiful UI**: Modern dark mode tailored with vibrant accents, responsive sidebars, animated components
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ Getting Started
 
-## Learn More
+1. **Clone the repository**
+2. **Install dependencies**: `npm install`
+3. **Setup Environment**: Copy `.env.example` to `.env` and fill in your Supabase DB connection paths.
+4. **Initialize DB**: 
+   ```bash
+   npx prisma generate
+   npx prisma db push
+   ```
+5. **Run Development Server**: `npm run dev`
 
-To learn more about Next.js, take a look at the following resources:
+## 👨‍💻 Initial Admin User Setup
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Create your first user normally through `/register`. They will default to a 'user' role. 
+To mark them as admin, you can log into your Supabase dashboard and directly alter the `role` column in the `user` table to `admin`. After that, you will have access to the Admin User Management panel to manage everyone else!
