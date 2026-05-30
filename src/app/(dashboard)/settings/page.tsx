@@ -53,9 +53,16 @@ function useSaveBotSettings() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['bot-settings'] });
-      toast.success('Bot settings saved successfully');
+      if (data.webhookRegistered) {
+        toast.success('Bot saved & webhook registered!', {
+          description: `Webhook: ${data.webhookUrl}`,
+          duration: 5000,
+        });
+      } else {
+        toast.success('Bot settings saved successfully');
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to save settings');

@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// PUT /api/settings/bot — update bot settings
+// PUT /api/settings/bot — update bot settings & register webhook with Telegram
 export async function PUT(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
@@ -48,16 +48,58 @@ export async function PUT(req: NextRequest) {
   const { botToken } = body;
 
   try {
+    // Build the webhook URL from the current request origin
+    const origin =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+    const webhookUrl = `${origin}/api/telegram/webhook`;
+
+    let webhookRegistered = false;
+
+    // If a bot token is provided, register the webhook with Telegram
+    if (botToken && !botToken.includes("•")) {
+      // Only register if it's a real token (not the masked one)
+      const telegramRes = await fetch(
+        `https://api.telegram.org/bot${botToken}/setWebhook`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: webhookUrl,
+            allowed_updates: ["message"],
+          }),
+        }
+      );
+
+      const telegramData = await telegramRes.json();
+
+      if (!telegramData.ok) {
+        return NextResponse.json(
+          {
+            message: `Telegram error: ${telegramData.description || "Failed to set webhook"}`,
+          },
+          { status: 400 }
+        );
+      }
+
+      webhookRegistered = true;
+    }
+
+    // Determine the token to save
+    // If it contains "•", the user didn't change it — keep the old one
+    const tokenToSave =
+      botToken && !botToken.includes("•") ? botToken : undefined;
+
     const settings = await prisma.botSettings.upsert({
       where: { userId: session.user.id },
       create: {
         userId: session.user.id,
-        botToken: botToken || null,
-        isActive: !!botToken,
+        botToken: tokenToSave || null,
+        isActive: !!tokenToSave,
       },
       update: {
-        botToken: botToken || null,
-        isActive: !!botToken,
+        ...(tokenToSave !== undefined ? { botToken: tokenToSave || null } : {}),
+        isActive: tokenToSave !== undefined ? !!tokenToSave : undefined,
       },
     });
 
@@ -73,6 +115,8 @@ export async function PUT(req: NextRequest) {
         isActive: settings.isActive,
         updatedAt: settings.updatedAt,
       },
+      webhookRegistered,
+      webhookUrl: webhookRegistered ? webhookUrl : undefined,
     });
   } catch (error) {
     console.error("Failed to save bot settings:", error);
