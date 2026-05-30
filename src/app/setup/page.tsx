@@ -42,7 +42,8 @@ export default async function SetupPage() {
             System Initialization
           </h1>
           <p className="text-slate-400">
-            Welcome to the StarterKit. Create the first super-admin account to unlock the system.
+            Welcome to the Company Data App. Create the first super-admin account to unlock the
+            system.
           </p>
         </div>
 
