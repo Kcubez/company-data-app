@@ -1,16 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
-const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
-
 export async function POST(req: NextRequest) {
-  // Validate secret token if configured
-  if (WEBHOOK_SECRET) {
-    const token = req.headers.get("x-telegram-bot-api-secret-token");
-    if (token !== WEBHOOK_SECRET) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
 
   try {
     const body = await req.json();
