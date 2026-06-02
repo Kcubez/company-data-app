@@ -1,16 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { formatDistanceToNow, format } from 'date-fns';
+import { useQuery } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
 import {
-  CalendarClock,
   ClipboardList,
+  CalendarClock,
   FileText,
+  TrendingUp,
   Search,
   Send,
-  TrendingUp,
+  Clock,
 } from 'lucide-react';
-import { useDemandRecords, useDemandRecordStats } from '@/hooks/use-demand-records';
+import { useDemandRecords } from '@/hooks/use-demand-records';
+import { dailyReportApi } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +27,14 @@ const statusOptions = [
   { value: 'closed', label: 'Closed' },
 ];
 
+function useDailyReportStats() {
+  return useQuery({
+    queryKey: ['daily-report-stats'],
+    queryFn: () => dailyReportApi.stats(),
+    refetchInterval: 10000,
+  });
+}
+
 export default function DailyReportPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -34,7 +45,7 @@ export default function DailyReportPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data: stats, isLoading: statsLoading } = useDemandRecordStats();
+  const { data: stats, isLoading: statsLoading } = useDailyReportStats();
   const { data, isLoading } = useDemandRecords({
     page: 1,
     limit: 50,
@@ -45,30 +56,30 @@ export default function DailyReportPage() {
 
   const statCards = [
     {
-      title: 'Today',
-      value: stats?.todayRecords ?? 0,
-      icon: ClipboardList,
+      title: 'Total Reports',
+      value: stats?.totalReports ?? 0,
+      icon: FileText,
       color: 'text-blue-400',
       bg: 'bg-blue-500/10',
     },
     {
-      title: 'Daily Reports',
-      value: stats?.dailyReports ?? 0,
-      icon: TrendingUp,
-      color: 'text-amber-400',
-      bg: 'bg-amber-500/10',
+      title: "Today's Reports",
+      value: stats?.todayReports ?? 0,
+      icon: ClipboardList,
+      color: 'text-emerald-400',
+      bg: 'bg-emerald-500/10',
     },
     {
       title: 'Due Today',
       value: stats?.dueToday ?? 0,
       icon: CalendarClock,
-      color: 'text-emerald-400',
-      bg: 'bg-emerald-500/10',
+      color: 'text-amber-400',
+      bg: 'bg-amber-500/10',
     },
     {
       title: 'Pending',
-      value: stats?.pendingRecords ?? 0,
-      icon: TrendingUp,
+      value: stats?.pendingReports ?? 0,
+      icon: Clock,
       color: 'text-rose-400',
       bg: 'bg-rose-500/10',
     },
@@ -76,7 +87,7 @@ export default function DailyReportPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-white mb-2">
             Daily Reports
@@ -85,8 +96,8 @@ export default function DailyReportPage() {
             Employee daily progress and work reports.
           </p>
         </div>
-        <div className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:w-auto">
-          <div className="relative sm:col-span-1 lg:w-72">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1 sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <Input
               placeholder="Search reports..."
@@ -125,8 +136,8 @@ export default function DailyReportPage() {
 
       <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
         <div className="grid grid-cols-12 gap-3 border-b border-slate-800 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-          <div className="col-span-4">Employee</div>
-          <div className="col-span-5">Report</div>
+          <div className="col-span-3">Employee</div>
+          <div className="col-span-6">Report</div>
           <div className="col-span-2">Status</div>
           <div className="col-span-1 text-right">AI</div>
         </div>
@@ -134,8 +145,8 @@ export default function DailyReportPage() {
         {isLoading ? (
           Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="grid grid-cols-12 gap-3 border-b border-slate-800/70 px-4 py-4">
-              <Skeleton className="col-span-4 h-5 bg-slate-800" />
-              <Skeleton className="col-span-5 h-5 bg-slate-800" />
+              <Skeleton className="col-span-3 h-5 bg-slate-800" />
+              <Skeleton className="col-span-6 h-5 bg-slate-800" />
               <Skeleton className="col-span-2 h-5 bg-slate-800" />
               <Skeleton className="col-span-1 h-5 bg-slate-800" />
             </div>
@@ -146,7 +157,7 @@ export default function DailyReportPage() {
               key={record.id}
               className="grid grid-cols-1 gap-3 border-b border-slate-800/70 px-4 py-4 last:border-0 md:grid-cols-12 md:items-start"
             >
-              <div className="md:col-span-4 min-w-0">
+              <div className="md:col-span-3 min-w-0">
                 <p className="truncate text-sm font-medium text-white">
                   {record.sender.displayName}
                 </p>
@@ -155,8 +166,8 @@ export default function DailyReportPage() {
                   {formatDistanceToNow(new Date(record.createdAt), { addSuffix: true })}
                 </p>
               </div>
-              <div className="md:col-span-5 min-w-0">
-                <p className="line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-slate-300">
+              <div className="md:col-span-6 min-w-0">
+                <p className="whitespace-pre-wrap text-sm leading-6 text-slate-300 break-words">
                   {record.note}
                 </p>
               </div>

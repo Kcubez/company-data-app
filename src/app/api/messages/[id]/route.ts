@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
-// DELETE /api/messages/:id — delete a message (admin only)
+// DELETE /api/messages/:id — delete a message
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -10,9 +10,6 @@ export async function DELETE(
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
-  if (session.user.role !== "admin") {
-    return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await params;

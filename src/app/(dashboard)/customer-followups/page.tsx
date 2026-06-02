@@ -1,15 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow, format } from 'date-fns';
 import {
+  PhoneCall,
   CalendarClock,
   FileText,
-  PhoneCall,
+  Users,
   Search,
   Send,
+  Clock,
 } from 'lucide-react';
-import { useDemandRecords, useDemandRecordStats } from '@/hooks/use-demand-records';
+import { useDemandRecords } from '@/hooks/use-demand-records';
+import { customerFollowupsApi } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +37,14 @@ const categoryOptions = [
   { value: 'general', label: 'General' },
 ];
 
+function useCustomerFollowupStats() {
+  return useQuery({
+    queryKey: ['customer-followups-stats'],
+    queryFn: () => customerFollowupsApi.stats(),
+    refetchInterval: 10000,
+  });
+}
+
 export default function CustomerFollowupsPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -44,7 +56,7 @@ export default function CustomerFollowupsPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data: stats, isLoading: statsLoading } = useDemandRecordStats();
+  const { data: stats, isLoading: statsLoading } = useCustomerFollowupStats();
   const { data, isLoading } = useDemandRecords({
     page: 1,
     limit: 50,
@@ -56,11 +68,18 @@ export default function CustomerFollowupsPage() {
 
   const statCards = [
     {
-      title: 'Customer Notes',
-      value: stats?.customerFollowUps ?? 0,
+      title: 'Total Follow-ups',
+      value: stats?.totalFollowUps ?? 0,
       icon: PhoneCall,
       color: 'text-purple-400',
       bg: 'bg-purple-500/10',
+    },
+    {
+      title: "Today's Follow-ups",
+      value: stats?.todayFollowUps ?? 0,
+      icon: FileText,
+      color: 'text-blue-400',
+      bg: 'bg-blue-500/10',
     },
     {
       title: 'Due Today',
@@ -71,8 +90,8 @@ export default function CustomerFollowupsPage() {
     },
     {
       title: 'Pending',
-      value: stats?.pendingRecords ?? 0,
-      icon: Send,
+      value: stats?.pendingFollowUps ?? 0,
+      icon: Clock,
       color: 'text-amber-400',
       bg: 'bg-amber-500/10',
     },
@@ -80,7 +99,7 @@ export default function CustomerFollowupsPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-white mb-2">
             Customer Follow-ups
@@ -89,8 +108,8 @@ export default function CustomerFollowupsPage() {
             Customer notes and follow-up tracking.
           </p>
         </div>
-        <div className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:w-auto">
-          <div className="relative sm:col-span-1 lg:w-72">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1 sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <Input
               placeholder="Search customer or note..."
@@ -104,7 +123,7 @@ export default function CustomerFollowupsPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => (
           <Card key={stat.title} className="bg-slate-900 border-slate-800 shadow-lg">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -130,24 +149,20 @@ export default function CustomerFollowupsPage() {
 
       <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
         <div className="grid grid-cols-12 gap-3 border-b border-slate-800 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-          <div className="col-span-2">Customer</div>
-          <div className="col-span-3">Note</div>
-          <div className="col-span-1">Qty</div>
-          <div className="col-span-1">Product</div>
+          <div className="col-span-3">Customer</div>
+          <div className="col-span-5">Note</div>
           <div className="col-span-2">Status</div>
-          <div className="col-span-2">Follow-up</div>
+          <div className="col-span-1">Follow-up</div>
           <div className="col-span-1 text-right">AI</div>
         </div>
 
         {isLoading ? (
           Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="grid grid-cols-12 gap-3 border-b border-slate-800/70 px-4 py-4">
-              <Skeleton className="col-span-2 h-5 bg-slate-800" />
               <Skeleton className="col-span-3 h-5 bg-slate-800" />
-              <Skeleton className="col-span-1 h-5 bg-slate-800" />
-              <Skeleton className="col-span-1 h-5 bg-slate-800" />
+              <Skeleton className="col-span-5 h-5 bg-slate-800" />
               <Skeleton className="col-span-2 h-5 bg-slate-800" />
-              <Skeleton className="col-span-2 h-5 bg-slate-800" />
+              <Skeleton className="col-span-1 h-5 bg-slate-800" />
               <Skeleton className="col-span-1 h-5 bg-slate-800" />
             </div>
           ))
@@ -157,7 +172,7 @@ export default function CustomerFollowupsPage() {
               key={record.id}
               className="grid grid-cols-1 gap-3 border-b border-slate-800/70 px-4 py-4 last:border-0 md:grid-cols-12 md:items-start"
             >
-              <div className="md:col-span-2 min-w-0">
+              <div className="md:col-span-3 min-w-0">
                 <p className="truncate text-sm font-medium text-white">
                   {record.customerName || 'Unknown customer'}
                 </p>
@@ -165,31 +180,23 @@ export default function CustomerFollowupsPage() {
                   <Send className="h-3 w-3" />
                   {record.sender.displayName}
                 </p>
-              </div>
-              <div className="md:col-span-3 min-w-0">
-                <p className="line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-slate-300">
-                  {record.note}
-                </p>
                 <p className="mt-1 text-xs text-slate-600">
                   {formatDistanceToNow(new Date(record.createdAt), { addSuffix: true })}
                 </p>
               </div>
-              <div className="md:col-span-1 text-sm text-slate-300">
-                {record.quantity ?? '-'}
-              </div>
-              <div className="md:col-span-1 min-w-0">
-                <p className="truncate text-sm text-slate-400">
-                  {record.product || '-'}
+              <div className="md:col-span-5 min-w-0">
+                <p className="whitespace-pre-wrap text-sm leading-6 text-slate-300 break-words">
+                  {record.note}
                 </p>
-              </div>
-              <div className="md:col-span-2 flex flex-wrap gap-2">
-                <StatusBadge status={record.status} />
-                <Badge variant="secondary" className="bg-slate-800 text-slate-300">
+                <Badge variant="secondary" className="mt-1 bg-slate-800 text-slate-300 text-xs">
                   {record.category.replace('_', ' ')}
                 </Badge>
               </div>
-              <div className="md:col-span-2 text-sm text-slate-400">
-                {record.followUpDate ? format(new Date(record.followUpDate), 'MMM d, yyyy') : '-'}
+              <div className="md:col-span-2 flex flex-wrap gap-2">
+                <StatusBadge status={record.status} />
+              </div>
+              <div className="md:col-span-1 text-sm text-slate-400">
+                {record.followUpDate ? format(new Date(record.followUpDate), 'MMM d') : '-'}
               </div>
               <div className="md:col-span-1 text-right text-xs text-slate-500">
                 {Math.round(record.confidence * 100)}%
@@ -242,7 +249,9 @@ function StatusBadge({ status }: { status: string }) {
         ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
         : status === 'quoted'
           ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-          : 'bg-slate-800 text-slate-300 border-slate-700';
+          : status === 'contacted'
+            ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+            : 'bg-slate-800 text-slate-300 border-slate-700';
 
   return (
     <Badge variant="outline" className={color}>

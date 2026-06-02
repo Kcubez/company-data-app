@@ -30,6 +30,9 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         activities: {
+          include: {
+            sender: true,
+          },
           orderBy: { createdAt: "desc" },
           take: 1,
         },
@@ -51,6 +54,15 @@ export async function GET(req: NextRequest) {
     activities: c.activities.map((a) => ({
       ...a,
       createdAt: a.createdAt.toISOString(),
+      sender: a.sender
+        ? {
+            ...a.sender,
+            telegramUserId: a.sender.telegramUserId.toString(),
+            lastMessageAt: a.sender.lastMessageAt?.toISOString() ?? null,
+            createdAt: a.sender.createdAt.toISOString(),
+            updatedAt: a.sender.updatedAt.toISOString(),
+          }
+        : null,
     })),
   }));
 

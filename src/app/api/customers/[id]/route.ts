@@ -62,7 +62,14 @@ export async function GET(
 
   return NextResponse.json({
     customer: {
-      ...customer,
+      id: customer.id,
+      name: customer.name,
+      nameNormalized: customer.nameNormalized,
+      phone: customer.phone,
+      email: customer.email,
+      company: customer.company,
+      notes: customer.notes,
+      status: customer.status,
       createdAt: customer.createdAt.toISOString(),
       updatedAt: customer.updatedAt.toISOString(),
     },

@@ -145,17 +145,34 @@ function PipelineBar({ pipeline }: { pipeline?: PipelineData }) {
 function WeeklyChart({ data }: { data?: WeeklyActivity[] }) {
   if (!data || data.length === 0) return null;
   const maxCount = Math.max(...data.map((d) => d.count), 1);
+  const today = new Date().toISOString().split('T')[0];
 
   return (
-    <div className="flex items-end gap-2 h-36">
+    <div className="flex items-end gap-3 h-48 px-2">
       {data.map((day) => {
-        const heightPct = Math.max((day.count / maxCount) * 100, 4);
+        const heightPct = (day.count / maxCount) * 100;
+        const isToday = day.date === today;
         const dayLabel = new Date(day.date + 'T00:00:00').toLocaleDateString('en', { weekday: 'short' });
         return (
-          <div key={day.date} className="flex-1 flex flex-col items-center gap-1">
-            <span className="text-xs font-medium text-white">{day.count}</span>
-            <div className="w-full rounded-t-lg bg-gradient-to-t from-indigo-600 to-indigo-400 transition-all duration-500" style={{ height: `${heightPct}%`, minHeight: '4px' }} />
-            <span className="text-[10px] text-slate-500">{dayLabel}</span>
+          <div key={day.date} className="flex-1 flex flex-col items-center gap-2 h-full">
+            <span className={`text-xs font-bold ${day.count > 0 ? 'text-white' : 'text-slate-600'}`}>
+              {day.count}
+            </span>
+            <div className="w-full flex-1 flex items-end">
+              <div
+                className={`w-full rounded-t-md transition-all duration-500 ${
+                  isToday
+                    ? 'bg-gradient-to-t from-emerald-600 to-emerald-400 shadow-lg shadow-emerald-500/30'
+                    : day.count > 0
+                      ? 'bg-gradient-to-t from-indigo-600 to-indigo-400'
+                      : 'bg-slate-800/50'
+                }`}
+                style={{ height: `${day.count === 0 ? '4px' : `${Math.max(heightPct, 12)}%`}` }}
+              />
+            </div>
+            <span className={`text-[10px] font-medium ${isToday ? 'text-emerald-400' : 'text-slate-500'}`}>
+              {dayLabel}
+            </span>
           </div>
         );
       })}

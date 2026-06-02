@@ -282,20 +282,18 @@ export default function MessagesPage() {
                       )}
                     </div>
 
-                    {/* Delete button (admin only) */}
-                    {isAdmin && (
-                      <button
-                        onClick={() => {
-                          if (confirm('Are you sure you want to delete this message?')) {
-                            deleteMessage.mutate(message.id);
-                          }
-                        }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400"
-                        title="Delete message"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                    {/* Delete button */}
+                    <button
+                      onClick={() => {
+                        if (confirm('Are you sure you want to delete this message?')) {
+                          deleteMessage.mutate(message.id);
+                        }
+                      }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400"
+                      title="Delete message"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))

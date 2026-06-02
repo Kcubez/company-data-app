@@ -86,12 +86,6 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       adminOnly: false,
     },
     {
-      title: 'Messages',
-      href: '/messages',
-      icon: MessageSquare,
-      adminOnly: false,
-    },
-    {
       title: 'Daily Reports',
       href: '/daily-report',
       icon: FileText,
@@ -107,6 +101,12 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       title: 'Customers',
       href: '/customers',
       icon: UserCircle,
+      adminOnly: false,
+    },
+    {
+      title: 'Messages',
+      href: '/messages',
+      icon: MessageSquare,
       adminOnly: false,
     },
     {

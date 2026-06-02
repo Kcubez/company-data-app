@@ -315,3 +315,28 @@ export const customersApi = {
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/customers/${id}`, { method: "DELETE" }),
 };
+
+// ─── Page-specific Stats API ─────────────────────────────────────────────────
+
+export type DailyReportStats = {
+  totalReports: number;
+  todayReports: number;
+  pendingReports: number;
+  dueToday: number;
+};
+
+export type CustomerFollowupStats = {
+  totalFollowUps: number;
+  todayFollowUps: number;
+  pendingFollowUps: number;
+  dueToday: number;
+  totalCustomers: number;
+};
+
+export const dailyReportApi = {
+  stats: () => request<DailyReportStats>("/api/daily-report/stats"),
+};
+
+export const customerFollowupsApi = {
+  stats: () => request<CustomerFollowupStats>("/api/customer-followups/stats"),
+};
