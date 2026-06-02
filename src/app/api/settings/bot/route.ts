@@ -2,6 +2,12 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
+function maskSecret(value: string | null | undefined, visibleChars = 8) {
+  return value
+    ? "•".repeat(Math.max(0, value.length - visibleChars)) + value.slice(-visibleChars)
+    : "";
+}
+
 // GET /api/settings/bot — get current user's bot settings
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -17,20 +23,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       settings: {
         botToken: "",
+        geminiApiKey: "",
+        geminiModel: "gemini-3.5-flash",
         isActive: false,
       },
     });
   }
 
-  // Mask the bot token for security (show only last 8 chars)
-  const maskedToken = settings.botToken
-    ? "•".repeat(Math.max(0, settings.botToken.length - 8)) +
-      settings.botToken.slice(-8)
-    : "";
-
   return NextResponse.json({
     settings: {
-      botToken: maskedToken,
+      botToken: maskSecret(settings.botToken),
+      geminiApiKey: maskSecret(settings.geminiApiKey),
+      geminiModel: settings.geminiModel,
       isActive: settings.isActive,
       updatedAt: settings.updatedAt,
     },
@@ -45,7 +49,7 @@ export async function PUT(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { botToken } = body;
+  const { botToken, geminiApiKey } = body;
 
   try {
     // Build the webhook URL from the current request origin
@@ -66,7 +70,7 @@ export async function PUT(req: NextRequest) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             url: webhookUrl,
-            allowed_updates: ["message"],
+            allowed_updates: ["message", "callback_query"],
           }),
         }
       );
@@ -89,29 +93,31 @@ export async function PUT(req: NextRequest) {
     // If it contains "•", the user didn't change it — keep the old one
     const tokenToSave =
       botToken && !botToken.includes("•") ? botToken : undefined;
+    const geminiKeyToSave =
+      geminiApiKey && !geminiApiKey.includes("•") ? geminiApiKey : undefined;
 
     const settings = await prisma.botSettings.upsert({
       where: { userId: session.user.id },
       create: {
         userId: session.user.id,
         botToken: tokenToSave || null,
+        geminiApiKey: geminiKeyToSave || null,
+        geminiModel: "gemini-3.5-flash",
         isActive: !!tokenToSave,
       },
       update: {
         ...(tokenToSave !== undefined ? { botToken: tokenToSave || null } : {}),
+        ...(geminiKeyToSave !== undefined ? { geminiApiKey: geminiKeyToSave || null } : {}),
+        geminiModel: "gemini-3.5-flash",
         isActive: tokenToSave !== undefined ? !!tokenToSave : undefined,
       },
     });
 
-    // Mask the token in response
-    const maskedToken = settings.botToken
-      ? "•".repeat(Math.max(0, settings.botToken.length - 8)) +
-        settings.botToken.slice(-8)
-      : "";
-
     return NextResponse.json({
       settings: {
-        botToken: maskedToken,
+        botToken: maskSecret(settings.botToken),
+        geminiApiKey: maskSecret(settings.geminiApiKey),
+        geminiModel: settings.geminiModel,
         isActive: settings.isActive,
         updatedAt: settings.updatedAt,
       },

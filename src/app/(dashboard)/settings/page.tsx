@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bot,
@@ -13,6 +13,7 @@ import {
   EyeOff,
   Copy,
   ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,6 +23,8 @@ import { toast } from 'sonner';
 
 type BotSettingsData = {
   botToken: string;
+  geminiApiKey: string;
+  geminiModel: string;
   isActive: boolean;
   updatedAt?: string;
 };
@@ -41,7 +44,7 @@ function useBotSettings() {
 function useSaveBotSettings() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { botToken: string }) => {
+    mutationFn: async (data: { botToken: string; geminiApiKey: string }) => {
       const res = await fetch('/api/settings/bot', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -74,22 +77,23 @@ export default function SettingsPage() {
   const { data: settings, isLoading } = useBotSettings();
   const saveMutation = useSaveBotSettings();
 
-  const [botToken, setBotToken] = useState('');
+  const [botTokenDraft, setBotTokenDraft] = useState<string | null>(null);
+  const [geminiApiKeyDraft, setGeminiApiKeyDraft] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
-
-  // Populate form when settings load
-  useEffect(() => {
-    if (settings) {
-      setBotToken(settings.botToken || '');
-      setHasChanges(false);
-    }
-  }, [settings]);
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const botToken = botTokenDraft ?? settings?.botToken ?? '';
+  const geminiApiKey = geminiApiKeyDraft ?? settings?.geminiApiKey ?? '';
+  const hasChanges = botTokenDraft !== null || geminiApiKeyDraft !== null;
 
   const handleSave = () => {
     saveMutation.mutate(
-      { botToken },
-      { onSuccess: () => setHasChanges(false) }
+      { botToken, geminiApiKey },
+      {
+        onSuccess: () => {
+          setBotTokenDraft(null);
+          setGeminiApiKeyDraft(null);
+        },
+      }
     );
   };
 
@@ -117,7 +121,7 @@ export default function SettingsPage() {
             </Badge>
           )}
         </div>
-        <p className="text-slate-400">Configure your Telegram bot to receive data</p>
+        <p className="text-slate-400">Configure Telegram intake and Gemini AI parsing</p>
       </div>
 
       {/* Bot Token Card */}
@@ -156,8 +160,7 @@ export default function SettingsPage() {
                   type={showToken ? 'text' : 'password'}
                   value={botToken}
                   onChange={(e) => {
-                    setBotToken(e.target.value);
-                    setHasChanges(true);
+                    setBotTokenDraft(e.target.value);
                   }}
                   placeholder="123456789:ABCdefGHIjklMNO..."
                   className="pl-9 pr-20 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-600 focus-visible:ring-indigo-500 font-mono text-sm"
@@ -184,6 +187,66 @@ export default function SettingsPage() {
             </div>
             <p className="text-xs text-slate-500 mt-1.5">
               Your bot token is stored securely and never exposed in the frontend
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-slate-900 border-slate-800 shadow-lg">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-violet-500/10">
+              <Sparkles className="w-5 h-5 text-violet-400" />
+            </div>
+            <div>
+              <CardTitle className="text-white text-lg">Gemini AI Parser</CardTitle>
+              <CardDescription className="text-slate-400">
+                Used to extract demand-sheet records with {settings?.geminiModel || 'gemini-3.5-flash'}
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-slate-300 mb-2 block">
+              Gemini API Key
+            </label>
+            <div className="relative">
+              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              {isLoading ? (
+                <div className="h-10 bg-slate-800 rounded-md animate-pulse" />
+              ) : (
+                <Input
+                  type={showGeminiKey ? 'text' : 'password'}
+                  value={geminiApiKey}
+                  onChange={(e) => {
+                    setGeminiApiKeyDraft(e.target.value);
+                  }}
+                  placeholder="AIza..."
+                  className="pl-9 pr-20 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-600 focus-visible:ring-indigo-500 font-mono text-sm"
+                />
+              )}
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setShowGeminiKey(!showGeminiKey)}
+                  className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors"
+                >
+                  {showGeminiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+                {geminiApiKey && (
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(geminiApiKey, 'Gemini API key')}
+                    className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mt-1.5">
+              Telegram reports use Gemini first; if the API fails, the app falls back to local parsing.
             </p>
           </div>
         </CardContent>

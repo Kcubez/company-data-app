@@ -87,10 +87,12 @@ model TelegramSender {
   displayName     String
   messageCount    Int      @default(0)
   lastMessageAt   DateTime?
+  activeReportType String   @default("customer_follow_up")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   messages        TelegramMessage[]
+  demandRecords   DemandRecord[]
 
   @@map("telegram_sender")
 }
@@ -105,10 +107,39 @@ model TelegramMessage {
   chatTitle       String?
   receivedAt      DateTime        @default(now())
   createdAt       DateTime        @default(now())
+  demandRecord    DemandRecord?
 
   @@map("telegram_message")
   @@index([senderId])
   @@index([receivedAt])
+}
+
+model DemandRecord {
+  id              String           @id @default(cuid())
+  messageId       String           @unique
+  message         TelegramMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  senderId        String
+  sender          TelegramSender   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  reportType      String           @default("customer_follow_up")
+  customerName    String?
+  category        String           @default("general")
+  status          String           @default("new")
+  note            String
+  followUpDate    DateTime?
+  confidence      Float            @default(0.35)
+  aiProvider      String           @default("heuristic")
+  aiModel         String?
+  extractedAt     DateTime         @default(now())
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@map("demand_record")
+  @@index([senderId])
+  @@index([reportType])
+  @@index([category])
+  @@index([status])
+  @@index([followUpDate])
+  @@index([createdAt])
 }
 
 // ─── Bot Settings (per user) ─────────────────────────────────────────────────
@@ -118,6 +149,8 @@ model BotSettings {
   userId          String   @unique
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   botToken        String?
+  geminiApiKey    String?
+  geminiModel     String   @default("gemini-3.5-flash")
   isActive        Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

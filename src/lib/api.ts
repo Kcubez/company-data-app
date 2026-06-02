@@ -80,6 +80,7 @@ export type TelegramSender = {
   displayName: string;
   messageCount: number;
   lastMessageAt: string | null;
+  activeReportType: string;
   createdAt: string;
 };
 
@@ -133,4 +134,77 @@ export const messagesApi = {
 
 export const sendersApi = {
   list: () => request<{ senders: TelegramSender[] }>("/api/senders"),
+};
+
+// ─── Demand Sheet API ───────────────────────────────────────────────────────
+
+export type DemandRecord = {
+  id: string;
+  messageId: string;
+  senderId: string;
+  sender: TelegramSender;
+  reportType: string;
+  customerName: string | null;
+  category: string;
+  status: string;
+  note: string;
+  followUpDate: string | null;
+  confidence: number;
+  aiProvider: string;
+  aiModel: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DemandRecordsResponse = {
+  records: DemandRecord[];
+  total: number;
+  page: number;
+  totalPages: number;
+};
+
+export type DemandRecordStats = {
+  totalRecords: number;
+  todayRecords: number;
+  dueToday: number;
+  pendingRecords: number;
+  dailyReports: number;
+  customerFollowUps: number;
+  recentRecords: {
+    id: string;
+    reportType: string;
+    customerName: string | null;
+    category: string;
+    status: string;
+    note: string;
+    senderName: string;
+    createdAt: string;
+    followUpDate: string | null;
+  }[];
+};
+
+export type DemandRecordsParams = {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+  category?: string;
+  reportType?: string;
+  senderId?: string;
+};
+
+export const demandRecordsApi = {
+  list: (params: DemandRecordsParams = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    if (params.search) searchParams.set("search", params.search);
+    if (params.status) searchParams.set("status", params.status);
+    if (params.category) searchParams.set("category", params.category);
+    if (params.reportType) searchParams.set("reportType", params.reportType);
+    if (params.senderId) searchParams.set("senderId", params.senderId);
+    const qs = searchParams.toString();
+    return request<DemandRecordsResponse>(`/api/demand-records${qs ? `?${qs}` : ""}`);
+  },
+  stats: () => request<DemandRecordStats>("/api/demand-records/stats"),
 };

@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   // Common stats for all users
-  const [totalMessages, todayMessages, totalSenders, weekMessages] =
+  const [totalMessages, todayMessages, totalSenders, weekMessages, todayDemandRecords, dueTodayFollowUps, pendingDemandRecords] =
     await Promise.all([
       prisma.telegramMessage.count(),
       prisma.telegramMessage.count({
@@ -26,6 +26,18 @@ export async function GET(req: NextRequest) {
       prisma.telegramMessage.count({
         where: { receivedAt: { gte: sevenDaysAgo } },
       }),
+      prisma.demandRecord.count({
+        where: { createdAt: { gte: startOfToday } },
+      }),
+      prisma.demandRecord.count({
+        where: {
+          followUpDate: {
+            gte: startOfToday,
+            lt: new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000),
+          },
+        },
+      }),
+      prisma.demandRecord.count({ where: { status: "pending" } }),
     ]);
 
   // Bot settings for current user
@@ -65,6 +77,9 @@ export async function GET(req: NextRequest) {
     todayMessages,
     totalSenders,
     weekMessages,
+    todayDemandRecords,
+    dueTodayFollowUps,
+    pendingDemandRecords,
     botActive: botSettings?.isActive ?? false,
     recentMessages: serializedMessages,
     isAdmin,

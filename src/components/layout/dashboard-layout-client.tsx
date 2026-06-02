@@ -11,6 +11,7 @@ import {
   Menu,
   MessageSquare,
   Settings,
+  ClipboardList,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,8 +23,45 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useState } from 'react';
+
+type NavItem = {
+  title: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  adminOnly: boolean;
+};
+
+function NavigationLinks({
+  items,
+  pathname,
+  onNavigate,
+}: {
+  items: NavItem[];
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  return (
+    <nav className="flex flex-col gap-2 p-4">
+      {items.map(item => (
+        <Link
+          key={item.href}
+          href={item.href}
+          onClick={onNavigate}
+          className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+            pathname === item.href
+              ? 'bg-indigo-500/10 text-indigo-400 font-medium'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+          }`}
+        >
+          <item.icon className="w-5 h-5" />
+          {item.title}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 export function DashboardLayoutClient({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
@@ -37,7 +75,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
     router.refresh();
   };
 
-  const navItems = [
+  const navItems: NavItem[] = [
     {
       title: 'Dashboard',
       href: '/dashboard',
@@ -48,6 +86,12 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       title: 'Messages',
       href: '/messages',
       icon: MessageSquare,
+      adminOnly: false,
+    },
+    {
+      title: 'Demand Sheet',
+      href: '/demand-sheet',
+      icon: ClipboardList,
       adminOnly: false,
     },
     {
@@ -66,26 +110,6 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
 
   const filteredNavItems = navItems.filter(
     item => !item.adminOnly || session?.user?.role === 'admin'
-  );
-
-  const NavigationLinks = () => (
-    <nav className="flex flex-col gap-2 p-4">
-      {filteredNavItems.map(item => (
-        <Link
-          key={item.href}
-          href={item.href}
-          onClick={() => setIsMobileMenuOpen(false)}
-          className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-            pathname === item.href
-              ? 'bg-indigo-500/10 text-indigo-400 font-medium'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-          }`}
-        >
-          <item.icon className="w-5 h-5" />
-          {item.title}
-        </Link>
-      ))}
-    </nav>
   );
 
   return (
@@ -113,7 +137,11 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
               </div>
               <span className="font-bold text-white tracking-wide text-lg">Company</span>
             </div>
-            <NavigationLinks />
+            <NavigationLinks
+              items={filteredNavItems}
+              pathname={pathname}
+              onNavigate={() => setIsMobileMenuOpen(false)}
+            />
           </SheetContent>
         </Sheet>
       </header>
@@ -127,7 +155,11 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
           <span className="font-bold text-white tracking-wide text-xl">Company</span>
         </div>
         <div className="flex-1 overflow-y-auto mt-4 px-2">
-          <NavigationLinks />
+          <NavigationLinks
+            items={filteredNavItems}
+            pathname={pathname}
+            onNavigate={() => setIsMobileMenuOpen(false)}
+          />
         </div>
 
         {/* User Profile Footer */}

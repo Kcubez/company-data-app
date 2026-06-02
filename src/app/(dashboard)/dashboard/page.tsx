@@ -23,6 +23,9 @@ type DashboardStats = {
   todayMessages: number;
   totalSenders: number;
   weekMessages: number;
+  todayDemandRecords: number;
+  dueTodayFollowUps: number;
+  pendingDemandRecords: number;
   botActive: boolean;
   recentMessages: {
     id: string;
@@ -84,8 +87,8 @@ export default function DashboardPage() {
           border: 'border-purple-500/20',
         },
         {
-          title: 'Total Messages',
-          value: stats?.totalMessages ?? 0,
+          title: 'Today Records',
+          value: stats?.todayDemandRecords ?? 0,
           icon: MessageSquare,
           color: 'text-amber-400',
           bg: 'bg-amber-500/10',
@@ -94,16 +97,16 @@ export default function DashboardPage() {
       ]
     : [
         {
-          title: 'Telegram Senders',
-          value: stats?.totalSenders ?? 0,
+          title: 'Due Today',
+          value: stats?.dueTodayFollowUps ?? 0,
           icon: Send,
           color: 'text-blue-400',
           bg: 'bg-blue-500/10',
           border: 'border-blue-500/20',
         },
         {
-          title: 'Total Messages',
-          value: stats?.totalMessages ?? 0,
+          title: 'Pending',
+          value: stats?.pendingDemandRecords ?? 0,
           icon: MessageSquare,
           color: 'text-emerald-400',
           bg: 'bg-emerald-500/10',
