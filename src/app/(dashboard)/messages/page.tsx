@@ -16,6 +16,8 @@ import {
   ChevronRight,
   Inbox,
   Radio,
+  ClipboardList,
+  PhoneCall,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -77,12 +79,28 @@ export default function MessagesPage() {
       border: 'border-emerald-500/20',
     },
     {
-      title: 'Total Senders',
-      value: stats?.totalSenders ?? 0,
-      icon: Users,
+      title: 'Daily Reports',
+      value: stats?.dailyReports ?? 0,
+      icon: ClipboardList,
+      color: 'text-cyan-400',
+      bg: 'bg-cyan-500/10',
+      border: 'border-cyan-500/20',
+    },
+    {
+      title: 'Customer Follow-ups',
+      value: stats?.customerFollowUps ?? 0,
+      icon: PhoneCall,
       color: 'text-purple-400',
       bg: 'bg-purple-500/10',
       border: 'border-purple-500/20',
+    },
+    {
+      title: 'Total Senders',
+      value: stats?.totalSenders ?? 0,
+      icon: Users,
+      color: 'text-rose-400',
+      bg: 'bg-rose-500/10',
+      border: 'border-rose-500/20',
     },
     {
       title: 'This Week',
@@ -124,7 +142,7 @@ export default function MessagesPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {statCards.map((stat, i) => (
           <Card
             key={i}

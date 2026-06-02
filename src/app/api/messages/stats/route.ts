@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [totalMessages, todayMessages, totalSenders, weekMessages] = await Promise.all([
+  const [totalMessages, todayMessages, totalSenders, weekMessages, dailyReports, customerFollowUps] = await Promise.all([
     prisma.telegramMessage.count(),
     prisma.telegramMessage.count({
       where: { receivedAt: { gte: startOfToday } },
@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
     prisma.telegramMessage.count({
       where: { receivedAt: { gte: sevenDaysAgo } },
     }),
+    prisma.demandRecord.count({ where: { reportType: "daily_report" } }),
+    prisma.demandRecord.count({ where: { reportType: "customer_follow_up" } }),
   ]);
 
   return NextResponse.json({
@@ -29,5 +31,7 @@ export async function GET(req: NextRequest) {
     todayMessages,
     totalSenders,
     weekMessages,
+    dailyReports,
+    customerFollowUps,
   });
 }

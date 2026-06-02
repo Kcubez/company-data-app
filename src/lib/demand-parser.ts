@@ -4,6 +4,10 @@ export type ParsedDemandRecord = {
   category: string;
   status: string;
   note: string;
+  quantity: number | null;
+  product: string | null;
+  amount: number | null;
+  unit: string | null;
   followUpDate: Date | null;
   confidence: number;
   aiProvider: string;
@@ -107,6 +111,80 @@ function extractFollowUpDate(text: string, receivedAt: Date) {
   return null;
 }
 
+const BURMESE_DIGITS: Record<string, string> = {
+  '၀': '0', '၁': '1', '၂': '2', '၃': '3', '၄': '4',
+  '၅': '5', '၆': '6', '၇': '7', '၈': '8', '၉': '9',
+};
+
+function convertBurmeseDigits(text: string): string {
+  return text.replace(/[၀-၉]/g, (d) => BURMESE_DIGITS[d] || d);
+}
+
+function extractQuantity(text: string): { quantity: number | null; unit: string | null } {
+  const normalized = convertBurmeseDigits(text);
+  
+  // Patterns: "qty: 20", "quantity 20", "၂၀ ခု", "20 units", "အခု ၂၀"
+  const patterns = [
+    /(?:qty|quantity|အရေအတွက်)\s*[:=-]?\s*(\d+)\s*(\S+)?/i,
+    /(\d+)\s*(units?|pcs?|pieces?|boxes?|sets?|ခု|လုံး|ခွက်|ထုပ်|အိတ်|ကျပ်)/i,
+    /(?:အခု|အလုံး)\s*(\d+)/i,
+    /(?:ပစ္စည်း|product|item)\s*(\d+)/i,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match) {
+      const qty = parseInt(match[1], 10);
+      if (!isNaN(qty) && qty > 0 && qty < 1000000) {
+        return { quantity: qty, unit: match[2]?.trim() || null };
+      }
+    }
+  }
+  
+  // Simple number extraction near keywords
+  const simpleMatch = normalized.match(/(?:ဝယ်|buy|order|မှာ|ယူ|sold|ရောင်း)\s*(?:မယ်|ပြီ|ထား)?\s*(\d+)/i)
+    || normalized.match(/(\d+)\s*(?:ဝယ်|buy|order|မှာ|ယူ|sold|ရောင်း)/i);
+  if (simpleMatch) {
+    const qty = parseInt(simpleMatch[1], 10);
+    if (!isNaN(qty) && qty > 0 && qty < 1000000) {
+      return { quantity: qty, unit: null };
+    }
+  }
+  
+  return { quantity: null, unit: null };
+}
+
+function extractProduct(text: string): string | null {
+  const patterns = [
+    /(?:product|item|ပစ္စည်း|ကုန်ပစ္စည်း)\s*[:=-]?\s*([^\n,။]+)/i,
+    /([^\n,။]+?)\s*(?:ပစ္စည်း|product)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const value = match?.[1] ? cleanValue(match[1]) : '';
+    if (value && value.length <= 100 && value.length >= 2) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function extractAmount(text: string): number | null {
+  const normalized = convertBurmeseDigits(text);
+  const patterns = [
+    /(?:amount|total|price|ဈေး|စျေး|ကျပ်|kyat|mmk|\$|usd)\s*[:=-]?\s*([\d,]+\.?\d*)/i,
+    /([\d,]+\.?\d*)\s*(?:ကျပ်|kyat|mmk|\$|usd)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match) {
+      const amount = parseFloat(match[1].replace(/,/g, ''));
+      if (!isNaN(amount) && amount > 0) return amount;
+    }
+  }
+  return null;
+}
+
 export function parseDemandMessage(
   text: string,
   receivedAt = new Date(),
@@ -122,11 +200,17 @@ export function parseDemandMessage(
   const followUpDate =
     reportType === REPORT_TYPES.CUSTOMER_FOLLOW_UP ? extractFollowUpDate(text, receivedAt) : null;
 
+  const { quantity, unit } = extractQuantity(text);
+  const product = extractProduct(text);
+  const amount = extractAmount(text);
+
   let confidence = 0.35;
   if (customerName) confidence += 0.25;
   if (category !== "general") confidence += 0.2;
   if (status !== "new") confidence += 0.1;
   if (followUpDate) confidence += 0.1;
+  if (quantity) confidence += 0.1;
+  if (product) confidence += 0.05;
 
   return {
     reportType,
@@ -134,6 +218,10 @@ export function parseDemandMessage(
     category,
     status,
     note: text.trim(),
+    quantity,
+    product,
+    amount,
+    unit,
     followUpDate,
     confidence: Math.min(confidence, 0.95),
     aiProvider: "heuristic",
@@ -156,6 +244,10 @@ Return JSON only with this exact shape:
   "category": "follow_up" | "quotation" | "demand" | "complaint" | "report" | "general",
   "status": "new" | "contacted" | "quoted" | "pending" | "closed",
   "note": string,
+  "quantity": number | null,
+  "product": string | null,
+  "amount": number | null,
+  "unit": string | null,
   "followUpDate": string | null,
   "confidence": number
 }
@@ -164,6 +256,10 @@ Rules:
 - The report can be Burmese, English, or mixed.
 - ${categoryGuidance}
 - Keep note as a concise cleaned version of the original message.
+- Extract product name, quantity, amount, and unit if mentioned in the message.
+- quantity should be an integer.
+- amount should be a decimal (total price/cost if mentioned).
+- unit is the unit of measurement (e.g., "ခု", "လုံး", "pieces", "boxes").
 - followUpDate must be YYYY-MM-DD if a date is implied, otherwise null.
 - Use received date ${receivedAt.toISOString().slice(0, 10)} for relative dates like today/tomorrow/next week.
 - confidence must be between 0 and 1.
@@ -249,6 +345,10 @@ export async function parseDemandMessageWithGemini({
       category: typeof parsed.category === "string" ? parsed.category : fallback.category,
       status: typeof parsed.status === "string" ? parsed.status : fallback.status,
       note: typeof parsed.note === "string" && parsed.note.trim() ? parsed.note.trim() : text.trim(),
+      quantity: typeof parsed.quantity === 'number' ? parsed.quantity : fallback.quantity,
+      product: typeof parsed.product === 'string' && parsed.product.trim() ? parsed.product.trim() : fallback.product,
+      amount: typeof parsed.amount === 'number' ? parsed.amount : fallback.amount,
+      unit: typeof parsed.unit === 'string' && parsed.unit.trim() ? parsed.unit.trim() : fallback.unit,
       followUpDate: parseDateValue(parsed.followUpDate),
       confidence,
       aiProvider: "gemini",

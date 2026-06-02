@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   // Common stats for all users
-  const [totalMessages, todayMessages, totalSenders, weekMessages, todayDemandRecords, dueTodayFollowUps, pendingDemandRecords] =
+  const [totalMessages, todayMessages, totalSenders, weekMessages, todayDemandRecords, dueTodayFollowUps, pendingDemandRecords, totalCustomers] =
     await Promise.all([
       prisma.telegramMessage.count(),
       prisma.telegramMessage.count({
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.demandRecord.count({ where: { status: "pending" } }),
+      prisma.customer.count(),
     ]);
 
   // Bot settings for current user
@@ -72,6 +73,72 @@ export async function GET(req: NextRequest) {
     adminStats = { totalUsers, activeSessions };
   }
 
+  // Pipeline counts
+  const [pipelineNew, pipelineContacted, pipelineQuoted, pipelinePending, pipelineClosed] =
+    await Promise.all([
+      prisma.demandRecord.count({ where: { status: 'new' } }),
+      prisma.demandRecord.count({ where: { status: 'contacted' } }),
+      prisma.demandRecord.count({ where: { status: 'quoted' } }),
+      prisma.demandRecord.count({ where: { status: 'pending' } }),
+      prisma.demandRecord.count({ where: { status: 'closed' } }),
+    ]);
+
+  // Quantity/amount aggregation for closed deals
+  const salesAgg = await prisma.demandRecord.aggregate({
+    _sum: { quantity: true, amount: true },
+    where: { status: 'closed' },
+  });
+
+  // Weekly activity (last 7 days)
+  const weeklyActivity: { date: string; count: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const dayStart = new Date(startOfToday);
+    dayStart.setDate(dayStart.getDate() - i);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    const count = await prisma.demandRecord.count({
+      where: {
+        createdAt: { gte: dayStart, lt: dayEnd },
+      },
+    });
+    weeklyActivity.push({
+      date: dayStart.toISOString().slice(0, 10),
+      count,
+    });
+  }
+
+  // Top products
+  const allProductRecords = await prisma.demandRecord.findMany({
+    where: { product: { not: null } },
+    select: { product: true, quantity: true },
+  });
+  const productMap = new Map<string, { count: number; totalQty: number }>();
+  for (const r of allProductRecords) {
+    if (!r.product) continue;
+    const existing = productMap.get(r.product) || { count: 0, totalQty: 0 };
+    existing.count++;
+    existing.totalQty += r.quantity || 0;
+    productMap.set(r.product, existing);
+  }
+  const topProducts = Array.from(productMap.entries())
+    .map(([product, stats]) => ({ product, ...stats }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  // Due today follow-ups with details
+  const dueTodayRecords = await prisma.demandRecord.findMany({
+    where: {
+      followUpDate: {
+        gte: startOfToday,
+        lt: new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000),
+      },
+      status: { not: 'closed' },
+    },
+    include: { sender: true },
+    take: 10,
+    orderBy: { createdAt: 'desc' },
+  });
+
   return NextResponse.json({
     totalMessages,
     todayMessages,
@@ -80,9 +147,31 @@ export async function GET(req: NextRequest) {
     todayDemandRecords,
     dueTodayFollowUps,
     pendingDemandRecords,
+    totalCustomers,
     botActive: botSettings?.isActive ?? false,
     recentMessages: serializedMessages,
     isAdmin,
     adminStats,
+    pipeline: {
+      new: pipelineNew,
+      contacted: pipelineContacted,
+      quoted: pipelineQuoted,
+      pending: pipelinePending,
+      closed: pipelineClosed,
+    },
+    totalQuantitySold: salesAgg._sum.quantity || 0,
+    totalAmountSold: salesAgg._sum.amount || 0,
+    weeklyActivity,
+    topProducts,
+    dueTodayRecords: dueTodayRecords.map((r) => ({
+      id: r.id,
+      customerName: r.customerName,
+      product: r.product,
+      quantity: r.quantity,
+      status: r.status,
+      note: r.note.length > 80 ? r.note.slice(0, 80) + '…' : r.note,
+      senderName: r.sender.displayName,
+      followUpDate: r.followUpDate?.toISOString() ?? null,
+    })),
   });
 }

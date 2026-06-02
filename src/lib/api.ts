@@ -108,6 +108,8 @@ export type MessageStats = {
   todayMessages: number;
   totalSenders: number;
   weekMessages: number;
+  dailyReports: number;
+  customerFollowUps: number;
 };
 
 export type MessagesParams = {
@@ -148,6 +150,10 @@ export type DemandRecord = {
   category: string;
   status: string;
   note: string;
+  quantity: number | null;
+  product: string | null;
+  amount: number | null;
+  unit: string | null;
   followUpDate: string | null;
   confidence: number;
   aiProvider: string;
@@ -181,6 +187,27 @@ export type DemandRecordStats = {
     createdAt: string;
     followUpDate: string | null;
   }[];
+  pipeline: {
+    new: number;
+    contacted: number;
+    quoted: number;
+    pending: number;
+    closed: number;
+  };
+  totalQuantitySold: number;
+  totalAmountSold: number;
+  topProducts: { product: string; count: number; totalQty: number }[];
+  weeklyActivity: { date: string; count: number }[];
+  dueTodayRecords: {
+    id: string;
+    customerName: string | null;
+    product: string | null;
+    quantity: number | null;
+    status: string;
+    note: string;
+    senderName: string;
+    followUpDate: string | null;
+  }[];
 };
 
 export type DemandRecordsParams = {
@@ -207,4 +234,84 @@ export const demandRecordsApi = {
     return request<DemandRecordsResponse>(`/api/demand-records${qs ? `?${qs}` : ""}`);
   },
   stats: () => request<DemandRecordStats>("/api/demand-records/stats"),
+};
+
+// ─── Customers API ───────────────────────────────────────────────────────────
+
+export type Customer = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  company: string | null;
+  notes: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  activities: CustomerActivity[];
+  _count?: { demandRecords: number };
+};
+
+export type CustomerActivity = {
+  id: string;
+  customerId: string;
+  action: string;
+  description: string;
+  senderId: string | null;
+  sender: TelegramSender | null;
+  createdAt: string;
+};
+
+export type CustomerTimelineItem = {
+  id: string;
+  type: "activity" | "demand";
+  action?: string;
+  reportType?: string;
+  customerName?: string | null;
+  category?: string;
+  status?: string;
+  note?: string;
+  followUpDate?: string | null;
+  sender?: string;
+  senderId?: string | null;
+  description?: string;
+  createdAt: string;
+};
+
+export type CustomerWithTimeline = {
+  customer: Customer;
+  timeline: CustomerTimelineItem[];
+};
+
+export type CustomersResponse = {
+  customers: Customer[];
+  total: number;
+  page: number;
+  totalPages: number;
+};
+
+export type CustomersParams = {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+};
+
+export const customersApi = {
+  list: (params: CustomersParams = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    if (params.search) searchParams.set("search", params.search);
+    if (params.status) searchParams.set("status", params.status);
+    const qs = searchParams.toString();
+    return request<CustomersResponse>(`/api/customers${qs ? `?${qs}` : ""}`);
+  },
+  get: (id: string) => request<CustomerWithTimeline>(`/api/customers/${id}`),
+  create: (data: Partial<Customer>) =>
+    request<Customer>("/api/customers", { method: "POST", body: data }),
+  update: (id: string, data: Partial<Customer>) =>
+    request<Customer>(`/api/customers/${id}`, { method: "PATCH", body: data }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/api/customers/${id}`, { method: "DELETE" }),
 };

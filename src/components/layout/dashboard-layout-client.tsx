@@ -12,6 +12,9 @@ import {
   MessageSquare,
   Settings,
   ClipboardList,
+  UserCircle,
+  FileText,
+  Phone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -89,9 +92,21 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       adminOnly: false,
     },
     {
-      title: 'Demand Sheet',
-      href: '/demand-sheet',
-      icon: ClipboardList,
+      title: 'Daily Reports',
+      href: '/daily-report',
+      icon: FileText,
+      adminOnly: false,
+    },
+    {
+      title: 'Customer Follow-ups',
+      href: '/customer-followups',
+      icon: Phone,
+      adminOnly: false,
+    },
+    {
+      title: 'Customers',
+      href: '/customers',
+      icon: UserCircle,
       adminOnly: false,
     },
     {

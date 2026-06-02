@@ -16,6 +16,10 @@ function displayNameFromTelegramUser(from: { first_name?: string; last_name?: st
   return [from.first_name, from.last_name].filter(Boolean).join(" ");
 }
 
+function normalizeCustomerName(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
 async function getActiveBotSettings() {
   return prisma.botSettings.findFirst({
     where: { isActive: true },
@@ -168,6 +172,13 @@ function categoryPrompt(reportType: ReportType) {
 export async function POST(req: NextRequest) {
 
   try {
+    // Verify webhook secret token
+    const secret = req.headers.get('x-telegram-bot-api-secret-token');
+    const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (expectedSecret && secret !== expectedSecret) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json();
     const settings = await getActiveBotSettings();
     const callbackQuery = body.callback_query;
@@ -208,6 +219,12 @@ export async function POST(req: NextRequest) {
           ].join("\n"),
         });
         console.log("Message edited successfully");
+
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId: BigInt(chatId),
+          text: "Format ပို့ပြီးပါပြီ။ ဒီ format အတိုင်း ဖြည့်ပြီး ပို့လိုက်ပါ။",
+        });
       } else {
         console.log("Missing chatId or messageId in callbackQuery.message");
       }
@@ -258,7 +275,53 @@ export async function POST(req: NextRequest) {
       model: settings?.geminiModel,
     });
 
-    await prisma.telegramMessage.create({
+    let customerId: string | null = null;
+    if (parsedDemand.customerName) {
+      const normalizedName = normalizeCustomerName(parsedDemand.customerName);
+      
+      // Find by normalized name first for fuzzy matching
+      let customer = await prisma.customer.findFirst({
+        where: { nameNormalized: normalizedName },
+      });
+      
+      if (!customer) {
+        // Try exact name match as fallback
+        customer = await prisma.customer.findUnique({
+          where: { name: parsedDemand.customerName },
+        });
+      }
+      
+      if (customer) {
+        // Update existing customer
+        await prisma.customer.update({
+          where: { id: customer.id },
+          data: {
+            updatedAt: new Date(),
+            nameNormalized: customer.nameNormalized || normalizedName,
+          },
+        });
+      } else {
+        // Create new customer
+        customer = await prisma.customer.create({
+          data: {
+            name: parsedDemand.customerName,
+            nameNormalized: normalizedName,
+          },
+        });
+      }
+      customerId = customer.id;
+
+      await prisma.customerActivity.create({
+        data: {
+          customerId: customer.id,
+          senderId: sender.id,
+          action: reportType === REPORT_TYPES.DAILY_REPORT ? "daily_report" : "follow_up",
+          description: parsedDemand.note,
+        },
+      });
+    }
+
+    const newDemandRecord = await prisma.telegramMessage.create({
       data: {
         telegramMsgId: message.message_id,
         text: message.text,
@@ -269,11 +332,16 @@ export async function POST(req: NextRequest) {
         demandRecord: {
           create: {
             senderId: sender.id,
+            customerId,
             reportType: parsedDemand.reportType,
             customerName: parsedDemand.customerName,
             category: parsedDemand.category,
             status: parsedDemand.status,
             note: parsedDemand.note,
+            quantity: parsedDemand.quantity,
+            product: parsedDemand.product,
+            amount: parsedDemand.amount,
+            unit: parsedDemand.unit,
             followUpDate: parsedDemand.followUpDate,
             confidence: parsedDemand.confidence,
             aiProvider: parsedDemand.aiProvider,
@@ -281,6 +349,19 @@ export async function POST(req: NextRequest) {
           },
         },
       },
+    });
+
+    const confirmParts = ['📝 မှတ်ပြီးပါပြီ!'];
+    if (parsedDemand.customerName) confirmParts.push(`👤 Customer: ${parsedDemand.customerName}`);
+    if (parsedDemand.quantity) confirmParts.push(`📦 Qty: ${parsedDemand.quantity}${parsedDemand.unit ? ' ' + parsedDemand.unit : ''}`);
+    if (parsedDemand.product) confirmParts.push(`🏷️ Product: ${parsedDemand.product}`);
+    if (parsedDemand.amount) confirmParts.push(`💰 Amount: ${parsedDemand.amount.toLocaleString()}`);
+    confirmParts.push(`📋 ${parsedDemand.note}`);
+
+    await sendTelegramMessage({
+      botToken: settings?.botToken,
+      chatId: BigInt(message.chat.id),
+      text: confirmParts.join('\n'),
     });
 
     return NextResponse.json({ ok: true });

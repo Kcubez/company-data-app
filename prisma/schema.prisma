@@ -76,6 +76,42 @@ model Verification {
   @@map("verification")
 }
 
+// ─── Customer Management ──────────────────────────────────────────────────────
+
+model Customer {
+  id            String    @id @default(cuid())
+  name            String    @unique
+  nameNormalized  String?
+  phone           String?
+  email         String?
+  company       String?
+  notes         String?
+  status        String    @default("active")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  demandRecords DemandRecord[]
+  activities    CustomerActivity[]
+
+  @@index([nameNormalized])
+  @@map("customer")
+}
+
+model CustomerActivity {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  action      String
+  description String
+  senderId    String?
+  sender      TelegramSender? @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@map("customer_activity")
+  @@index([customerId])
+  @@index([createdAt])
+}
+
 // ─── Telegram Data Collection ────────────────────────────────────────────────
 
 model TelegramSender {
@@ -93,6 +129,7 @@ model TelegramSender {
 
   messages        TelegramMessage[]
   demandRecords   DemandRecord[]
+  activities      CustomerActivity[]
 
   @@map("telegram_sender")
 }
@@ -120,11 +157,17 @@ model DemandRecord {
   message         TelegramMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
   senderId        String
   sender          TelegramSender   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  customerId      String?
+  customer        Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
   reportType      String           @default("customer_follow_up")
   customerName    String?
   category        String           @default("general")
   status          String           @default("new")
   note            String
+  quantity        Int?
+  product         String?
+  amount          Float?
+  unit            String?
   followUpDate    DateTime?
   confidence      Float            @default(0.35)
   aiProvider      String           @default("heuristic")
@@ -140,6 +183,7 @@ model DemandRecord {
   @@index([status])
   @@index([followUpDate])
   @@index([createdAt])
+  @@index([customerId])
 }
 
 // ─── Bot Settings (per user) ─────────────────────────────────────────────────
