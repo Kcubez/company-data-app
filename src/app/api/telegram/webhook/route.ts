@@ -75,6 +75,30 @@ async function answerCallbackQuery(botToken: string | null | undefined, callback
   });
 }
 
+async function editTelegramMessage({
+  botToken,
+  chatId,
+  messageId,
+  text,
+}: {
+  botToken: string | null | undefined;
+  chatId: bigint | number;
+  messageId: number;
+  text: string;
+}) {
+  if (!botToken) return;
+
+  await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId.toString(),
+      message_id: messageId,
+      text,
+    }),
+  });
+}
+
 async function upsertSender(from: {
   id: number;
   first_name?: string;
@@ -153,11 +177,17 @@ export async function POST(req: NextRequest) {
       );
 
       const chatId = callbackQuery.message?.chat?.id;
-      if (chatId) {
-        await sendTelegramMessage({
+      const messageId = callbackQuery.message?.message_id;
+      if (chatId && messageId) {
+        await editTelegramMessage({
           botToken: settings?.botToken,
           chatId: BigInt(chatId),
-          text: categoryPrompt(selectedType),
+          messageId,
+          text: [
+            `Selected: ${REPORT_TYPE_LABELS[selectedType]}`,
+            "",
+            categoryPrompt(selectedType),
+          ].join("\n"),
         });
       }
 
