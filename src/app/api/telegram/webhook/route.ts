@@ -72,6 +72,13 @@ async function answerCallbackQuery(botToken: string | null | undefined, callback
       callback_query_id: callbackQueryId,
       text,
     }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Failed to answer callback query:", errorText);
+    }
+  }).catch((err) => {
+    console.error("Error answering callback query:", err);
   });
 }
 
@@ -96,6 +103,13 @@ async function editTelegramMessage({
       message_id: messageId,
       text,
     }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Failed to edit message:", errorText);
+    }
+  }).catch((err) => {
+    console.error("Error editing message:", err);
   });
 }
 
@@ -159,8 +173,11 @@ export async function POST(req: NextRequest) {
     const callbackQuery = body.callback_query;
 
     if (callbackQuery?.data?.startsWith("report_type:") && callbackQuery.from) {
+      console.log("Callback query received:", callbackQuery.data);
+
       const selectedType = callbackQuery.data.replace("report_type:", "");
       if (!isReportType(selectedType)) {
+        console.log("Invalid report type:", selectedType);
         return NextResponse.json({ ok: true });
       }
 
@@ -178,6 +195,7 @@ export async function POST(req: NextRequest) {
 
       const chatId = callbackQuery.message?.chat?.id;
       const messageId = callbackQuery.message?.message_id;
+      console.log("Editing message - chatId:", chatId, "messageId:", messageId);
       if (chatId && messageId) {
         await editTelegramMessage({
           botToken: settings?.botToken,
@@ -189,6 +207,9 @@ export async function POST(req: NextRequest) {
             categoryPrompt(selectedType),
           ].join("\n"),
         });
+        console.log("Message edited successfully");
+      } else {
+        console.log("Missing chatId or messageId in callbackQuery.message");
       }
 
       return NextResponse.json({ ok: true });
