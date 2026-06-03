@@ -117,46 +117,46 @@ async function upsertSender(from: {
 
 const MAIN_MENU_BUTTONS = {
   inline_keyboard: [
-    [{ text: "\ud83e\udd16 Q & A", callback_data: "mode:qa" }],
-    [{ text: "\ud83d\udcca Reports", callback_data: "mode:reports" }],
+    [{ text: "🤖 Q & A", callback_data: "mode:qa" }],
+    [{ text: "📊 Reports", callback_data: "mode:reports" }],
   ],
 };
 
 const REPORT_TYPE_BUTTONS = {
   inline_keyboard: [
-    [{ text: "\ud83d\udcc8 Business Report", callback_data: "report_type:business_report" }],
-    [{ text: "\ud83d\udd2e Future Plan Report", callback_data: "report_type:future_plan" }],
-    [{ text: "\u2b05\ufe0f Back", callback_data: "mode:back" }],
+    [{ text: "📈 Business Report", callback_data: "report_type:business_report" }],
+    [{ text: "🔮 Future Plan Report", callback_data: "report_type:future_plan" }],
+    [{ text: "⬅️ Back", callback_data: "mode:back" }],
   ],
 };
 
 function getFormatPrompt(reportType: ReportType): string {
   if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
     return [
-      "<b>\ud83d\udcc8 Business Report</b> \u101b\u103d\u1031\u1038\u1011\u102c\u1038\u1015\u102b\u1010\u101a\u103a\u104b",
+      "<b>📈 Business Report</b> ရွေးထားပါတယ်။",
       "",
-      "\u1012\u102e format \u1014\u1032\u1037\u1015\u102d\u102f\u1037\u101c\u102d\u102f\u1037\u101b\u1015\u102b\u1010\u101a\u103a:",
-      "Total Sales: (\u101b\u1031\u102c\u1004\u103a\u1038\u101b\u1004\u103d\u1031)",
-      "Demand: (demand \u1021\u101b\u1031\u1021\u1010\u103d\u1000\u103a)",
-      "Service: (\u1014\u102c\u1019\u100a\u103a) - Amount: (\u1004\u103d\u1031) - Qty: (\u1021\u101b\u1031\u1021\u1010\u103d\u1000\u103a)",
-      "Appointments: (\u1001\u103b\u102d\u1014\u103a\u1038\u1006\u102d\u102f\u1019\u103e\u102f \u1021\u101b\u1031\u1021\u1010\u103d\u1000\u103a)",
-      "Project: (\u1014\u102c\u1019\u100a\u103a) - Status: (on_track/delayed/completed)",
-      "Marketing Budget: (\u1000\u102f\u1014\u103a\u1000\u103b\u1005\u101b\u102d\u1010\u103a)",
+      "ဒီ format နဲ့ပို့လို့ရပါတယ်:",
+      "Total Sales: (ရောင်းရငွေ)",
+      "Demand: (demand အရေအတွက်)",
+      "Service: (နာမည်) - Amount: (ငွေ) - Qty: (အရေအတွက်)",
+      "Appointments: (ချိန်းဆိုမှု အရေအတွက်)",
+      "Project: (နာမည်) - Status: (on_track/delayed/completed)",
+      "Marketing Budget: (ကုန်ကျစရိတ်)",
       "",
-      "\u1019\u103e\u1010\u103a\u1001\u103b\u1000\u103a: \u1019\u101c\u102d\u102f\u1010\u102c\u1010\u103d\u1031 \u1001\u103b\u1014\u103a\u1011\u102c\u1038\u101c\u102d\u102f\u1037\u101b\u1015\u102b\u1010\u101a\u103a\u104b",
+      "မှတ်ချက်: မလိုတာတွေ ချန်ထားလို့ရပါတယ်။",
     ].join("\n");
   }
 
   return [
-    "<b>\ud83d\udd2e Future Plan Report</b> \u101b\u103d\u1031\u1038\u1011\u102c\u1038\u1015\u102b\u1010\u101a\u103a\u104b",
+    "<b>🔮 Future Plan Report</b> ရွေးထားပါတယ်။",
     "",
-    "\u1012\u102e format \u1014\u1032\u1037\u1015\u102d\u102f\u1037\u101c\u102d\u102f\u1037\u101b\u1015\u102b\u1010\u101a\u103a:",
-    "Follow-up: (client \u1014\u102c\u1019\u100a\u103a) - Reason: (\u1018\u102c\u1000\u103c\u1031\u102c\u1004\u103a\u1037)",
-    "Focus Service: (service \u1014\u102c\u1019\u100a\u103a) - Reason: (\u1018\u102c\u1000\u103c\u1031\u102c\u1004\u103a\u1037)",
-    "Delayed Project: (project \u1014\u102c\u1019\u100a\u103a) - Reason: (\u1018\u102c\u1000\u103c\u1031\u102c\u1004\u103a\u1037)",
-    "Next Steps: (\u1018\u102c\u1010\u103d\u1031\u1006\u1000\u103a\u101c\u102f\u1015\u103a\u1019\u101c\u1032)",
+    "ဒီ format နဲ့ပို့လို့ရပါတယ်:",
+    "Follow-up: (client နာမည်) - Reason: (ဘာကြောင့်)",
+    "Focus Service: (service နာမည်) - Reason: (ဘာကြောင့်)",
+    "Delayed Project: (project နာမည်) - Reason: (ဘာကြောင့်)",
+    "Next Steps: (ဘာတွေဆက်လုပ်မလဲ)",
     "",
-    "\u1019\u103e\u1010\u103a\u1001\u103b\u1000\u103a: \u1019\u101c\u102d\u102f\u1010\u102c\u1010\u103d\u1031 \u1001\u103b\u1014\u103a\u1011\u102c\u1038\u101c\u102d\u102f\u1037\u101b\u1015\u102b\u1010\u101a\u103a\u104b",
+    "မှတ်ချက်: မလိုတာတွေ ချန်ထားလို့ရပါတယ်။",
   ].join("\n");
 }
 
@@ -267,13 +267,12 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: [
-              "\ud83e\udd16 <b>Q & A Mode</b>",
+              "🤖 <b>Q & A Mode</b>",
               "",
-              "\u1019\u1031\u1038\u1001\u103b\u1004\u103a\u1010\u102c\u1000\u102d\u102f \u101b\u102d\u102f\u1000\u103a\u101b\u102d\u102f\u1000\u103a\u101b\u103e\u102c\u101b\u103e\u102c \u1019\u1031\u1038\u101c\u102d\u102f\u1000\u103a\u1015\u102b\u104b",
-              "\u101b\u103e\u102d\u1015\u103c\u102e\u1038\u101e\u102c\u1038 business data \u1010\u103d\u1031\u1021\u1015\u1031\u102b\u103a\u1019\u103e\u102c AI \u1000 \u1016\u103c\u1031\u1015\u1031\u1038\u1015\u102b\u1019\u101a\u103a\u104b",
+              "မေးချင်တာကို ရိုက်ပြီး မေးမြန်းနိုင်ပါတယ်။",
+              "ရှိပြီးသား business data တွေအပေါ်မှာ AI က ဖြေပေးပါမယ်။",
               "",
-              "\ud83d\udcdd \u101b\u100a\u103a\u100a\u103d\u103e\u1014\u103a\u1038\u1005\u102c \u101e\u102d\u1019\u103a\u1038\u1011\u102c\u1038\u1001\u103b\u1004\u103a\u101b\u1004\u103a /feed command \u101e\u102f\u1036\u1038\u1015\u102b\u104b",
-              "\u1019\u1014\u1030\u1038\u101e\u102d\u102f\u1037 \u1015\u103c\u1014\u103a\u101e\u103d\u102c\u1038\u1001\u103b\u1004\u103a\u101b\u1004\u103a /start \u1014\u103e\u102d\u1015\u103a\u1015\u102b\u104b",
+              "Menu သို့ ပြန်သွားချင်ရင် /start နှိပ်ပါ။",
             ].join("\n"),
           });
         }
@@ -287,7 +286,7 @@ export async function POST(req: NextRequest) {
             botToken: settings?.botToken,
             chatId: BigInt(chatId),
             messageId,
-            text: "\ud83d\udcca <b>Reports</b>\n\n\u1018\u101a\u103a report \u1021\u1019\u103b\u102d\u102f\u1038\u1021\u1005\u102c\u1038 \u101b\u103d\u1031\u1038\u1001\u103b\u1004\u103a\u1015\u102b\u101e\u101c\u1032\u104b",
+            text: "📊 <b>Reports</b>\n\nဘယ် report အမျိုးအစား ရွေးချင်ပါသလဲ။",
             replyMarkup: REPORT_TYPE_BUTTONS,
           });
         }
@@ -301,7 +300,7 @@ export async function POST(req: NextRequest) {
             botToken: settings?.botToken,
             chatId: BigInt(chatId),
             messageId,
-            text: "\ud83d\udc4b \u1018\u102c\u101c\u102f\u1015\u103a\u1001\u103b\u1004\u103a\u1015\u102b\u101e\u101c\u1032\u104b",
+            text: "👋 ဘာလုပ်ချင်ပါသလဲ။",
             replyMarkup: MAIN_MENU_BUTTONS,
           });
         }
@@ -356,41 +355,13 @@ export async function POST(req: NextRequest) {
       await sendTelegramMessage({
         botToken: settings?.botToken,
         chatId,
-        text: "\ud83d\udc4b <b>\u1019\u1004\u103a\u1039\u1002\u101c\u102c\u1015\u102b!</b>\n\n\u1018\u102c\u101c\u102f\u1015\u103a\u1001\u103b\u1004\u103a\u1015\u102b\u101e\u101c\u1032\u104b",
+        text: "👋 <b>မင်္ဂလာပါ!</b>\n\nဘာလုပ်ချင်ပါသလဲခင်‌ဗျာ။",
         replyMarkup: MAIN_MENU_BUTTONS,
       });
       return NextResponse.json({ ok: true });
     }
 
-    // /feed command → Store Q&A document
-    if (message.text.startsWith('/feed ')) {
-      const content = message.text.slice(6).trim();
-      if (content.length < 5) {
-        await sendTelegramMessage({
-          botToken: settings?.botToken,
-          chatId,
-          text: "\u26a0\ufe0f \u1005\u102c\u101e\u102c\u1038 \u1010\u102d\u102f\u1010\u102d\u102f\u1015\u102d\u102f\u1037\u101b\u103e\u100a\u103a\u1015\u102b\u104b\n\n/feed [\u1005\u102c\u101e\u102c\u1038] \u1015\u102f\u1036\u1005\u1036\u1014\u1032\u1037 \u1015\u102d\u102f\u1037\u1015\u102b\u104b",
-        });
-        return NextResponse.json({ ok: true });
-      }
 
-      const title = content.slice(0, 50) + (content.length > 50 ? '...' : '');
-      await prisma.qADocument.create({
-        data: {
-          title,
-          content,
-          source: 'telegram',
-          senderId: sender.id,
-        },
-      });
-
-      await sendTelegramMessage({
-        botToken: settings?.botToken,
-        chatId,
-        text: `\u2705 \u101e\u102d\u1019\u103a\u1038\u1011\u102c\u1038\u1015\u103c\u102e\u1038\u1015\u102b\u1015\u103c\u102e!\n\n\ud83d\udcc4 <b>${title}</b>\n\nQ & A mode \u1019\u103e\u102c \u1012\u102e data \u1000\u102d\u102f \u101e\u102f\u1036\u1038\u1015\u103c\u102e\u1038 \u1016\u103c\u1031\u1015\u1031\u1038\u1015\u102b\u1019\u101a\u103a\u104b`,
-      });
-      return NextResponse.json({ ok: true });
-    }
 
     // Update sender stats
     const receivedAt = new Date(message.date * 1000);
@@ -410,7 +381,7 @@ export async function POST(req: NextRequest) {
         await sendTelegramMessage({
           botToken: settings?.botToken,
           chatId,
-          text: "\u26a0\ufe0f Gemini API key \u1019\u101b\u103e\u102d\u101e\u1031\u1038\u1015\u102b\u104b Settings \u1019\u103e\u102c \u1011\u100a\u103a\u1037\u1015\u102b\u104b",
+          text: "⚠️ Gemini API key မရှိသေးပါ။ Settings မှာ ထည့်ပါ။",
         });
         return NextResponse.json({ ok: true });
       }
@@ -439,7 +410,7 @@ export async function POST(req: NextRequest) {
       await sendTelegramMessage({
         botToken: settings?.botToken,
         chatId,
-        text: `\ud83e\udd16 ${answer}`,
+        text: `🤖 ${answer}`,
       });
 
       return NextResponse.json({ ok: true });
@@ -546,23 +517,23 @@ export async function POST(req: NextRequest) {
     });
 
     // Confirmation message
-    const confirmParts = ['\u2705 <b>\u1019\u103e\u1010\u103a\u1015\u103c\u102e\u1038\u1015\u102b\u1015\u103c\u102e!</b>'];
+    const confirmParts = ['✅ <b>မှတ်ပြီးပါပြီ!</b>'];
     if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-      confirmParts.push(`\ud83d\udcca Report Type: Business Report`);
-      if (parsedDemand.totalSales) confirmParts.push(`\ud83d\udcb0 Total Sales: ${parsedDemand.totalSales.toLocaleString()}`);
-      if (parsedDemand.demand) confirmParts.push(`\ud83d\udcc8 Demand: ${parsedDemand.demand}`);
-      if (parsedDemand.serviceName) confirmParts.push(`\ud83d\udee0\ufe0f Service: ${parsedDemand.serviceName}`);
-      if (parsedDemand.appointments) confirmParts.push(`\ud83d\udcc5 Appointments: ${parsedDemand.appointments}`);
-      if (parsedDemand.projectName) confirmParts.push(`\ud83d\udcc1 Project: ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
-      if (parsedDemand.marketingBudget) confirmParts.push(`\ud83d\udcb8 Marketing: ${parsedDemand.marketingBudget.toLocaleString()}`);
+      confirmParts.push(`📊 Report Type: Business Report`);
+      if (parsedDemand.totalSales) confirmParts.push(`💰 Total Sales: ${parsedDemand.totalSales.toLocaleString()}`);
+      if (parsedDemand.demand) confirmParts.push(`📈 Demand: ${parsedDemand.demand}`);
+      if (parsedDemand.serviceName) confirmParts.push(`🛠️ Service: ${parsedDemand.serviceName}`);
+      if (parsedDemand.appointments) confirmParts.push(`📅 Appointments: ${parsedDemand.appointments}`);
+      if (parsedDemand.projectName) confirmParts.push(`📁 Project: ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
+      if (parsedDemand.marketingBudget) confirmParts.push(`💸 Marketing: ${parsedDemand.marketingBudget.toLocaleString()}`);
     } else {
-      confirmParts.push(`\ud83d\udd2e Report Type: Future Plan`);
-      if (parsedDemand.followUpClient) confirmParts.push(`\ud83d\udc64 Follow-up: ${parsedDemand.followUpClient}`);
-      if (parsedDemand.focusService) confirmParts.push(`\ud83c\udfaf Focus: ${parsedDemand.focusService}`);
-      if (parsedDemand.delayedProject) confirmParts.push(`\u26a0\ufe0f Delayed: ${parsedDemand.delayedProject}`);
-      if (parsedDemand.nextSteps) confirmParts.push(`\u27a1\ufe0f Next: ${parsedDemand.nextSteps}`);
+      confirmParts.push(`🔮 Report Type: Future Plan`);
+      if (parsedDemand.followUpClient) confirmParts.push(`👤 Follow-up: ${parsedDemand.followUpClient}`);
+      if (parsedDemand.focusService) confirmParts.push(`🎯 Focus: ${parsedDemand.focusService}`);
+      if (parsedDemand.delayedProject) confirmParts.push(`⚠️ Delayed: ${parsedDemand.delayedProject}`);
+      if (parsedDemand.nextSteps) confirmParts.push(`➡️ Next: ${parsedDemand.nextSteps}`);
     }
-    confirmParts.push(`\n\ud83d\udccb ${parsedDemand.note}`);
+    confirmParts.push(`\n📋 ${parsedDemand.note}`);
 
     await sendTelegramMessage({
       botToken: settings?.botToken,
