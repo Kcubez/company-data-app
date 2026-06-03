@@ -25,6 +25,17 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import type { TelegramSender } from '@/lib/api';
 
 export default function MessagesPage() {
@@ -282,18 +293,37 @@ export default function MessagesPage() {
                       )}
                     </div>
 
-                    {/* Delete button */}
-                    <button
-                      onClick={() => {
-                        if (confirm('Are you sure you want to delete this message?')) {
-                          deleteMessage.mutate(message.id);
+                    {/* Delete button with custom AlertDialog */}
+                    <AlertDialog>
+                      <AlertDialogTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500/30 transition-colors"
+                            title="Delete message"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         }
-                      }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400"
-                      title="Delete message"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      />
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete message?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to permanently delete this message? This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteMessage.mutate(message.id)}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               ))

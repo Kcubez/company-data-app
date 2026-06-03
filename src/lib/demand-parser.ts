@@ -582,6 +582,106 @@ Rules:
 - Return BOTH the extracted text AND the JSON array.`;
 }
 
+function buildSpreadsheetExtractionPrompt(reportType: ReportType, headers: any[], caption?: string): string {
+  const captionNote = caption
+    ? `\nThe user also provided this caption/context: "${caption}"\n`
+    : '';
+
+  const headerList = headers.map(h => `'${h}'`).join(', ');
+
+  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
+    return `You are a business report spreadsheet parser. Extract structured data from this sheet chunk.
+The spreadsheet has these headers: [${headerList}].
+The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
+
+For each data row, extract:
+- "customerName": extract the client/customer name from name columns (e.g., 'FB account Name', 'FB account', 'Client Name', 'Name', etc.).
+- "note": extract/summarize remarks, chat/call notes, and business description (e.g., from 'Remarks', 'Call notes / Chat notes', 'Hp & Fu & No Potential', 'Business', etc.).
+- "serviceName": extract service or product name (e.g., from 'Package', 'Service', 'Product', etc.).
+- "totalSales": extract total sales or package amount if mentioned.
+- "serviceQty": quantity of services/items.
+- "appointments": number of appointments.
+- "projectName": project name.
+- "projectStatus": status of the project.
+- "marketingBudget": budget.
+
+Return your response in this exact format:
+
+EXTRACTED_TEXT:
+[Plain text summary of all rows in this chunk]
+
+STRUCTURED_DATA:
+\`\`\`json
+[
+  {
+    "note": string,
+    "totalSales": number | null,
+    "demand": number | null,
+    "serviceName": string | null,
+    "serviceAmount": number | null,
+    "serviceQty": number | null,
+    "appointments": number | null,
+    "projectName": string | null,
+    "projectStatus": "on_track" | "delayed" | "completed" | "at_risk" | null,
+    "marketingBudget": number | null,
+    "customerName": string | null,
+    "category": "sales" | "service" | "project" | "marketing" | "general",
+    "status": "new" | "in_progress" | "completed"
+  }
+]
+\`\`\`
+
+Rules:
+- Return a JSON ARRAY, not a single object.
+- Create exactly one array element per data row.
+- If a value is not present in a row, use null.`;
+  }
+
+  // Future Plan
+  return `You are a business planning and follow-up spreadsheet parser. Extract structured data from this sheet chunk.
+The spreadsheet has these headers: [${headerList}].
+The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
+
+For each data row, extract:
+- "followUpClient" and "customerName": extract the client/customer name from name columns (e.g., 'FB account Name', 'FB account', 'Client Name', 'Name', etc.). Always populate both fields with the extracted name so they are not null.
+- "note": extract/summarize remarks, chat/call notes, and business description (e.g., from 'Remarks', 'Call notes / Chat notes', 'Hp & Fu & No Potential', 'Business', etc.).
+- "followUpReason": why follow-up is needed.
+- "focusService": service/product to focus on (e.g., from 'Package', 'Service', 'Product', etc.).
+- "focusReason": focus reason.
+- "delayedProject": name of any delayed project.
+- "delayReason": reason for delay.
+- "nextSteps": next action items.
+
+Return your response in this exact format:
+
+EXTRACTED_TEXT:
+[Plain text summary of all rows in this chunk]
+
+STRUCTURED_DATA:
+\`\`\`json
+[
+  {
+    "note": string,
+    "followUpClient": string | null,
+    "followUpReason": string | null,
+    "focusService": string | null,
+    "focusReason": string | null,
+    "delayedProject": string | null,
+    "delayReason": string | null,
+    "nextSteps": string | null,
+    "customerName": string | null,
+    "category": "follow_up" | "focus" | "delay" | "planning" | "general",
+    "status": "new" | "pending" | "in_progress"
+  }
+]
+\`\`\`
+
+Rules:
+- Return a JSON ARRAY, not a single object.
+- Create exactly one array element per data row.
+- If a value is not present in a row, use null.`;
+}
+
 function parseFileExtractionResponse(
   responseText: string,
   reportType: ReportType,
@@ -701,7 +801,15 @@ export async function extractDataFromFile({
         const sheet = workbook.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
         if (rows.length === 0) continue;
-        const dataRows = rows.slice(1);
+        const dataRows = rows.slice(1).filter((row) => {
+          if (!row || !Array.isArray(row) || row.length === 0) return false;
+          const hasValues = row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
+          if (!hasValues) return false;
+          const firstCell = String(row[0] || '').trim().toLowerCase();
+          if (firstCell.includes('total') || firstCell.includes('summary')) return false;
+          return true;
+        });
+        if (dataRows.length === 0) continue;
         if (dataRows.length <= batchSize) {
           totalChunks += 1;
         } else {
@@ -717,12 +825,23 @@ export async function extractDataFromFile({
         if (rows.length === 0) continue;
 
         const headerRow = rows[0];
-        const dataRows = rows.slice(1);
+        const dataRows = rows.slice(1).filter((row) => {
+          if (!row || !Array.isArray(row) || row.length === 0) return false;
+          const hasValues = row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
+          if (!hasValues) return false;
+          const firstCell = String(row[0] || '').trim().toLowerCase();
+          if (firstCell.includes('total') || firstCell.includes('summary')) return false;
+          return true;
+        });
+
+        if (dataRows.length === 0) continue;
 
         // If sheet is small, process in one call to save API calls
         if (dataRows.length <= batchSize) {
           processedChunks++;
-          const csv = XLSX.utils.sheet_to_csv(sheet);
+          const subGrid = [headerRow, ...dataRows];
+          const subSheet = XLSX.utils.aoa_to_sheet(subGrid);
+          const csv = XLSX.utils.sheet_to_csv(subSheet);
           if (!csv.trim()) {
             if (onProgress) {
               await onProgress(processedChunks, totalChunks);
@@ -731,7 +850,8 @@ export async function extractDataFromFile({
           }
 
           const textContent = `=== Sheet: ${sheetName} ===\n${csv}`;
-          const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
+          const sheetPrompt = buildSpreadsheetExtractionPrompt(reportType, headerRow, caption);
+          const fullPrompt = `${sheetPrompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
 
           try {
             const response = await generateContentWithRetry(genAI, {
@@ -771,7 +891,8 @@ export async function extractDataFromFile({
             const csv = XLSX.utils.sheet_to_csv(subSheet);
 
             const textContent = `=== Sheet: ${sheetName} (Rows ${idx * chunkSize + 1} to ${idx * chunkSize + chunk.length}) ===\n${csv}`;
-            const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
+            const sheetPrompt = buildSpreadsheetExtractionPrompt(reportType, headerRow, caption);
+            const fullPrompt = `${sheetPrompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
 
             try {
               // Add a 1-second delay between chunks to prevent Gemini Rate Limit (RPM)
