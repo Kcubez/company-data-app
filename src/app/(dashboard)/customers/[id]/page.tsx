@@ -1,14 +1,26 @@
 'use client';
 
-import { use } from 'react';
+import { use, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import {
   ArrowLeft,
   Phone,
@@ -22,8 +34,10 @@ import {
   CheckCircle,
   AlertCircle,
   Send,
+  Trash2,
 } from 'lucide-react';
 import { customersApi } from '@/lib/api';
+import { toast } from 'sonner';
 
 const statusColors: Record<string, string> = {
   new: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -43,11 +57,34 @@ const actionIcons: Record<string, typeof CheckCircle> = {
 
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
+  const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['customer', id],
     queryFn: () => customersApi.get(id),
     refetchInterval: 5000,
+    retry: false,
+  });
+
+  // If the customer disappears (deleted from another tab) or never existed,
+  // send the user back to the list instead of showing a "not found" page.
+  useEffect(() => {
+    if (isError) {
+      router.replace('/customers');
+    }
+  }, [isError, error, router]);
+
+  const deleteCustomer = useMutation({
+    mutationFn: () => customersApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success('Customer deleted');
+      router.push('/customers');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Failed to delete customer');
+    },
   });
 
   if (isLoading) {
@@ -72,13 +109,9 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   }
 
   if (!data?.customer) {
+    // Briefly shown while the redirect to /customers is in flight.
     return (
-      <div className="p-6 text-center">
-        <p className="text-gray-400">Customer not found</p>
-        <Link href="/customers" className="text-blue-400 hover:underline mt-2 inline-block">
-          Back to customers
-        </Link>
-      </div>
+      <div className="p-6 text-center text-gray-400">Redirecting…</div>
     );
   }
 
@@ -102,6 +135,40 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         <Badge variant="outline" className={statusColors[customer.status] || statusColors.new}>
           {customer.status}
         </Badge>
+        <AlertDialog>
+          <AlertDialogTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                Delete
+              </Button>
+            }
+          />
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete {customer.name}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the customer and all related activity history.
+                Associated demand records will keep their data but lose the customer link.
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteCustomer.mutate()}
+                disabled={deleteCustomer.isPending}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {deleteCustomer.isPending ? 'Deleting…' : 'Delete'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

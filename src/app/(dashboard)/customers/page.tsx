@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,14 +10,27 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
   Search,
   Phone,
   Building,
   MessageSquare,
   ChevronRight,
   Calendar,
+  Trash2,
 } from 'lucide-react';
 import { customersApi } from '@/lib/api';
+import { toast } from 'sonner';
 
 const statusColors: Record<string, string> = {
   active: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
@@ -34,6 +47,7 @@ function useCustomers(params: { search?: string; page?: number; limit?: number; 
 }
 
 export default function CustomersPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -46,6 +60,17 @@ export default function CustomersPage() {
     search: debouncedSearch,
     page: 1,
     limit: 50,
+  });
+
+  const deleteCustomer = useMutation({
+    mutationFn: (id: string) => customersApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success('Customer deleted');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Failed to delete customer');
+    },
   });
 
   return (
@@ -87,24 +112,63 @@ export default function CustomersPage() {
           </div>
         ) : (
           data?.customers?.map((customer: any) => (
-            <Link key={customer.id} href={`/customers/${customer.id}`}>
-              <Card className="bg-gray-900/50 border-gray-800 hover:border-gray-700 transition-colors cursor-pointer">
+            <Card key={customer.id} className="bg-gray-900/50 border-gray-800 hover:border-gray-700 transition-colors relative group">
+              <Link href={`/customers/${customer.id}`} className="block">
                 <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-10 h-10 bg-blue-500/20 text-blue-400">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar className="w-10 h-10 bg-blue-500/20 text-blue-400 shrink-0">
                         <AvatarFallback className="bg-blue-500/20 text-blue-400 text-sm">
                           {customer.name.charAt(0)}
                         </AvatarFallback>
                       </Avatar>
-                      <div>
-                        <CardTitle className="text-base">{customer.name}</CardTitle>
+                      <div className="min-w-0">
+                        <CardTitle className="text-base truncate">{customer.name}</CardTitle>
                         <Badge variant="outline" className={`mt-1 text-xs ${statusColors[customer.status] || statusColors.active}`}>
                           {customer.status}
                         </Badge>
                       </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-gray-500" />
+                    <div className="flex items-center gap-1 shrink-0">
+                      <AlertDialog>
+                        <AlertDialogTrigger
+                          render={
+                            <button
+                              type="button"
+                              aria-label="Delete customer"
+                              className="p-2 rounded-md text-gray-500 hover:text-red-400 hover:bg-red-500/10 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500/30 transition-colors"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          }
+                        />
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete {customer.name}?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently delete the customer and all related activity history.
+                              Associated demand records will keep their data but lose the customer link.
+                              This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteCustomer.mutate(customer.id)}
+                              disabled={deleteCustomer.isPending}
+                              className="bg-red-600 hover:bg-red-700 text-white"
+                            >
+                              {deleteCustomer.isPending ? 'Deleting…' : 'Delete'}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                      <ChevronRight className="w-5 h-5 text-gray-500" />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
@@ -142,8 +206,8 @@ export default function CustomersPage() {
                     </div>
                   )}
                 </CardContent>
-              </Card>
-            </Link>
+              </Link>
+            </Card>
           ))
         )}
       </div>
