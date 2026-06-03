@@ -153,7 +153,7 @@ model TelegramMessage {
 
 model DemandRecord {
   id              String           @id @default(cuid())
-  messageId       String           @unique
+  messageId       String
   message         TelegramMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
   senderId        String
   sender          TelegramSender   @relation(fields: [senderId], references: [id], onDelete: Cascade)
@@ -243,4 +243,3 @@ model BotSettings {
 
   @@map("bot_settings")
 }
-

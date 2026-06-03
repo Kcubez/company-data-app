@@ -20,6 +20,46 @@ function normalizeCustomerName(name: string): string {
   return name.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+function isPrismaUniqueConstraintError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+async function createTelegramMessageIfNew({
+  telegramMsgId,
+  text,
+  senderId,
+  chatId,
+  chatTitle,
+  receivedAt,
+}: {
+  telegramMsgId: number;
+  text: string;
+  senderId: string;
+  chatId: bigint;
+  chatTitle: string | null;
+  receivedAt: Date;
+}) {
+  try {
+    return await prisma.telegramMessage.create({
+      data: {
+        telegramMsgId,
+        text,
+        senderId,
+        chatId,
+        chatTitle,
+        receivedAt,
+      },
+    });
+  } catch (error) {
+    if (isPrismaUniqueConstraintError(error)) {
+      console.info(`Duplicate Telegram message ignored: ${telegramMsgId}`);
+      return null;
+    }
+
+    throw error;
+  }
+}
+
 async function getActiveBotSettings() {
   return prisma.botSettings.findFirst({
     where: { isActive: true },
@@ -513,6 +553,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      const caption = (message.caption as string) || undefined;
+      const telegramMessage = await createTelegramMessageIfNew({
+        telegramMsgId: message.message_id,
+        text: `[File: ${fileInfo.fileName}] ${caption || ''}`.trim(),
+        senderId: sender.id,
+        chatId,
+        chatTitle: message.chat.title || null,
+        receivedAt,
+      });
+      if (!telegramMessage) {
+        return NextResponse.json({ ok: true });
+      }
+
       // Send processing indicator
       await sendTelegramMessage({
         botToken: settings.botToken,
@@ -536,7 +589,6 @@ export async function POST(req: NextRequest) {
         : REPORT_TYPES.BUSINESS_REPORT;
 
       try {
-        const caption = (message.caption as string) || undefined;
         const { extractedText, parsed: parsedDemands } = await extractDataFromFile({
           fileBuffer: downloaded.buffer,
           mimeType: fileInfo.mimeType,
@@ -561,7 +613,7 @@ export async function POST(req: NextRequest) {
 
         // For each extracted demand record, resolve / create the customer
         // and build the nested create input.
-        const demandRecordCreates: Prisma.DemandRecordUncheckedCreateWithoutMessageInput[] = [];
+        const demandRecordCreates: Prisma.DemandRecordUncheckedCreateInput[] = [];
         for (const parsedDemand of parsedDemands) {
           let customerId: string | null = null;
           if (parsedDemand.customerName) {
@@ -603,6 +655,7 @@ export async function POST(req: NextRequest) {
           }
 
           demandRecordCreates.push({
+            messageId: telegramMessage.id,
             senderId: sender.id,
             customerId,
             reportType: parsedDemand.reportType,
@@ -637,19 +690,8 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // Create the parent message + all its demand records in one go.
-        await prisma.telegramMessage.create({
-          data: {
-            telegramMsgId: message.message_id,
-            text: `[File: ${fileInfo.fileName}] ${caption || ''}`.trim(),
-            senderId: sender.id,
-            chatId,
-            chatTitle: message.chat.title || null,
-            receivedAt,
-            demandRecords: {
-              create: demandRecordCreates,
-            },
-          },
+        await prisma.demandRecord.createMany({
+          data: demandRecordCreates,
         });
 
         // Confirmation message — summarize every extracted record.
@@ -728,16 +770,17 @@ export async function POST(req: NextRequest) {
       }
 
       // Store the message
-      await prisma.telegramMessage.create({
-        data: {
-          telegramMsgId: message.message_id,
-          text: message.text,
-          senderId: sender.id,
-          chatId,
-          chatTitle: message.chat.title || null,
-          receivedAt,
-        },
+      const telegramMessage = await createTelegramMessageIfNew({
+        telegramMsgId: message.message_id,
+        text: message.text,
+        senderId: sender.id,
+        chatId,
+        chatTitle: message.chat.title || null,
+        receivedAt,
       });
+      if (!telegramMessage) {
+        return NextResponse.json({ ok: true });
+      }
 
       // Build context and answer
       const context = await buildQAContext();
@@ -761,6 +804,18 @@ export async function POST(req: NextRequest) {
     const reportType: ReportType = isReportType(activeMode) && activeMode !== 'qa'
       ? activeMode
       : REPORT_TYPES.BUSINESS_REPORT;
+
+    const telegramMessage = await createTelegramMessageIfNew({
+      telegramMsgId: message.message_id,
+      text: message.text,
+      senderId: sender.id,
+      chatId,
+      chatTitle: message.chat.title || null,
+      receivedAt,
+    });
+    if (!telegramMessage) {
+      return NextResponse.json({ ok: true });
+    }
 
     const parsedDemand = await parseDemandMessageWithGemini({
       text: message.text,
@@ -811,51 +866,40 @@ export async function POST(req: NextRequest) {
     }
 
     // Create message + demand record
-    await prisma.telegramMessage.create({
+    await prisma.demandRecord.create({
       data: {
-        telegramMsgId: message.message_id,
-        text: message.text,
+        messageId: telegramMessage.id,
         senderId: sender.id,
-        chatId,
-        chatTitle: message.chat.title || null,
-        receivedAt,
-        demandRecords: {
-          create: [
-            {
-              senderId: sender.id,
-              customerId,
-              reportType: parsedDemand.reportType,
-              customerName: parsedDemand.customerName,
-              category: parsedDemand.category,
-              status: parsedDemand.status,
-              note: parsedDemand.note,
-              totalSales: parsedDemand.totalSales,
-              demand: parsedDemand.demand,
-              serviceName: parsedDemand.serviceName,
-              serviceAmount: parsedDemand.serviceAmount,
-              serviceQty: parsedDemand.serviceQty,
-              appointments: parsedDemand.appointments,
-              projectName: parsedDemand.projectName,
-              projectStatus: parsedDemand.projectStatus,
-              marketingBudget: parsedDemand.marketingBudget,
-              followUpClient: parsedDemand.followUpClient,
-              followUpReason: parsedDemand.followUpReason,
-              focusService: parsedDemand.focusService,
-              focusReason: parsedDemand.focusReason,
-              delayedProject: parsedDemand.delayedProject,
-              delayReason: parsedDemand.delayReason,
-              nextSteps: parsedDemand.nextSteps,
-              quantity: parsedDemand.quantity,
-              product: parsedDemand.product,
-              amount: parsedDemand.amount,
-              unit: parsedDemand.unit,
-              followUpDate: parsedDemand.followUpDate,
-              confidence: parsedDemand.confidence,
-              aiProvider: parsedDemand.aiProvider,
-              aiModel: parsedDemand.aiModel,
-            },
-          ],
-        },
+        customerId,
+        reportType: parsedDemand.reportType,
+        customerName: parsedDemand.customerName,
+        category: parsedDemand.category,
+        status: parsedDemand.status,
+        note: parsedDemand.note,
+        totalSales: parsedDemand.totalSales,
+        demand: parsedDemand.demand,
+        serviceName: parsedDemand.serviceName,
+        serviceAmount: parsedDemand.serviceAmount,
+        serviceQty: parsedDemand.serviceQty,
+        appointments: parsedDemand.appointments,
+        projectName: parsedDemand.projectName,
+        projectStatus: parsedDemand.projectStatus,
+        marketingBudget: parsedDemand.marketingBudget,
+        followUpClient: parsedDemand.followUpClient,
+        followUpReason: parsedDemand.followUpReason,
+        focusService: parsedDemand.focusService,
+        focusReason: parsedDemand.focusReason,
+        delayedProject: parsedDemand.delayedProject,
+        delayReason: parsedDemand.delayReason,
+        nextSteps: parsedDemand.nextSteps,
+        quantity: parsedDemand.quantity,
+        product: parsedDemand.product,
+        amount: parsedDemand.amount,
+        unit: parsedDemand.unit,
+        followUpDate: parsedDemand.followUpDate,
+        confidence: parsedDemand.confidence,
+        aiProvider: parsedDemand.aiProvider,
+        aiModel: parsedDemand.aiModel,
       },
     });
 
