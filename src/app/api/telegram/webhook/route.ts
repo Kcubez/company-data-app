@@ -10,7 +10,7 @@ import {
   type ReportType,
   type ParsedDemandRecord,
 } from "@/lib/demand-parser";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 
 function displayNameFromTelegramUser(from: { first_name?: string; last_name?: string }) {
   return [from.first_name, from.last_name].filter(Boolean).join(" ");
@@ -81,19 +81,27 @@ async function sendTelegramMessage({
   chatId: bigint | number;
   text: string;
   replyMarkup?: Record<string, unknown>;
-}) {
-  if (!botToken) return;
+}): Promise<any> {
+  if (!botToken) return null;
 
-  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId.toString(),
-      text,
-      parse_mode: "HTML",
-      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
-    }),
-  });
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId.toString(),
+        text,
+        parse_mode: "HTML",
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.ok ? data.result : null;
+  } catch (err) {
+    console.error("Error sending Telegram message:", err);
+    return null;
+  }
 }
 
 async function answerCallbackQuery(botToken: string | null | undefined, callbackQueryId: string, text: string) {
@@ -385,6 +393,7 @@ async function processFileInBackground({
   chatId,
   senderId,
   telegramMessageId,
+  progressMsgId,
 }: {
   downloadedBuffer: Buffer;
   fileInfo: { fileName: string; mimeType: string; fileSize: number };
@@ -394,7 +403,9 @@ async function processFileInBackground({
   chatId: bigint;
   senderId: string;
   telegramMessageId: string;
+  progressMsgId: number | null;
 }) {
+  const errors: string[] = [];
   try {
     const { extractedText, parsed: parsedDemands } = await extractDataFromFile({
       fileBuffer: downloadedBuffer,
@@ -404,6 +415,23 @@ async function processFileInBackground({
       caption,
       apiKey: settings.geminiApiKey!,
       model: settings.geminiModel,
+      onProgress: async (current, total, errorMsg) => {
+        if (errorMsg) {
+          errors.push(errorMsg);
+        }
+        if (progressMsgId) {
+          const statusText = errorMsg
+            ? `⚠️ <b>${fileInfo.fileName}</b> ဖတ်ရာတွင် အမှားအချို့ရှိခဲ့သည်။ (${current}/${total} chunks)\n\n<code>${errorMsg}</code>`
+            : `⏳ <b>${fileInfo.fileName}</b> ဖိုင်ကို ဖတ်နေပါသည်... (${current}/${total} chunks ပြီးစီး)`;
+
+          await editTelegramMessage({
+            botToken: settings.botToken,
+            chatId,
+            messageId: progressMsgId,
+            text: statusText,
+          });
+        }
+      }
     });
 
     // Store extracted content as QADocument (for Q&A context)
@@ -504,12 +532,20 @@ async function processFileInBackground({
     }
 
     // Confirmation message — summarize every extracted record.
-    const confirmParts = [
-      `✅ <b>ဖိုင်မှတ်ပြီးပါပြီ!</b> (${parsedDemands.length} record${parsedDemands.length === 1 ? '' : 's'})`,
-      `📎 ${fileInfo.fileName}`,
-    ];
+    const confirmParts = [];
+    if (errors.length > 0) {
+      confirmParts.push(`⚠️ <b>ဖိုင်ကို အပြည့်အစုံ မဖတ်နိုင်ခဲ့ပါ။</b> (${parsedDemands.length} records သွင်းပြီး)`);
+      confirmParts.push(`📎 ${fileInfo.fileName}`);
+      confirmParts.push(`\n❌ <b>အဆင်မပြေခဲ့သည့် Chunk များ:</b>`);
+      errors.forEach((errLine) => {
+        confirmParts.push(`• ${errLine}`);
+      });
+    } else {
+      confirmParts.push(`✅ <b>ဖိုင်မှတ်ပြီးပါပြီ!</b> (${parsedDemands.length} record${parsedDemands.length === 1 ? '' : 's'})`);
+      confirmParts.push(`📎 ${fileInfo.fileName}`);
+    }
 
-    parsedDemands.forEach((parsedDemand, idx) => {
+    parsedDemands.slice(0, 10).forEach((parsedDemand, idx) => {
       const header = `\n<b>#${idx + 1}</b>`;
       const lines: string[] = [header];
       if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
@@ -530,18 +566,40 @@ async function processFileInBackground({
       confirmParts.push(lines.join('\n'));
     });
 
-    await sendTelegramMessage({
-      botToken: settings.botToken,
-      chatId,
-      text: confirmParts.join('\n'),
-    });
-  } catch (err) {
+    if (parsedDemands.length > 10) {
+      confirmParts.push(`\n... <i>နှင့် ကျန်ရှိသော ${parsedDemands.length - 10} records ကိုလည်း သိမ်းဆည်းပြီးပါပြီ။</i>`);
+    }
+
+    if (progressMsgId) {
+      await editTelegramMessage({
+        botToken: settings.botToken,
+        chatId,
+        messageId: progressMsgId,
+        text: confirmParts.join('\n'),
+      });
+    } else {
+      await sendTelegramMessage({
+        botToken: settings.botToken,
+        chatId,
+        text: confirmParts.join('\n'),
+      });
+    }
+  } catch (err: any) {
     console.error('Background file processing error:', err);
-    await sendTelegramMessage({
-      botToken: settings.botToken,
-      chatId,
-      text: "❌ ဖိုင်ဖတ်ရာတွင် အမှားရှိပါသည်။ ပြန်လည်ကြိုးစားပါ။",
-    });
+    if (progressMsgId) {
+      await editTelegramMessage({
+        botToken: settings.botToken,
+        chatId,
+        messageId: progressMsgId,
+        text: `❌ <b>ဖိုင်ဖတ်ရာတွင် အမှားရှိပါသည်။ ပြန်လည်ကြိုးစားပါ။</b>\n\nError: <code>${err.message || err}</code>`,
+      });
+    } else {
+      await sendTelegramMessage({
+        botToken: settings.botToken,
+        chatId,
+        text: `❌ <b>ဖိုင်ဖတ်ရာတွင် အမှားရှိပါသည်။ ပြန်လည်ကြိုးစားပါ။</b>\n\nError: <code>${err.message || err}</code>`,
+      });
+    }
   }
 }
 
@@ -736,20 +794,30 @@ export async function POST(req: NextRequest) {
       }
 
       // Send processing indicator
-      await sendTelegramMessage({
+      const progressMsg = await sendTelegramMessage({
         botToken: settings.botToken,
         chatId,
         text: `⏳ <b>${fileInfo.fileName}</b> ဖိုင်ကို ဖတ်နေပါသည်...`,
       });
+      const progressMsgId = progressMsg?.message_id || null;
 
       // Download the file
       const downloaded = await downloadTelegramFile(settings.botToken, fileInfo.fileId);
       if (!downloaded) {
-        await sendTelegramMessage({
-          botToken: settings.botToken,
-          chatId,
-          text: "❌ ဖိုင်ဒေါင်းလုဒ် မအောင်မြင်ပါ။ ပြန်လည်ပို့ပေးပါ။",
-        });
+        if (progressMsgId) {
+          await editTelegramMessage({
+            botToken: settings.botToken,
+            chatId,
+            messageId: progressMsgId,
+            text: "❌ ဖိုင်ဒေါင်းလုဒ် မအောင်မြင်ပါ။ ပြန်လည်ပို့ပေးပါ။",
+          });
+        } else {
+          await sendTelegramMessage({
+            botToken: settings.botToken,
+            chatId,
+            text: "❌ ဖိုင်ဒေါင်းလုဒ် မအောင်မြင်ပါ။ ပြန်လည်ပို့ပေးပါ။",
+          });
+        }
         return NextResponse.json({ ok: true });
       }
 
@@ -757,17 +825,24 @@ export async function POST(req: NextRequest) {
         ? activeMode
         : REPORT_TYPES.BUSINESS_REPORT;
 
-      // Start processing in background (without await)
-      processFileInBackground({
-        downloadedBuffer: downloaded.buffer,
-        fileInfo,
-        reportType,
-        caption,
-        settings,
-        chatId,
-        senderId: sender.id,
-        telegramMessageId: telegramMessage.id,
-      }).catch(err => console.error("Unhandled promise rejection in processFileInBackground:", err));
+      // Start processing in background using after to keep Vercel execution active
+      after(async () => {
+        try {
+          await processFileInBackground({
+            downloadedBuffer: downloaded.buffer,
+            fileInfo,
+            reportType,
+            caption,
+            settings,
+            chatId,
+            senderId: sender.id,
+            telegramMessageId: telegramMessage.id,
+            progressMsgId,
+          });
+        } catch (err) {
+          console.error("Unhandled error in processFileInBackground:", err);
+        }
+      });
 
       return NextResponse.json({ ok: true });
     }

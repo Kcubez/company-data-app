@@ -309,7 +309,7 @@ export async function parseDemandMessageWithGemini({
 
   try {
     const genAI = new GoogleGenAI({ apiKey });
-    const modelName = model || 'gemini-3.5-flash';
+    const modelName = model || 'gemini-2.5-flash';
     const prompt = buildGeminiPrompt(text, reportType);
 
     const response = await genAI.models.generateContent({
@@ -386,7 +386,7 @@ export async function answerQuestionWithGemini({
 }): Promise<string> {
   try {
     const genAI = new GoogleGenAI({ apiKey });
-    const modelName = model || 'gemini-3.5-flash';
+    const modelName = model || 'gemini-2.5-flash';
 
     const prompt = `You are a helpful business assistant. Answer the user's question based on the business data context provided below.
 Answer in the same language the user asked in (Burmese or English).
@@ -632,6 +632,7 @@ export async function extractDataFromFile({
   caption,
   apiKey,
   model,
+  onProgress,
 }: {
   fileBuffer: Buffer;
   mimeType: string;
@@ -640,9 +641,10 @@ export async function extractDataFromFile({
   caption?: string;
   apiKey: string;
   model?: string | null;
+  onProgress?: (current: number, total: number, errorMsg?: string) => Promise<void> | void;
 }): Promise<{ extractedText: string; parsed: ParsedDemandRecord[] }> {
   const genAI = new GoogleGenAI({ apiKey });
-  const modelName = model || 'gemini-3.5-flash';
+  const modelName = model || 'gemini-2.5-flash';
   const prompt = buildFileExtractionPrompt(reportType, caption);
 
   // For text-based files, read content directly and send as text
@@ -655,6 +657,22 @@ export async function extractDataFromFile({
       const allExtractedTexts: string[] = [];
       const allParsedRecords: ParsedDemandRecord[] = [];
 
+      // Calculate total chunks first
+      let totalChunks = 0;
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+        if (rows.length === 0) continue;
+        const dataRows = rows.slice(1);
+        if (dataRows.length <= 15) {
+          totalChunks += 1;
+        } else {
+          totalChunks += Math.ceil(dataRows.length / 15);
+        }
+      }
+
+      let processedChunks = 0;
+
       for (const sheetName of workbook.SheetNames) {
         const sheet = workbook.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
@@ -665,23 +683,39 @@ export async function extractDataFromFile({
 
         // If sheet is small, process in one call to save API calls
         if (dataRows.length <= 15) {
+          processedChunks++;
           const csv = XLSX.utils.sheet_to_csv(sheet);
-          if (!csv.trim()) continue;
+          if (!csv.trim()) {
+            if (onProgress) {
+              await onProgress(processedChunks, totalChunks);
+            }
+            continue;
+          }
 
           const textContent = `=== Sheet: ${sheetName} ===\n${csv}`;
           const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
 
-          const response = await genAI.models.generateContent({
-            model: modelName,
-            contents: fullPrompt,
-          });
-          const resText = response?.text || '';
-          if (resText) {
-            const { extractedText, records } = parseFileExtractionResponse(resText, reportType);
-            allExtractedTexts.push(extractedText);
-            records.forEach((structuredData) => {
-              allParsedRecords.push(buildRecordFromStructuredData(structuredData, extractedText, reportType, modelName));
+          try {
+            const response = await genAI.models.generateContent({
+              model: modelName,
+              contents: fullPrompt,
             });
+            const resText = response?.text || '';
+            if (resText) {
+              const { extractedText, records } = parseFileExtractionResponse(resText, reportType);
+              allExtractedTexts.push(extractedText);
+              records.forEach((structuredData) => {
+                allParsedRecords.push(buildRecordFromStructuredData(structuredData, extractedText, reportType, modelName));
+              });
+            }
+            if (onProgress) {
+              await onProgress(processedChunks, totalChunks);
+            }
+          } catch (err: any) {
+            console.error(`Error processing sheet ${sheetName}:`, err);
+            if (onProgress) {
+              await onProgress(processedChunks, totalChunks, `Sheet '${sheetName}' error: ${err.message || err}`);
+            }
           }
         } else {
           // Chunk data rows in groups of 15
@@ -692,6 +726,7 @@ export async function extractDataFromFile({
           }
 
           for (let idx = 0; idx < chunks.length; idx++) {
+            processedChunks++;
             const chunk = chunks[idx];
             const subGrid = [headerRow, ...chunk];
             const subSheet = XLSX.utils.aoa_to_sheet(subGrid);
@@ -713,8 +748,14 @@ export async function extractDataFromFile({
                   allParsedRecords.push(buildRecordFromStructuredData(structuredData, extractedText, reportType, modelName));
                 });
               }
-            } catch (chunkErr) {
+              if (onProgress) {
+                await onProgress(processedChunks, totalChunks);
+              }
+            } catch (chunkErr: any) {
               console.error(`Error processing chunk ${idx + 1} of sheet ${sheetName}:`, chunkErr);
+              if (onProgress) {
+                await onProgress(processedChunks, totalChunks, `Sheet '${sheetName}' chunk ${idx + 1} error: ${chunkErr.message || chunkErr}`);
+              }
             }
           }
         }

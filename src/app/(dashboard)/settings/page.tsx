@@ -201,7 +201,7 @@ export default function SettingsPage() {
             <div>
               <CardTitle className="text-white text-lg">Gemini AI Parser</CardTitle>
               <CardDescription className="text-slate-400">
-                Used to extract demand-sheet records with {settings?.geminiModel || 'gemini-3.5-flash'}
+                Used to extract demand-sheet records with {settings?.geminiModel || 'gemini-2.5-flash'}
               </CardDescription>
             </div>
           </div>

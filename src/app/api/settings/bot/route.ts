@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       settings: {
         botToken: "",
         geminiApiKey: "",
-        geminiModel: "gemini-3.5-flash",
+        geminiModel: "gemini-2.5-flash",
         isActive: false,
       },
     });
@@ -102,13 +102,13 @@ export async function PUT(req: NextRequest) {
         userId: session.user.id,
         botToken: tokenToSave || null,
         geminiApiKey: geminiKeyToSave || null,
-        geminiModel: "gemini-3.5-flash",
+        geminiModel: "gemini-2.5-flash",
         isActive: !!tokenToSave,
       },
       update: {
         ...(tokenToSave !== undefined ? { botToken: tokenToSave || null } : {}),
         ...(geminiKeyToSave !== undefined ? { geminiApiKey: geminiKeyToSave || null } : {}),
-        geminiModel: "gemini-3.5-flash",
+        geminiModel: "gemini-2.5-flash",
         isActive: tokenToSave !== undefined ? !!tokenToSave : undefined,
       },
     });
