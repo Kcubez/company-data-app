@@ -436,7 +436,7 @@ export function isSpreadsheetFile(mimeType: string, fileName: string): boolean {
   if (SPREADSHEET_MIME_TYPES.has(mimeType)) return true;
   // Some clients (e.g. Telegram) send spreadsheets as application/octet-stream.
   const lower = fileName.toLowerCase();
-  return lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.xlsm');
+  return lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.xlsm') || lower.endsWith('.csv');
 }
 
 export function extractSpreadsheetToText(buffer: Buffer): string {
@@ -649,12 +649,98 @@ export async function extractDataFromFile({
   const isTextFile = TEXT_MIME_TYPES.has(mimeType);
   const isSpreadsheet = isSpreadsheetFile(mimeType, fileName);
 
+  if (isSpreadsheet) {
+    try {
+      const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+      const allExtractedTexts: string[] = [];
+      const allParsedRecords: ParsedDemandRecord[] = [];
+
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+        if (rows.length === 0) continue;
+
+        const headerRow = rows[0];
+        const dataRows = rows.slice(1);
+
+        // If sheet is small, process in one call to save API calls
+        if (dataRows.length <= 15) {
+          const csv = XLSX.utils.sheet_to_csv(sheet);
+          if (!csv.trim()) continue;
+
+          const textContent = `=== Sheet: ${sheetName} ===\n${csv}`;
+          const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
+
+          const response = await genAI.models.generateContent({
+            model: modelName,
+            contents: fullPrompt,
+          });
+          const resText = response?.text || '';
+          if (resText) {
+            const { extractedText, records } = parseFileExtractionResponse(resText, reportType);
+            allExtractedTexts.push(extractedText);
+            records.forEach((structuredData) => {
+              allParsedRecords.push(buildRecordFromStructuredData(structuredData, extractedText, reportType, modelName));
+            });
+          }
+        } else {
+          // Chunk data rows in groups of 15
+          const chunkSize = 15;
+          const chunks: any[][][] = [];
+          for (let i = 0; i < dataRows.length; i += chunkSize) {
+            chunks.push(dataRows.slice(i, i + chunkSize));
+          }
+
+          for (let idx = 0; idx < chunks.length; idx++) {
+            const chunk = chunks[idx];
+            const subGrid = [headerRow, ...chunk];
+            const subSheet = XLSX.utils.aoa_to_sheet(subGrid);
+            const csv = XLSX.utils.sheet_to_csv(subSheet);
+
+            const textContent = `=== Sheet: ${sheetName} (Rows ${idx * chunkSize + 1} to ${idx * chunkSize + chunk.length}) ===\n${csv}`;
+            const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
+
+            try {
+              const response = await genAI.models.generateContent({
+                model: modelName,
+                contents: fullPrompt,
+              });
+              const resText = response?.text || '';
+              if (resText) {
+                const { extractedText, records } = parseFileExtractionResponse(resText, reportType);
+                allExtractedTexts.push(extractedText);
+                records.forEach((structuredData) => {
+                  allParsedRecords.push(buildRecordFromStructuredData(structuredData, extractedText, reportType, modelName));
+                });
+              }
+            } catch (chunkErr) {
+              console.error(`Error processing chunk ${idx + 1} of sheet ${sheetName}:`, chunkErr);
+            }
+          }
+        }
+      }
+
+      return {
+        extractedText: allExtractedTexts.join('\n\n') || `[Spreadsheet: ${fileName}] - Extracted content`,
+        parsed: allParsedRecords.length > 0 ? allParsedRecords : [
+          {
+            ...parseDemandMessage(`File processed: ${fileName}`, reportType),
+            aiProvider: 'gemini',
+            aiModel: modelName,
+            confidence: 0.1,
+          }
+        ]
+      };
+    } catch (spreadSheetErr) {
+      console.error('Spreadsheet processing error, falling back to basic extraction:', spreadSheetErr);
+    }
+  }
+
+  // Fallback for non-spreadsheet (text files, images, PDFs)
   let responseText: string;
 
-  if (isTextFile || isSpreadsheet) {
-    const textContent = isSpreadsheet
-      ? extractSpreadsheetToText(fileBuffer)
-      : fileBuffer.toString('utf-8');
+  if (isTextFile) {
+    const textContent = fileBuffer.toString('utf-8');
     const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
 
     const response = await genAI.models.generateContent({

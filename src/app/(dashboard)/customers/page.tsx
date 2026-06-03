@@ -73,6 +73,17 @@ export default function CustomersPage() {
     },
   });
 
+  const deleteAllCustomers = useMutation({
+    mutationFn: () => customersApi.deleteAll(),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success(`${res.count} customer${res.count === 1 ? '' : 's'} deleted`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Failed to delete all customers');
+    },
+  });
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -90,6 +101,41 @@ export default function CustomersPage() {
               className="pl-9 w-64 bg-black/20 border-gray-700"
             />
           </div>
+          <AlertDialog>
+            <AlertDialogTrigger
+              render={
+                <button
+                  type="button"
+                  disabled={!data?.customers?.length}
+                  className="inline-flex items-center gap-2 px-3 h-9 rounded-md text-sm border border-red-500/30 text-red-400 bg-red-500/5 hover:bg-red-500/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete All
+                </button>
+              }
+            />
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete all customers?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete <strong>{data?.total ?? 0}</strong> customer
+                  {(data?.total ?? 0) === 1 ? '' : 's'} and all related activity history.
+                  Associated demand records will keep their data but lose the customer link.
+                  This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteAllCustomers.mutate()}
+                  disabled={deleteAllCustomers.isPending}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {deleteAllCustomers.isPending ? 'Deleting…' : 'Delete All'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 

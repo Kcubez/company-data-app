@@ -114,3 +114,14 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ customer });
 }
+
+export async function DELETE(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const { count } = await prisma.customer.deleteMany({});
+
+  return NextResponse.json({ success: true, count });
+}

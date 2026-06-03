@@ -376,6 +376,175 @@ async function buildQAContext(): Promise<string> {
   return parts.join('\n') || 'No business data available yet.';
 }
 
+async function processFileInBackground({
+  downloadedBuffer,
+  fileInfo,
+  reportType,
+  caption,
+  settings,
+  chatId,
+  senderId,
+  telegramMessageId,
+}: {
+  downloadedBuffer: Buffer;
+  fileInfo: { fileName: string; mimeType: string; fileSize: number };
+  reportType: ReportType;
+  caption?: string;
+  settings: { botToken: string | null; geminiApiKey: string | null; geminiModel: string | null };
+  chatId: bigint;
+  senderId: string;
+  telegramMessageId: string;
+}) {
+  try {
+    const { extractedText, parsed: parsedDemands } = await extractDataFromFile({
+      fileBuffer: downloadedBuffer,
+      mimeType: fileInfo.mimeType,
+      fileName: fileInfo.fileName,
+      reportType,
+      caption,
+      apiKey: settings.geminiApiKey!,
+      model: settings.geminiModel,
+    });
+
+    // Store extracted content as QADocument (for Q&A context)
+    await prisma.qADocument.create({
+      data: {
+        title: `📎 ${fileInfo.fileName}`,
+        content: extractedText.slice(0, 10000), // limit content size
+        source: 'telegram_file',
+        fileType: fileInfo.mimeType,
+        fileName: fileInfo.fileName,
+        senderId: senderId,
+      },
+    });
+
+    // For each extracted demand record, resolve / create the customer
+    // and build the nested create input.
+    const demandRecordCreates: Prisma.DemandRecordUncheckedCreateInput[] = [];
+    for (const parsedDemand of parsedDemands) {
+      let customerId: string | null = null;
+      if (parsedDemand.customerName) {
+        const normalizedName = normalizeCustomerName(parsedDemand.customerName);
+        let customer = await prisma.customer.findFirst({
+          where: { nameNormalized: normalizedName },
+        });
+        if (!customer) {
+          customer = await prisma.customer.findUnique({
+            where: { name: parsedDemand.customerName },
+          });
+        }
+        if (customer) {
+          await prisma.customer.update({
+            where: { id: customer.id },
+            data: {
+              updatedAt: new Date(),
+              nameNormalized: customer.nameNormalized || normalizedName,
+            },
+          });
+        } else {
+          customer = await prisma.customer.create({
+            data: {
+              name: parsedDemand.customerName,
+              nameNormalized: normalizedName,
+            },
+          });
+        }
+        customerId = customer.id;
+
+        await prisma.customerActivity.create({
+          data: {
+            customerId: customer.id,
+            senderId: senderId,
+            action: reportType,
+            description: `File: ${fileInfo.fileName} - ${parsedDemand.note}`,
+          },
+        });
+      }
+
+      demandRecordCreates.push({
+        messageId: telegramMessageId,
+        senderId: senderId,
+        customerId,
+        reportType: parsedDemand.reportType,
+        customerName: parsedDemand.customerName,
+        category: parsedDemand.category,
+        status: parsedDemand.status,
+        note: parsedDemand.note,
+        totalSales: parsedDemand.totalSales,
+        demand: parsedDemand.demand,
+        serviceName: parsedDemand.serviceName,
+        serviceAmount: parsedDemand.serviceAmount,
+        serviceQty: parsedDemand.serviceQty,
+        appointments: parsedDemand.appointments,
+        projectName: parsedDemand.projectName,
+        projectStatus: parsedDemand.projectStatus,
+        marketingBudget: parsedDemand.marketingBudget,
+        followUpClient: parsedDemand.followUpClient,
+        followUpReason: parsedDemand.followUpReason,
+        focusService: parsedDemand.focusService,
+        focusReason: parsedDemand.focusReason,
+        delayedProject: parsedDemand.delayedProject,
+        delayReason: parsedDemand.delayReason,
+        nextSteps: parsedDemand.nextSteps,
+        quantity: parsedDemand.quantity,
+        product: parsedDemand.product,
+        amount: parsedDemand.amount,
+        unit: parsedDemand.unit,
+        followUpDate: parsedDemand.followUpDate,
+        confidence: parsedDemand.confidence,
+        aiProvider: parsedDemand.aiProvider,
+        aiModel: parsedDemand.aiModel,
+      });
+    }
+
+    if (demandRecordCreates.length > 0) {
+      await prisma.demandRecord.createMany({
+        data: demandRecordCreates,
+      });
+    }
+
+    // Confirmation message — summarize every extracted record.
+    const confirmParts = [
+      `✅ <b>ဖိုင်မှတ်ပြီးပါပြီ!</b> (${parsedDemands.length} record${parsedDemands.length === 1 ? '' : 's'})`,
+      `📎 ${fileInfo.fileName}`,
+    ];
+
+    parsedDemands.forEach((parsedDemand, idx) => {
+      const header = `\n<b>#${idx + 1}</b>`;
+      const lines: string[] = [header];
+      if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
+        if (parsedDemand.customerName) lines.push(`👤 Customer: ${parsedDemand.customerName}`);
+        if (parsedDemand.totalSales) lines.push(`💰 Total Sales: ${parsedDemand.totalSales.toLocaleString()}`);
+        if (parsedDemand.demand) lines.push(`📈 Demand: ${parsedDemand.demand}`);
+        if (parsedDemand.serviceName) lines.push(`🛠️ Service: ${parsedDemand.serviceName}`);
+        if (parsedDemand.appointments) lines.push(`📅 Appointments: ${parsedDemand.appointments}`);
+        if (parsedDemand.projectName) lines.push(`📁 Project: ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
+        if (parsedDemand.marketingBudget) lines.push(`💸 Marketing: ${parsedDemand.marketingBudget.toLocaleString()}`);
+      } else {
+        if (parsedDemand.followUpClient) lines.push(`👤 Follow-up: ${parsedDemand.followUpClient}`);
+        if (parsedDemand.focusService) lines.push(`🎯 Focus: ${parsedDemand.focusService}`);
+        if (parsedDemand.delayedProject) lines.push(`⚠️ Delayed: ${parsedDemand.delayedProject}`);
+        if (parsedDemand.nextSteps) lines.push(`➡️ Next: ${parsedDemand.nextSteps}`);
+      }
+      if (parsedDemand.note) lines.push(`📋 ${parsedDemand.note}`);
+      confirmParts.push(lines.join('\n'));
+    });
+
+    await sendTelegramMessage({
+      botToken: settings.botToken,
+      chatId,
+      text: confirmParts.join('\n'),
+    });
+  } catch (err) {
+    console.error('Background file processing error:', err);
+    await sendTelegramMessage({
+      botToken: settings.botToken,
+      chatId,
+      text: "❌ ဖိုင်ဖတ်ရာတွင် အမှားရှိပါသည်။ ပြန်လည်ကြိုးစားပါ။",
+    });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const secret = req.headers.get('x-telegram-bot-api-secret-token');
@@ -588,155 +757,19 @@ export async function POST(req: NextRequest) {
         ? activeMode
         : REPORT_TYPES.BUSINESS_REPORT;
 
-      try {
-        const { extractedText, parsed: parsedDemands } = await extractDataFromFile({
-          fileBuffer: downloaded.buffer,
-          mimeType: fileInfo.mimeType,
-          fileName: fileInfo.fileName,
-          reportType,
-          caption,
-          apiKey: settings.geminiApiKey,
-          model: settings.geminiModel,
-        });
+      // Start processing in background (without await)
+      processFileInBackground({
+        downloadedBuffer: downloaded.buffer,
+        fileInfo,
+        reportType,
+        caption,
+        settings,
+        chatId,
+        senderId: sender.id,
+        telegramMessageId: telegramMessage.id,
+      }).catch(err => console.error("Unhandled promise rejection in processFileInBackground:", err));
 
-        // Store extracted content as QADocument (for Q&A context)
-        await prisma.qADocument.create({
-          data: {
-            title: `📎 ${fileInfo.fileName}`,
-            content: extractedText.slice(0, 10000), // limit content size
-            source: 'telegram_file',
-            fileType: fileInfo.mimeType,
-            fileName: fileInfo.fileName,
-            senderId: sender.id,
-          },
-        });
-
-        // For each extracted demand record, resolve / create the customer
-        // and build the nested create input.
-        const demandRecordCreates: Prisma.DemandRecordUncheckedCreateInput[] = [];
-        for (const parsedDemand of parsedDemands) {
-          let customerId: string | null = null;
-          if (parsedDemand.customerName) {
-            const normalizedName = normalizeCustomerName(parsedDemand.customerName);
-            let customer = await prisma.customer.findFirst({
-              where: { nameNormalized: normalizedName },
-            });
-            if (!customer) {
-              customer = await prisma.customer.findUnique({
-                where: { name: parsedDemand.customerName },
-              });
-            }
-            if (customer) {
-              await prisma.customer.update({
-                where: { id: customer.id },
-                data: {
-                  updatedAt: new Date(),
-                  nameNormalized: customer.nameNormalized || normalizedName,
-                },
-              });
-            } else {
-              customer = await prisma.customer.create({
-                data: {
-                  name: parsedDemand.customerName,
-                  nameNormalized: normalizedName,
-                },
-              });
-            }
-            customerId = customer.id;
-
-            await prisma.customerActivity.create({
-              data: {
-                customerId: customer.id,
-                senderId: sender.id,
-                action: reportType,
-                description: `File: ${fileInfo.fileName} - ${parsedDemand.note}`,
-              },
-            });
-          }
-
-          demandRecordCreates.push({
-            messageId: telegramMessage.id,
-            senderId: sender.id,
-            customerId,
-            reportType: parsedDemand.reportType,
-            customerName: parsedDemand.customerName,
-            category: parsedDemand.category,
-            status: parsedDemand.status,
-            note: parsedDemand.note,
-            totalSales: parsedDemand.totalSales,
-            demand: parsedDemand.demand,
-            serviceName: parsedDemand.serviceName,
-            serviceAmount: parsedDemand.serviceAmount,
-            serviceQty: parsedDemand.serviceQty,
-            appointments: parsedDemand.appointments,
-            projectName: parsedDemand.projectName,
-            projectStatus: parsedDemand.projectStatus,
-            marketingBudget: parsedDemand.marketingBudget,
-            followUpClient: parsedDemand.followUpClient,
-            followUpReason: parsedDemand.followUpReason,
-            focusService: parsedDemand.focusService,
-            focusReason: parsedDemand.focusReason,
-            delayedProject: parsedDemand.delayedProject,
-            delayReason: parsedDemand.delayReason,
-            nextSteps: parsedDemand.nextSteps,
-            quantity: parsedDemand.quantity,
-            product: parsedDemand.product,
-            amount: parsedDemand.amount,
-            unit: parsedDemand.unit,
-            followUpDate: parsedDemand.followUpDate,
-            confidence: parsedDemand.confidence,
-            aiProvider: parsedDemand.aiProvider,
-            aiModel: parsedDemand.aiModel,
-          });
-        }
-
-        await prisma.demandRecord.createMany({
-          data: demandRecordCreates,
-        });
-
-        // Confirmation message — summarize every extracted record.
-        const confirmParts = [
-          `✅ <b>ဖိုင်မှတ်ပြီးပါပြီ!</b> (${parsedDemands.length} record${parsedDemands.length === 1 ? '' : 's'})`,
-          `📎 ${fileInfo.fileName}`,
-        ];
-
-        parsedDemands.forEach((parsedDemand, idx) => {
-          const header = `\n<b>#${idx + 1}</b>`;
-          const lines: string[] = [header];
-          if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-            if (parsedDemand.customerName) lines.push(`👤 Customer: ${parsedDemand.customerName}`);
-            if (parsedDemand.totalSales) lines.push(`💰 Total Sales: ${parsedDemand.totalSales.toLocaleString()}`);
-            if (parsedDemand.demand) lines.push(`📈 Demand: ${parsedDemand.demand}`);
-            if (parsedDemand.serviceName) lines.push(`🛠️ Service: ${parsedDemand.serviceName}`);
-            if (parsedDemand.appointments) lines.push(`📅 Appointments: ${parsedDemand.appointments}`);
-            if (parsedDemand.projectName) lines.push(`📁 Project: ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
-            if (parsedDemand.marketingBudget) lines.push(`💸 Marketing: ${parsedDemand.marketingBudget.toLocaleString()}`);
-          } else {
-            if (parsedDemand.followUpClient) lines.push(`👤 Follow-up: ${parsedDemand.followUpClient}`);
-            if (parsedDemand.focusService) lines.push(`🎯 Focus: ${parsedDemand.focusService}`);
-            if (parsedDemand.delayedProject) lines.push(`⚠️ Delayed: ${parsedDemand.delayedProject}`);
-            if (parsedDemand.nextSteps) lines.push(`➡️ Next: ${parsedDemand.nextSteps}`);
-          }
-          if (parsedDemand.note) lines.push(`📋 ${parsedDemand.note}`);
-          confirmParts.push(lines.join('\n'));
-        });
-
-        await sendTelegramMessage({
-          botToken: settings.botToken,
-          chatId,
-          text: confirmParts.join('\n'),
-        });
-
-        return NextResponse.json({ ok: true });
-      } catch (err) {
-        console.error('File processing error:', err);
-        await sendTelegramMessage({
-          botToken: settings.botToken,
-          chatId,
-          text: "❌ ဖိုင်ဖတ်ရာတွင် အမှားရှိပါသည်။ ပြန်လည်ကြိုးစားပါ။",
-        });
-        return NextResponse.json({ ok: true });
-      }
+      return NextResponse.json({ ok: true });
     }
 
     // ─── Text-only messages below ─────────────────────────────────────
