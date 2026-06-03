@@ -108,8 +108,8 @@ export type MessageStats = {
   todayMessages: number;
   totalSenders: number;
   weekMessages: number;
-  dailyReports: number;
-  customerFollowUps: number;
+  businessReports: number;
+  futurePlans: number;
 };
 
 export type MessagesParams = {
@@ -150,6 +150,25 @@ export type DemandRecord = {
   category: string;
   status: string;
   note: string;
+  // Business Report fields
+  totalSales: number | null;
+  demand: number | null;
+  serviceName: string | null;
+  serviceAmount: number | null;
+  serviceQty: number | null;
+  appointments: number | null;
+  projectName: string | null;
+  projectStatus: string | null;
+  marketingBudget: number | null;
+  // Future Plan fields
+  followUpClient: string | null;
+  followUpReason: string | null;
+  focusService: string | null;
+  focusReason: string | null;
+  delayedProject: string | null;
+  delayReason: string | null;
+  nextSteps: string | null;
+  // Legacy
   quantity: number | null;
   product: string | null;
   amount: number | null;
@@ -172,42 +191,18 @@ export type DemandRecordsResponse = {
 export type DemandRecordStats = {
   totalRecords: number;
   todayRecords: number;
-  dueToday: number;
-  pendingRecords: number;
-  dailyReports: number;
-  customerFollowUps: number;
-  recentRecords: {
-    id: string;
-    reportType: string;
-    customerName: string | null;
-    category: string;
-    status: string;
-    note: string;
-    senderName: string;
-    createdAt: string;
-    followUpDate: string | null;
-  }[];
-  pipeline: {
-    new: number;
-    contacted: number;
-    quoted: number;
-    pending: number;
-    closed: number;
-  };
-  totalQuantitySold: number;
-  totalAmountSold: number;
-  topProducts: { product: string; count: number; totalQty: number }[];
+  businessReports: number;
+  futurePlans: number;
+  totalSales: number;
+  totalDemand: number;
+  totalAppointments: number;
+  totalMarketingBudget: number;
+  topServices: { name: string; count: number; totalAmount: number; totalQty: number }[];
+  projects: { name: string; status: string; note: string; lastUpdate: string }[];
+  followUps: { client: string; reason: string | null; date: string }[];
+  focusServices: { service: string; reason: string | null }[];
+  delayedProjects: { project: string; reason: string | null }[];
   weeklyActivity: { date: string; count: number }[];
-  dueTodayRecords: {
-    id: string;
-    customerName: string | null;
-    product: string | null;
-    quantity: number | null;
-    status: string;
-    note: string;
-    senderName: string;
-    followUpDate: string | null;
-  }[];
 };
 
 export type DemandRecordsParams = {

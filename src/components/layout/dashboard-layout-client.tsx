@@ -11,10 +11,9 @@ import {
   Menu,
   MessageSquare,
   Settings,
-  ClipboardList,
   UserCircle,
-  FileText,
-  Phone,
+  BarChart3,
+  Lightbulb,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -86,27 +85,27 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       adminOnly: false,
     },
     {
-      title: 'Daily Reports',
-      href: '/daily-report',
-      icon: FileText,
+      title: 'Messages',
+      href: '/messages',
+      icon: MessageSquare,
       adminOnly: false,
     },
     {
-      title: 'Customer Follow-ups',
-      href: '/customer-followups',
-      icon: Phone,
+      title: 'Business Reports',
+      href: '/business-reports',
+      icon: BarChart3,
+      adminOnly: false,
+    },
+    {
+      title: 'Future Plans',
+      href: '/future-plans',
+      icon: Lightbulb,
       adminOnly: false,
     },
     {
       title: 'Customers',
       href: '/customers',
       icon: UserCircle,
-      adminOnly: false,
-    },
-    {
-      title: 'Messages',
-      href: '/messages',
-      icon: MessageSquare,
       adminOnly: false,
     },
     {
