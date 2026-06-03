@@ -3,8 +3,11 @@ import {
   isReportType,
   parseDemandMessageWithGemini,
   answerQuestionWithGemini,
+  extractDataFromFile,
+  isFileTooLarge,
   REPORT_TYPES,
   type ReportType,
+  type ParsedDemandRecord,
 } from "@/lib/demand-parser";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -86,6 +89,102 @@ async function editTelegramMessage({
       ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     }),
   }).catch((err) => console.error("Error editing message:", err));
+}
+
+async function downloadTelegramFile(
+  botToken: string,
+  fileId: string,
+): Promise<{ buffer: Buffer; filePath: string } | null> {
+  try {
+    const fileRes = await fetch(
+      `https://api.telegram.org/bot${botToken}/getFile`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: fileId }),
+      },
+    );
+    const fileData = await fileRes.json();
+    if (!fileData.ok || !fileData.result?.file_path) return null;
+
+    const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
+    const downloadRes = await fetch(downloadUrl);
+    if (!downloadRes.ok) return null;
+
+    const arrayBuffer = await downloadRes.arrayBuffer();
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      filePath: fileData.result.file_path as string,
+    };
+  } catch (err) {
+    console.error('Error downloading Telegram file:', err);
+    return null;
+  }
+}
+
+function getFileInfoFromMessage(message: Record<string, unknown>): {
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+} | null {
+  // Document (PDF, Excel, text, etc.)
+  const doc = message.document as Record<string, unknown> | undefined;
+  if (doc) {
+    return {
+      fileId: doc.file_id as string,
+      fileName: (doc.file_name as string) || 'document',
+      mimeType: (doc.mime_type as string) || 'application/octet-stream',
+      fileSize: (doc.file_size as number) || 0,
+    };
+  }
+
+  // Photo (array of sizes, pick largest)
+  const photos = message.photo as Array<Record<string, unknown>> | undefined;
+  if (photos && photos.length > 0) {
+    const largest = photos[photos.length - 1];
+    return {
+      fileId: largest.file_id as string,
+      fileName: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      fileSize: (largest.file_size as number) || 0,
+    };
+  }
+
+  // Audio
+  const audio = message.audio as Record<string, unknown> | undefined;
+  if (audio) {
+    return {
+      fileId: audio.file_id as string,
+      fileName: (audio.file_name as string) || 'audio',
+      mimeType: (audio.mime_type as string) || 'audio/mpeg',
+      fileSize: (audio.file_size as number) || 0,
+    };
+  }
+
+  // Voice
+  const voice = message.voice as Record<string, unknown> | undefined;
+  if (voice) {
+    return {
+      fileId: voice.file_id as string,
+      fileName: 'voice.ogg',
+      mimeType: (voice.mime_type as string) || 'audio/ogg',
+      fileSize: (voice.file_size as number) || 0,
+    };
+  }
+
+  // Video
+  const video = message.video as Record<string, unknown> | undefined;
+  if (video) {
+    return {
+      fileId: video.file_id as string,
+      fileName: (video.file_name as string) || 'video.mp4',
+      mimeType: (video.mime_type as string) || 'video/mp4',
+      fileSize: (video.file_size as number) || 0,
+    };
+  }
+
+  return null;
 }
 
 async function upsertSender(from: {
@@ -338,9 +437,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // ─── Handle Text Messages ─────────────────────────────────────────
+    // ─── Handle Messages (text + files) ────────────────────────────────
     const message = body.message;
-    if (!message || !message.text) {
+    if (!message) {
+      return NextResponse.json({ ok: true });
+    }
+
+    const fileInfo = getFileInfoFromMessage(message);
+    const hasText = !!message.text;
+    const hasFile = !!fileInfo;
+
+    // Ignore messages with neither text nor file
+    if (!hasText && !hasFile) {
       return NextResponse.json({ ok: true });
     }
 
@@ -358,6 +466,224 @@ export async function POST(req: NextRequest) {
         text: "👋 <b>မင်္ဂလာပါ!</b>\n\nဘာလုပ်ချင်ပါသလဲခင်‌ဗျာ။",
         replyMarkup: MAIN_MENU_BUTTONS,
       });
+      return NextResponse.json({ ok: true });
+    }
+
+    // ─── Handle File Uploads ──────────────────────────────────────────
+    if (hasFile && fileInfo) {
+      const receivedAt = new Date(message.date * 1000);
+      const updatedSender = await prisma.telegramSender.update({
+        where: { id: sender.id },
+        data: {
+          messageCount: { increment: 1 },
+          lastMessageAt: new Date(),
+        },
+      });
+
+      const activeMode = updatedSender.activeReportType;
+
+      // In Q&A mode, files are not accepted — tell user to switch to Reports
+      if (activeMode === 'qa') {
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId,
+          text: "⚠️ Q & A mode မှာ ဖိုင်လက်ခံလို့မရပါ။\n\nReport mode ကိုပြောင်းပြီး ဖိုင်ပို့ပေးပါ။\n/start နှိပ်ပြီး Reports ကိုရွေးပါ။",
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // Check file size
+      if (isFileTooLarge(fileInfo.fileSize)) {
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId,
+          text: "⚠️ ဖိုင်ဆိုဒ် ကြီးလွန်းပါသည်။ 10MB အောက် ဖိုင်ပို့ပေးပါ။",
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // Check API key
+      if (!settings?.geminiApiKey || !settings?.botToken) {
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId,
+          text: "⚠️ Gemini API key သို့မဟုတ် Bot Token မရှိသေးပါ။ Settings မှာ ထည့်ပါ။",
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // Send processing indicator
+      await sendTelegramMessage({
+        botToken: settings.botToken,
+        chatId,
+        text: `⏳ <b>${fileInfo.fileName}</b> ဖိုင်ကို ဖတ်နေပါသည်...`,
+      });
+
+      // Download the file
+      const downloaded = await downloadTelegramFile(settings.botToken, fileInfo.fileId);
+      if (!downloaded) {
+        await sendTelegramMessage({
+          botToken: settings.botToken,
+          chatId,
+          text: "❌ ဖိုင်ဒေါင်းလုဒ် မအောင်မြင်ပါ။ ပြန်လည်ပို့ပေးပါ။",
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      const reportType: ReportType = isReportType(activeMode) && activeMode !== 'qa'
+        ? activeMode
+        : REPORT_TYPES.BUSINESS_REPORT;
+
+      try {
+        const caption = (message.caption as string) || undefined;
+        const { extractedText, parsed: parsedDemand } = await extractDataFromFile({
+          fileBuffer: downloaded.buffer,
+          mimeType: fileInfo.mimeType,
+          fileName: fileInfo.fileName,
+          reportType,
+          caption,
+          apiKey: settings.geminiApiKey,
+          model: settings.geminiModel,
+        });
+
+        // Store extracted content as QADocument (for Q&A context)
+        await prisma.qADocument.create({
+          data: {
+            title: `📎 ${fileInfo.fileName}`,
+            content: extractedText.slice(0, 10000), // limit content size
+            source: 'telegram_file',
+            fileType: fileInfo.mimeType,
+            fileName: fileInfo.fileName,
+            senderId: sender.id,
+          },
+        });
+
+        // Customer matching (same as text flow)
+        let customerId: string | null = null;
+        if (parsedDemand.customerName) {
+          const normalizedName = normalizeCustomerName(parsedDemand.customerName);
+          let customer = await prisma.customer.findFirst({
+            where: { nameNormalized: normalizedName },
+          });
+          if (!customer) {
+            customer = await prisma.customer.findUnique({
+              where: { name: parsedDemand.customerName },
+            });
+          }
+          if (customer) {
+            await prisma.customer.update({
+              where: { id: customer.id },
+              data: {
+                updatedAt: new Date(),
+                nameNormalized: customer.nameNormalized || normalizedName,
+              },
+            });
+          } else {
+            customer = await prisma.customer.create({
+              data: {
+                name: parsedDemand.customerName,
+                nameNormalized: normalizedName,
+              },
+            });
+          }
+          customerId = customer.id;
+
+          await prisma.customerActivity.create({
+            data: {
+              customerId: customer.id,
+              senderId: sender.id,
+              action: reportType,
+              description: `File: ${fileInfo.fileName} - ${parsedDemand.note}`,
+            },
+          });
+        }
+
+        // Create message + demand record
+        await prisma.telegramMessage.create({
+          data: {
+            telegramMsgId: message.message_id,
+            text: `[File: ${fileInfo.fileName}] ${caption || ''}`.trim(),
+            senderId: sender.id,
+            chatId,
+            chatTitle: message.chat.title || null,
+            receivedAt,
+            demandRecord: {
+              create: {
+                senderId: sender.id,
+                customerId,
+                reportType: parsedDemand.reportType,
+                customerName: parsedDemand.customerName,
+                category: parsedDemand.category,
+                status: parsedDemand.status,
+                note: parsedDemand.note,
+                totalSales: parsedDemand.totalSales,
+                demand: parsedDemand.demand,
+                serviceName: parsedDemand.serviceName,
+                serviceAmount: parsedDemand.serviceAmount,
+                serviceQty: parsedDemand.serviceQty,
+                appointments: parsedDemand.appointments,
+                projectName: parsedDemand.projectName,
+                projectStatus: parsedDemand.projectStatus,
+                marketingBudget: parsedDemand.marketingBudget,
+                followUpClient: parsedDemand.followUpClient,
+                followUpReason: parsedDemand.followUpReason,
+                focusService: parsedDemand.focusService,
+                focusReason: parsedDemand.focusReason,
+                delayedProject: parsedDemand.delayedProject,
+                delayReason: parsedDemand.delayReason,
+                nextSteps: parsedDemand.nextSteps,
+                quantity: parsedDemand.quantity,
+                product: parsedDemand.product,
+                amount: parsedDemand.amount,
+                unit: parsedDemand.unit,
+                followUpDate: parsedDemand.followUpDate,
+                confidence: parsedDemand.confidence,
+                aiProvider: parsedDemand.aiProvider,
+                aiModel: parsedDemand.aiModel,
+              },
+            },
+          },
+        });
+
+        // Confirmation message
+        const confirmParts = ['✅ <b>ဖိုင်မှတ်ပြီးပါပြီ!</b>', `📎 ${fileInfo.fileName}`];
+        if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
+          confirmParts.push(`📊 Report Type: Business Report`);
+          if (parsedDemand.totalSales) confirmParts.push(`💰 Total Sales: ${parsedDemand.totalSales.toLocaleString()}`);
+          if (parsedDemand.demand) confirmParts.push(`📈 Demand: ${parsedDemand.demand}`);
+          if (parsedDemand.serviceName) confirmParts.push(`🛠️ Service: ${parsedDemand.serviceName}`);
+          if (parsedDemand.appointments) confirmParts.push(`📅 Appointments: ${parsedDemand.appointments}`);
+          if (parsedDemand.projectName) confirmParts.push(`📁 Project: ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
+          if (parsedDemand.marketingBudget) confirmParts.push(`💸 Marketing: ${parsedDemand.marketingBudget.toLocaleString()}`);
+        } else {
+          confirmParts.push(`🔮 Report Type: Future Plan`);
+          if (parsedDemand.followUpClient) confirmParts.push(`👤 Follow-up: ${parsedDemand.followUpClient}`);
+          if (parsedDemand.focusService) confirmParts.push(`🎯 Focus: ${parsedDemand.focusService}`);
+          if (parsedDemand.delayedProject) confirmParts.push(`⚠️ Delayed: ${parsedDemand.delayedProject}`);
+          if (parsedDemand.nextSteps) confirmParts.push(`➡️ Next: ${parsedDemand.nextSteps}`);
+        }
+        confirmParts.push(`\n📋 ${parsedDemand.note}`);
+
+        await sendTelegramMessage({
+          botToken: settings.botToken,
+          chatId,
+          text: confirmParts.join('\n'),
+        });
+
+        return NextResponse.json({ ok: true });
+      } catch (err) {
+        console.error('File processing error:', err);
+        await sendTelegramMessage({
+          botToken: settings.botToken,
+          chatId,
+          text: "❌ ဖိုင်ဖတ်ရာတွင် အမှားရှိပါသည်။ ပြန်လည်ကြိုးစားပါ။",
+        });
+        return NextResponse.json({ ok: true });
+      }
+    }
+
+    // ─── Text-only messages below ─────────────────────────────────────
+    if (!hasText) {
       return NextResponse.json({ ok: true });
     }
 

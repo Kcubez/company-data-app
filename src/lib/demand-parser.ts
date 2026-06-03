@@ -410,3 +410,238 @@ Answer:`;
     return 'Sorry, AI service is currently unavailable. Please try again later.';
   }
 }
+
+// ─── File Extraction ─────────────────────────────────────────────────────────
+
+const TEXT_MIME_TYPES = new Set([
+  'text/plain',
+  'text/csv',
+  'text/html',
+  'text/markdown',
+  'application/json',
+  'application/xml',
+  'text/xml',
+]);
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+export function isFileTooLarge(sizeBytes: number): boolean {
+  return sizeBytes > MAX_FILE_SIZE;
+}
+
+function buildFileExtractionPrompt(reportType: ReportType, caption?: string): string {
+  const captionNote = caption
+    ? `\nThe user also provided this caption/context: "${caption}"\n`
+    : '';
+
+  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
+    return `You are a business report data extractor. Extract ALL text and data from the uploaded file.
+The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
+
+First, provide a complete text extraction of everything in the file.
+Then, extract structured data and return a JSON block.
+
+Return your response in this exact format:
+
+EXTRACTED_TEXT:
+[All text content from the file goes here]
+
+STRUCTURED_DATA:
+\`\`\`json
+{
+  "note": string (clean summary of the report),
+  "totalSales": number | null,
+  "demand": number | null,
+  "serviceName": string | null,
+  "serviceAmount": number | null,
+  "serviceQty": number | null,
+  "appointments": number | null,
+  "projectName": string | null,
+  "projectStatus": "on_track" | "delayed" | "completed" | "at_risk" | null,
+  "marketingBudget": number | null,
+  "customerName": string | null,
+  "category": "sales" | "service" | "project" | "marketing" | "general",
+  "status": "new" | "in_progress" | "completed"
+}
+\`\`\`
+
+Rules:
+- Extract ALL text content from the file, even if it doesn't fit the structured fields.
+- If a structured field is not found, set it to null.
+- Return BOTH the extracted text AND the JSON.`;
+  }
+
+  return `You are a future planning data extractor. Extract ALL text and data from the uploaded file.
+The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
+
+First, provide a complete text extraction of everything in the file.
+Then, extract structured data and return a JSON block.
+
+Return your response in this exact format:
+
+EXTRACTED_TEXT:
+[All text content from the file goes here]
+
+STRUCTURED_DATA:
+\`\`\`json
+{
+  "note": string (clean summary),
+  "followUpClient": string | null,
+  "followUpReason": string | null,
+  "focusService": string | null,
+  "focusReason": string | null,
+  "delayedProject": string | null,
+  "delayReason": string | null,
+  "nextSteps": string | null,
+  "customerName": string | null,
+  "category": "follow_up" | "focus" | "delay" | "planning" | "general",
+  "status": "new" | "pending" | "in_progress"
+}
+\`\`\`
+
+Rules:
+- Extract ALL text content from the file, even if it doesn't fit the structured fields.
+- If a structured field is not found, set it to null.
+- Return BOTH the extracted text AND the JSON.`;
+}
+
+function parseFileExtractionResponse(
+  responseText: string,
+  reportType: ReportType,
+): { extractedText: string; structuredData: Record<string, unknown> } {
+  let extractedText = responseText;
+  let structuredData: Record<string, unknown> = {};
+
+  // Try to split EXTRACTED_TEXT and STRUCTURED_DATA sections
+  const textMatch = responseText.match(
+    /EXTRACTED_TEXT:\s*\n([\s\S]*?)(?=STRUCTURED_DATA:|$)/i,
+  );
+  if (textMatch) {
+    extractedText = textMatch[1].trim();
+  }
+
+  const jsonMatch = responseText.match(/```json\s*\n?([\s\S]*?)```/);
+  if (jsonMatch) {
+    try {
+      structuredData = JSON.parse(jsonMatch[1].trim());
+    } catch {
+      console.error('Failed to parse structured data JSON from file extraction');
+    }
+  }
+
+  return { extractedText, structuredData };
+}
+
+export async function extractDataFromFile({
+  fileBuffer,
+  mimeType,
+  fileName,
+  reportType,
+  caption,
+  apiKey,
+  model,
+}: {
+  fileBuffer: Buffer;
+  mimeType: string;
+  fileName: string;
+  reportType: ReportType;
+  caption?: string;
+  apiKey: string;
+  model?: string | null;
+}): Promise<{ extractedText: string; parsed: ParsedDemandRecord }> {
+  const genAI = new GoogleGenAI({ apiKey });
+  const modelName = model || 'gemini-3.5-flash';
+  const prompt = buildFileExtractionPrompt(reportType, caption);
+
+  // For text-based files, read content directly and send as text
+  const isTextFile = TEXT_MIME_TYPES.has(mimeType);
+
+  let responseText: string;
+
+  if (isTextFile) {
+    const textContent = fileBuffer.toString('utf-8');
+    const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
+
+    const response = await genAI.models.generateContent({
+      model: modelName,
+      contents: fullPrompt,
+    });
+    responseText = response?.text || '';
+  } else {
+    // Binary files: send as inlineData (multimodal)
+    const base64Data = fileBuffer.toString('base64');
+
+    const response = await genAI.models.generateContent({
+      model: modelName,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
+              },
+            },
+            { text: `File name: ${fileName}\n\n${prompt}` },
+          ],
+        },
+      ],
+    });
+    responseText = response?.text || '';
+  }
+
+  if (!responseText) {
+    // Return a minimal fallback
+    return {
+      extractedText: `[File: ${fileName}] - Could not extract content`,
+      parsed: {
+        ...parseDemandMessage(`File uploaded: ${fileName}`, reportType),
+        aiProvider: 'gemini',
+        aiModel: modelName,
+        confidence: 0.1,
+      },
+    };
+  }
+
+  const { extractedText, structuredData } = parseFileExtractionResponse(responseText, reportType);
+
+  // Build the ParsedDemandRecord from structured data
+  const fallback = parseDemandMessage(
+    structuredData.note as string || extractedText.slice(0, 500),
+    reportType,
+  );
+
+  const parsed: ParsedDemandRecord = {
+    ...fallback,
+    aiProvider: 'gemini',
+    aiModel: modelName,
+    confidence: 0.85,
+    note: (structuredData.note as string) || extractedText.slice(0, 500),
+    customerName: (structuredData.customerName as string) || null,
+    category: (structuredData.category as string) || fallback.category,
+    status: (structuredData.status as string) || fallback.status,
+  };
+
+  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
+    parsed.totalSales = typeof structuredData.totalSales === 'number' ? structuredData.totalSales : null;
+    parsed.demand = typeof structuredData.demand === 'number' ? structuredData.demand : null;
+    parsed.serviceName = (structuredData.serviceName as string) || null;
+    parsed.serviceAmount = typeof structuredData.serviceAmount === 'number' ? structuredData.serviceAmount : null;
+    parsed.serviceQty = typeof structuredData.serviceQty === 'number' ? structuredData.serviceQty : null;
+    parsed.appointments = typeof structuredData.appointments === 'number' ? structuredData.appointments : null;
+    parsed.projectName = (structuredData.projectName as string) || null;
+    parsed.projectStatus = (structuredData.projectStatus as string) || null;
+    parsed.marketingBudget = typeof structuredData.marketingBudget === 'number' ? structuredData.marketingBudget : null;
+  } else {
+    parsed.followUpClient = (structuredData.followUpClient as string) || null;
+    parsed.followUpReason = (structuredData.followUpReason as string) || null;
+    parsed.focusService = (structuredData.focusService as string) || null;
+    parsed.focusReason = (structuredData.focusReason as string) || null;
+    parsed.delayedProject = (structuredData.delayedProject as string) || null;
+    parsed.delayReason = (structuredData.delayReason as string) || null;
+    parsed.nextSteps = (structuredData.nextSteps as string) || null;
+  }
+
+  return { extractedText, parsed };
+}

@@ -216,7 +216,9 @@ model QADocument {
   id         String   @id @default(cuid())
   title      String
   content    String
-  source     String   @default("telegram")   // "telegram" | "upload"
+  source     String   @default("telegram")   // "telegram" | "telegram_file" | "upload"
+  fileType   String?  // MIME type e.g. "application/pdf", "image/png"
+  fileName   String?  // Original file name
   senderId   String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
