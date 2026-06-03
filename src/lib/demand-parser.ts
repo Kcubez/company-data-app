@@ -52,6 +52,43 @@ export type ParsedDemandRecord = {
   unit: string | null;
 };
 
+async function generateContentWithRetry(
+  genAI: any,
+  options: { model: string; contents: string | any[] },
+  maxRetries = 3,
+  delayMs = 1500
+): Promise<any> {
+  let lastError: any = null;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await genAI.models.generateContent(options);
+      return response;
+    } catch (err: any) {
+      lastError = err;
+      const status = err.status || err.statusCode;
+      const errStr = typeof err === 'object' ? JSON.stringify(err) : String(err);
+      
+      if (
+        status === 503 ||
+        status === 429 ||
+        errStr.includes('503') ||
+        errStr.includes('429') ||
+        errStr.toLowerCase().includes('unavailable') ||
+        errStr.toLowerCase().includes('high demand') ||
+        errStr.toLowerCase().includes('overloaded') ||
+        errStr.toLowerCase().includes('socket') ||
+        errStr.toLowerCase().includes('fetch failed')
+      ) {
+        console.warn(`Gemini API returned retryable error (attempt ${i + 1}/${maxRetries}):`, err.message || err);
+        await new Promise((resolve) => setTimeout(resolve, delayMs * Math.pow(2, i)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
 const BURMESE_DIGITS: Record<string, string> = {
   '\u1040': '0', '\u1041': '1', '\u1042': '2', '\u1043': '3', '\u1044': '4',
   '\u1045': '5', '\u1046': '6', '\u1047': '7', '\u1048': '8', '\u1049': '9',
@@ -312,7 +349,7 @@ export async function parseDemandMessageWithGemini({
     const modelName = model || 'gemini-2.5-flash';
     const prompt = buildGeminiPrompt(text, reportType);
 
-    const response = await genAI.models.generateContent({
+    const response = await generateContentWithRetry(genAI, {
       model: modelName,
       contents: prompt,
     });
@@ -400,7 +437,7 @@ User's question: ${question}
 
 Answer:`;
 
-    const response = await genAI.models.generateContent({
+    const response = await generateContentWithRetry(genAI, {
       model: modelName,
       contents: prompt,
     });
@@ -664,10 +701,10 @@ export async function extractDataFromFile({
         const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
         if (rows.length === 0) continue;
         const dataRows = rows.slice(1);
-        if (dataRows.length <= 15) {
+        if (dataRows.length <= 10) {
           totalChunks += 1;
         } else {
-          totalChunks += Math.ceil(dataRows.length / 15);
+          totalChunks += Math.ceil(dataRows.length / 10);
         }
       }
 
@@ -682,7 +719,7 @@ export async function extractDataFromFile({
         const dataRows = rows.slice(1);
 
         // If sheet is small, process in one call to save API calls
-        if (dataRows.length <= 15) {
+        if (dataRows.length <= 10) {
           processedChunks++;
           const csv = XLSX.utils.sheet_to_csv(sheet);
           if (!csv.trim()) {
@@ -696,7 +733,7 @@ export async function extractDataFromFile({
           const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
 
           try {
-            const response = await genAI.models.generateContent({
+            const response = await generateContentWithRetry(genAI, {
               model: modelName,
               contents: fullPrompt,
             });
@@ -718,8 +755,8 @@ export async function extractDataFromFile({
             }
           }
         } else {
-          // Chunk data rows in groups of 15
-          const chunkSize = 15;
+          // Chunk data rows in groups of 10
+          const chunkSize = 10;
           const chunks: any[][][] = [];
           for (let i = 0; i < dataRows.length; i += chunkSize) {
             chunks.push(dataRows.slice(i, i + chunkSize));
@@ -736,7 +773,12 @@ export async function extractDataFromFile({
             const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
 
             try {
-              const response = await genAI.models.generateContent({
+              // Add a 1-second delay between chunks to prevent Gemini Rate Limit (RPM)
+              if (idx > 0) {
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+              }
+
+              const response = await generateContentWithRetry(genAI, {
                 model: modelName,
                 contents: fullPrompt,
               });
@@ -784,7 +826,7 @@ export async function extractDataFromFile({
     const textContent = fileBuffer.toString('utf-8');
     const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
 
-    const response = await genAI.models.generateContent({
+    const response = await generateContentWithRetry(genAI, {
       model: modelName,
       contents: fullPrompt,
     });
@@ -793,7 +835,7 @@ export async function extractDataFromFile({
     // Binary files: send as inlineData (multimodal)
     const base64Data = fileBuffer.toString('base64');
 
-    const response = await genAI.models.generateContent({
+    const response = await generateContentWithRetry(genAI, {
       model: modelName,
       contents: [
         {
