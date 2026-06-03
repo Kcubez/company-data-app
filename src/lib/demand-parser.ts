@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import * as XLSX from "xlsx";
 
 export const REPORT_TYPES = {
   BUSINESS_REPORT: "business_report",
@@ -423,6 +424,33 @@ const TEXT_MIME_TYPES = new Set([
   'text/xml',
 ]);
 
+// Gemini's inlineData does not accept xlsx/xls; parse them server-side and
+// send the extracted text to the model instead.
+const SPREADSHEET_MIME_TYPES = new Set([
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-excel', // .xls
+  'application/vnd.ms-excel.sheet.macroEnabled.12', // .xlsm
+]);
+
+export function isSpreadsheetFile(mimeType: string, fileName: string): boolean {
+  if (SPREADSHEET_MIME_TYPES.has(mimeType)) return true;
+  // Some clients (e.g. Telegram) send spreadsheets as application/octet-stream.
+  const lower = fileName.toLowerCase();
+  return lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.xlsm');
+}
+
+export function extractSpreadsheetToText(buffer: Buffer): string {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const parts: string[] = [];
+  for (const sheetName of workbook.SheetNames) {
+    const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+    if (csv.trim()) {
+      parts.push(`=== Sheet: ${sheetName} ===\n${csv}`);
+    }
+  }
+  return parts.join('\n\n') || '(empty spreadsheet)';
+}
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export function isFileTooLarge(sizeBytes: number): boolean {
@@ -555,11 +583,14 @@ export async function extractDataFromFile({
 
   // For text-based files, read content directly and send as text
   const isTextFile = TEXT_MIME_TYPES.has(mimeType);
+  const isSpreadsheet = isSpreadsheetFile(mimeType, fileName);
 
   let responseText: string;
 
-  if (isTextFile) {
-    const textContent = fileBuffer.toString('utf-8');
+  if (isTextFile || isSpreadsheet) {
+    const textContent = isSpreadsheet
+      ? extractSpreadsheetToText(fileBuffer)
+      : fileBuffer.toString('utf-8');
     const fullPrompt = `${prompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
 
     const response = await genAI.models.generateContent({
