@@ -50,6 +50,7 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -78,6 +79,7 @@ export default function CustomersPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast.success(`${res.count} customer${res.count === 1 ? '' : 's'} deleted`);
+      setIsDeleteAllOpen(false);
     },
     onError: (err: Error) => {
       toast.error(err.message || 'Failed to delete all customers');
@@ -101,7 +103,7 @@ export default function CustomersPage() {
               className="pl-9 w-64 bg-black/20 border-gray-700"
             />
           </div>
-          <AlertDialog>
+          <AlertDialog open={isDeleteAllOpen} onOpenChange={setIsDeleteAllOpen}>
             <AlertDialogTrigger
               render={
                 <button

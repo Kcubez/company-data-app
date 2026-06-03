@@ -346,7 +346,7 @@ export async function parseDemandMessageWithGemini({
 
   try {
     const genAI = new GoogleGenAI({ apiKey });
-    const modelName = model || 'gemini-2.5-flash';
+    const modelName = model || 'gemini-3.1-flash-lite-preview';
     const prompt = buildGeminiPrompt(text, reportType);
 
     const response = await generateContentWithRetry(genAI, {
@@ -423,7 +423,7 @@ export async function answerQuestionWithGemini({
 }): Promise<string> {
   try {
     const genAI = new GoogleGenAI({ apiKey });
-    const modelName = model || 'gemini-2.5-flash';
+    const modelName = model || 'gemini-3.1-flash-lite-preview';
 
     const prompt = `You are a helpful business assistant. Answer the user's question based on the business data context provided below.
 Answer in the same language the user asked in (Burmese or English).
@@ -681,7 +681,7 @@ export async function extractDataFromFile({
   onProgress?: (current: number, total: number, errorMsg?: string) => Promise<void> | void;
 }): Promise<{ extractedText: string; parsed: ParsedDemandRecord[] }> {
   const genAI = new GoogleGenAI({ apiKey });
-  const modelName = model || 'gemini-2.5-flash';
+  const modelName = model || 'gemini-3.1-flash-lite-preview';
   const prompt = buildFileExtractionPrompt(reportType, caption);
 
   // For text-based files, read content directly and send as text
@@ -693,6 +693,7 @@ export async function extractDataFromFile({
       const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
       const allExtractedTexts: string[] = [];
       const allParsedRecords: ParsedDemandRecord[] = [];
+      const batchSize = 5;
 
       // Calculate total chunks first
       let totalChunks = 0;
@@ -701,10 +702,10 @@ export async function extractDataFromFile({
         const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
         if (rows.length === 0) continue;
         const dataRows = rows.slice(1);
-        if (dataRows.length <= 10) {
+        if (dataRows.length <= batchSize) {
           totalChunks += 1;
         } else {
-          totalChunks += Math.ceil(dataRows.length / 10);
+          totalChunks += Math.ceil(dataRows.length / batchSize);
         }
       }
 
@@ -719,7 +720,7 @@ export async function extractDataFromFile({
         const dataRows = rows.slice(1);
 
         // If sheet is small, process in one call to save API calls
-        if (dataRows.length <= 10) {
+        if (dataRows.length <= batchSize) {
           processedChunks++;
           const csv = XLSX.utils.sheet_to_csv(sheet);
           if (!csv.trim()) {
@@ -755,8 +756,8 @@ export async function extractDataFromFile({
             }
           }
         } else {
-          // Chunk data rows in groups of 10
-          const chunkSize = 10;
+          // Chunk data rows in groups of batchSize
+          const chunkSize = batchSize;
           const chunks: any[][][] = [];
           for (let i = 0; i < dataRows.length; i += chunkSize) {
             chunks.push(dataRows.slice(i, i + chunkSize));
