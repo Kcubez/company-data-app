@@ -144,7 +144,7 @@ model TelegramMessage {
   chatTitle       String?
   receivedAt      DateTime        @default(now())
   createdAt       DateTime        @default(now())
-  demandRecord    DemandRecord?
+  demandRecords   DemandRecord[]
 
   @@map("telegram_message")
   @@index([senderId])
@@ -199,6 +199,7 @@ model DemandRecord {
   updatedAt       DateTime         @updatedAt
 
   @@map("demand_record")
+  @@index([messageId])
   @@index([senderId])
   @@index([reportType])
   @@index([category])

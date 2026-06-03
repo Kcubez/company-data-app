@@ -466,8 +466,10 @@ function buildFileExtractionPrompt(reportType: ReportType, caption?: string): st
     return `You are a business report data extractor. Extract ALL text and data from the uploaded file.
 The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
 
+The file may contain MANY rows / clients / demands. You MUST extract one structured record per logical entry — do NOT collapse multiple clients or rows into a single record. If the file is a single short report with only one demand, return a one-element array.
+
 First, provide a complete text extraction of everything in the file.
-Then, extract structured data and return a JSON block.
+Then, extract structured data and return a JSON ARRAY (one element per demand/row/client).
 
 Return your response in this exact format:
 
@@ -476,34 +478,40 @@ EXTRACTED_TEXT:
 
 STRUCTURED_DATA:
 \`\`\`json
-{
-  "note": string (clean summary of the report),
-  "totalSales": number | null,
-  "demand": number | null,
-  "serviceName": string | null,
-  "serviceAmount": number | null,
-  "serviceQty": number | null,
-  "appointments": number | null,
-  "projectName": string | null,
-  "projectStatus": "on_track" | "delayed" | "completed" | "at_risk" | null,
-  "marketingBudget": number | null,
-  "customerName": string | null,
-  "category": "sales" | "service" | "project" | "marketing" | "general",
-  "status": "new" | "in_progress" | "completed"
-}
+[
+  {
+    "note": string (clean summary of this entry),
+    "totalSales": number | null,
+    "demand": number | null,
+    "serviceName": string | null,
+    "serviceAmount": number | null,
+    "serviceQty": number | null,
+    "appointments": number | null,
+    "projectName": string | null,
+    "projectStatus": "on_track" | "delayed" | "completed" | "at_risk" | null,
+    "marketingBudget": number | null,
+    "customerName": string | null,
+    "category": "sales" | "service" | "project" | "marketing" | "general",
+    "status": "new" | "in_progress" | "completed"
+  }
+]
 \`\`\`
 
 Rules:
-- Extract ALL text content from the file, even if it doesn't fit the structured fields.
-- If a structured field is not found, set it to null.
-- Return BOTH the extracted text AND the JSON.`;
+- Return a JSON ARRAY, not a single object.
+- Create one array element per client / row / demand in the file. If the file has 49 demands, return 49 (or more) elements.
+- Extract ALL text content from the file into EXTRACTED_TEXT, even if it doesn't fit the structured fields.
+- If a structured field is not found for an entry, set it to null.
+- Return BOTH the extracted text AND the JSON array.`;
   }
 
   return `You are a future planning data extractor. Extract ALL text and data from the uploaded file.
 The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
 
+The file may contain MANY rows / clients / plans. You MUST extract one structured record per logical entry — do NOT collapse multiple clients or rows into a single record. If the file is a single short note with only one follow-up, return a one-element array.
+
 First, provide a complete text extraction of everything in the file.
-Then, extract structured data and return a JSON block.
+Then, extract structured data and return a JSON ARRAY (one element per client/plan/follow-up).
 
 Return your response in this exact format:
 
@@ -512,33 +520,37 @@ EXTRACTED_TEXT:
 
 STRUCTURED_DATA:
 \`\`\`json
-{
-  "note": string (clean summary),
-  "followUpClient": string | null,
-  "followUpReason": string | null,
-  "focusService": string | null,
-  "focusReason": string | null,
-  "delayedProject": string | null,
-  "delayReason": string | null,
-  "nextSteps": string | null,
-  "customerName": string | null,
-  "category": "follow_up" | "focus" | "delay" | "planning" | "general",
-  "status": "new" | "pending" | "in_progress"
-}
+[
+  {
+    "note": string (clean summary of this entry),
+    "followUpClient": string | null,
+    "followUpReason": string | null,
+    "focusService": string | null,
+    "focusReason": string | null,
+    "delayedProject": string | null,
+    "delayReason": string | null,
+    "nextSteps": string | null,
+    "customerName": string | null,
+    "category": "follow_up" | "focus" | "delay" | "planning" | "general",
+    "status": "new" | "pending" | "in_progress"
+  }
+]
 \`\`\`
 
 Rules:
-- Extract ALL text content from the file, even if it doesn't fit the structured fields.
-- If a structured field is not found, set it to null.
-- Return BOTH the extracted text AND the JSON.`;
+- Return a JSON ARRAY, not a single object.
+- Create one array element per client / row / plan in the file. If the file has 30 follow-ups, return 30 (or more) elements.
+- Extract ALL text content from the file into EXTRACTED_TEXT, even if it doesn't fit the structured fields.
+- If a structured field is not found for an entry, set it to null.
+- Return BOTH the extracted text AND the JSON array.`;
 }
 
 function parseFileExtractionResponse(
   responseText: string,
   reportType: ReportType,
-): { extractedText: string; structuredData: Record<string, unknown> } {
+): { extractedText: string; records: Record<string, unknown>[] } {
   let extractedText = responseText;
-  let structuredData: Record<string, unknown> = {};
+  let records: Record<string, unknown>[] = [];
 
   // Try to split EXTRACTED_TEXT and STRUCTURED_DATA sections
   const textMatch = responseText.match(
@@ -551,13 +563,65 @@ function parseFileExtractionResponse(
   const jsonMatch = responseText.match(/```json\s*\n?([\s\S]*?)```/);
   if (jsonMatch) {
     try {
-      structuredData = JSON.parse(jsonMatch[1].trim());
+      const parsed = JSON.parse(jsonMatch[1].trim());
+      if (Array.isArray(parsed)) {
+        records = parsed.filter((r) => r && typeof r === 'object') as Record<string, unknown>[];
+      } else if (parsed && typeof parsed === 'object') {
+        // Model returned a single object — wrap it as a one-element array so the
+        // downstream loop still creates one record.
+        records = [parsed as Record<string, unknown>];
+      }
     } catch {
       console.error('Failed to parse structured data JSON from file extraction');
     }
   }
 
-  return { extractedText, structuredData };
+  return { extractedText, records };
+}
+
+function buildRecordFromStructuredData(
+  structuredData: Record<string, unknown>,
+  extractedText: string,
+  reportType: ReportType,
+  modelName: string,
+): ParsedDemandRecord {
+  const fallback = parseDemandMessage(
+    (structuredData.note as string) || extractedText.slice(0, 500),
+    reportType,
+  );
+
+  const parsed: ParsedDemandRecord = {
+    ...fallback,
+    aiProvider: 'gemini',
+    aiModel: modelName,
+    confidence: 0.85,
+    note: (structuredData.note as string) || extractedText.slice(0, 500),
+    customerName: (structuredData.customerName as string) || null,
+    category: (structuredData.category as string) || fallback.category,
+    status: (structuredData.status as string) || fallback.status,
+  };
+
+  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
+    parsed.totalSales = typeof structuredData.totalSales === 'number' ? structuredData.totalSales : null;
+    parsed.demand = typeof structuredData.demand === 'number' ? structuredData.demand : null;
+    parsed.serviceName = (structuredData.serviceName as string) || null;
+    parsed.serviceAmount = typeof structuredData.serviceAmount === 'number' ? structuredData.serviceAmount : null;
+    parsed.serviceQty = typeof structuredData.serviceQty === 'number' ? structuredData.serviceQty : null;
+    parsed.appointments = typeof structuredData.appointments === 'number' ? structuredData.appointments : null;
+    parsed.projectName = (structuredData.projectName as string) || null;
+    parsed.projectStatus = (structuredData.projectStatus as string) || null;
+    parsed.marketingBudget = typeof structuredData.marketingBudget === 'number' ? structuredData.marketingBudget : null;
+  } else {
+    parsed.followUpClient = (structuredData.followUpClient as string) || null;
+    parsed.followUpReason = (structuredData.followUpReason as string) || null;
+    parsed.focusService = (structuredData.focusService as string) || null;
+    parsed.focusReason = (structuredData.focusReason as string) || null;
+    parsed.delayedProject = (structuredData.delayedProject as string) || null;
+    parsed.delayReason = (structuredData.delayReason as string) || null;
+    parsed.nextSteps = (structuredData.nextSteps as string) || null;
+  }
+
+  return parsed;
 }
 
 export async function extractDataFromFile({
@@ -576,7 +640,7 @@ export async function extractDataFromFile({
   caption?: string;
   apiKey: string;
   model?: string | null;
-}): Promise<{ extractedText: string; parsed: ParsedDemandRecord }> {
+}): Promise<{ extractedText: string; parsed: ParsedDemandRecord[] }> {
   const genAI = new GoogleGenAI({ apiKey });
   const modelName = model || 'gemini-3.5-flash';
   const prompt = buildFileExtractionPrompt(reportType, caption);
@@ -623,56 +687,41 @@ export async function extractDataFromFile({
   }
 
   if (!responseText) {
-    // Return a minimal fallback
+    // Return a minimal fallback as a one-element array.
     return {
       extractedText: `[File: ${fileName}] - Could not extract content`,
-      parsed: {
-        ...parseDemandMessage(`File uploaded: ${fileName}`, reportType),
-        aiProvider: 'gemini',
-        aiModel: modelName,
-        confidence: 0.1,
-      },
+      parsed: [
+        {
+          ...parseDemandMessage(`File uploaded: ${fileName}`, reportType),
+          aiProvider: 'gemini',
+          aiModel: modelName,
+          confidence: 0.1,
+        },
+      ],
     };
   }
 
-  const { extractedText, structuredData } = parseFileExtractionResponse(responseText, reportType);
+  const { extractedText, records } = parseFileExtractionResponse(responseText, reportType);
 
-  // Build the ParsedDemandRecord from structured data
-  const fallback = parseDemandMessage(
-    structuredData.note as string || extractedText.slice(0, 500),
-    reportType,
-  );
-
-  const parsed: ParsedDemandRecord = {
-    ...fallback,
-    aiProvider: 'gemini',
-    aiModel: modelName,
-    confidence: 0.85,
-    note: (structuredData.note as string) || extractedText.slice(0, 500),
-    customerName: (structuredData.customerName as string) || null,
-    category: (structuredData.category as string) || fallback.category,
-    status: (structuredData.status as string) || fallback.status,
-  };
-
-  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-    parsed.totalSales = typeof structuredData.totalSales === 'number' ? structuredData.totalSales : null;
-    parsed.demand = typeof structuredData.demand === 'number' ? structuredData.demand : null;
-    parsed.serviceName = (structuredData.serviceName as string) || null;
-    parsed.serviceAmount = typeof structuredData.serviceAmount === 'number' ? structuredData.serviceAmount : null;
-    parsed.serviceQty = typeof structuredData.serviceQty === 'number' ? structuredData.serviceQty : null;
-    parsed.appointments = typeof structuredData.appointments === 'number' ? structuredData.appointments : null;
-    parsed.projectName = (structuredData.projectName as string) || null;
-    parsed.projectStatus = (structuredData.projectStatus as string) || null;
-    parsed.marketingBudget = typeof structuredData.marketingBudget === 'number' ? structuredData.marketingBudget : null;
-  } else {
-    parsed.followUpClient = (structuredData.followUpClient as string) || null;
-    parsed.followUpReason = (structuredData.followUpReason as string) || null;
-    parsed.focusService = (structuredData.focusService as string) || null;
-    parsed.focusReason = (structuredData.focusReason as string) || null;
-    parsed.delayedProject = (structuredData.delayedProject as string) || null;
-    parsed.delayReason = (structuredData.delayReason as string) || null;
-    parsed.nextSteps = (structuredData.nextSteps as string) || null;
+  // If the model returned no parseable records, fall back to a single heuristic
+  // record from the extracted text so the user still sees something.
+  if (records.length === 0) {
+    return {
+      extractedText,
+      parsed: [
+        {
+          ...parseDemandMessage(extractedText.slice(0, 500), reportType),
+          aiProvider: 'gemini',
+          aiModel: modelName,
+          confidence: 0.3,
+        },
+      ],
+    };
   }
+
+  const parsed = records.map((structuredData) =>
+    buildRecordFromStructuredData(structuredData, extractedText, reportType, modelName),
+  );
 
   return { extractedText, parsed };
 }

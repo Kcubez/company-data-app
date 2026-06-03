@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import {
   isReportType,
   parseDemandMessageWithGemini,
@@ -536,7 +537,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const caption = (message.caption as string) || undefined;
-        const { extractedText, parsed: parsedDemand } = await extractDataFromFile({
+        const { extractedText, parsed: parsedDemands } = await extractDataFromFile({
           fileBuffer: downloaded.buffer,
           mimeType: fileInfo.mimeType,
           fileName: fileInfo.fileName,
@@ -558,47 +559,85 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Customer matching (same as text flow)
-        let customerId: string | null = null;
-        if (parsedDemand.customerName) {
-          const normalizedName = normalizeCustomerName(parsedDemand.customerName);
-          let customer = await prisma.customer.findFirst({
-            where: { nameNormalized: normalizedName },
-          });
-          if (!customer) {
-            customer = await prisma.customer.findUnique({
-              where: { name: parsedDemand.customerName },
+        // For each extracted demand record, resolve / create the customer
+        // and build the nested create input.
+        const demandRecordCreates: Prisma.DemandRecordUncheckedCreateWithoutMessageInput[] = [];
+        for (const parsedDemand of parsedDemands) {
+          let customerId: string | null = null;
+          if (parsedDemand.customerName) {
+            const normalizedName = normalizeCustomerName(parsedDemand.customerName);
+            let customer = await prisma.customer.findFirst({
+              where: { nameNormalized: normalizedName },
             });
-          }
-          if (customer) {
-            await prisma.customer.update({
-              where: { id: customer.id },
-              data: {
-                updatedAt: new Date(),
-                nameNormalized: customer.nameNormalized || normalizedName,
-              },
-            });
-          } else {
-            customer = await prisma.customer.create({
-              data: {
-                name: parsedDemand.customerName,
-                nameNormalized: normalizedName,
-              },
-            });
-          }
-          customerId = customer.id;
+            if (!customer) {
+              customer = await prisma.customer.findUnique({
+                where: { name: parsedDemand.customerName },
+              });
+            }
+            if (customer) {
+              await prisma.customer.update({
+                where: { id: customer.id },
+                data: {
+                  updatedAt: new Date(),
+                  nameNormalized: customer.nameNormalized || normalizedName,
+                },
+              });
+            } else {
+              customer = await prisma.customer.create({
+                data: {
+                  name: parsedDemand.customerName,
+                  nameNormalized: normalizedName,
+                },
+              });
+            }
+            customerId = customer.id;
 
-          await prisma.customerActivity.create({
-            data: {
-              customerId: customer.id,
-              senderId: sender.id,
-              action: reportType,
-              description: `File: ${fileInfo.fileName} - ${parsedDemand.note}`,
-            },
+            await prisma.customerActivity.create({
+              data: {
+                customerId: customer.id,
+                senderId: sender.id,
+                action: reportType,
+                description: `File: ${fileInfo.fileName} - ${parsedDemand.note}`,
+              },
+            });
+          }
+
+          demandRecordCreates.push({
+            senderId: sender.id,
+            customerId,
+            reportType: parsedDemand.reportType,
+            customerName: parsedDemand.customerName,
+            category: parsedDemand.category,
+            status: parsedDemand.status,
+            note: parsedDemand.note,
+            totalSales: parsedDemand.totalSales,
+            demand: parsedDemand.demand,
+            serviceName: parsedDemand.serviceName,
+            serviceAmount: parsedDemand.serviceAmount,
+            serviceQty: parsedDemand.serviceQty,
+            appointments: parsedDemand.appointments,
+            projectName: parsedDemand.projectName,
+            projectStatus: parsedDemand.projectStatus,
+            marketingBudget: parsedDemand.marketingBudget,
+            followUpClient: parsedDemand.followUpClient,
+            followUpReason: parsedDemand.followUpReason,
+            focusService: parsedDemand.focusService,
+            focusReason: parsedDemand.focusReason,
+            delayedProject: parsedDemand.delayedProject,
+            delayReason: parsedDemand.delayReason,
+            nextSteps: parsedDemand.nextSteps,
+            quantity: parsedDemand.quantity,
+            product: parsedDemand.product,
+            amount: parsedDemand.amount,
+            unit: parsedDemand.unit,
+            followUpDate: parsedDemand.followUpDate,
+            confidence: parsedDemand.confidence,
+            aiProvider: parsedDemand.aiProvider,
+            aiModel: parsedDemand.aiModel,
           });
         }
 
-        // Create message + demand record
+        // Create the parent message + all its demand records in one go.
         await prisma.telegramMessage.create({
           data: {
             telegramMsgId: message.message_id,
@@ -607,62 +646,38 @@ export async function POST(req: NextRequest) {
             chatId,
             chatTitle: message.chat.title || null,
             receivedAt,
-            demandRecord: {
-              create: {
-                senderId: sender.id,
-                customerId,
-                reportType: parsedDemand.reportType,
-                customerName: parsedDemand.customerName,
-                category: parsedDemand.category,
-                status: parsedDemand.status,
-                note: parsedDemand.note,
-                totalSales: parsedDemand.totalSales,
-                demand: parsedDemand.demand,
-                serviceName: parsedDemand.serviceName,
-                serviceAmount: parsedDemand.serviceAmount,
-                serviceQty: parsedDemand.serviceQty,
-                appointments: parsedDemand.appointments,
-                projectName: parsedDemand.projectName,
-                projectStatus: parsedDemand.projectStatus,
-                marketingBudget: parsedDemand.marketingBudget,
-                followUpClient: parsedDemand.followUpClient,
-                followUpReason: parsedDemand.followUpReason,
-                focusService: parsedDemand.focusService,
-                focusReason: parsedDemand.focusReason,
-                delayedProject: parsedDemand.delayedProject,
-                delayReason: parsedDemand.delayReason,
-                nextSteps: parsedDemand.nextSteps,
-                quantity: parsedDemand.quantity,
-                product: parsedDemand.product,
-                amount: parsedDemand.amount,
-                unit: parsedDemand.unit,
-                followUpDate: parsedDemand.followUpDate,
-                confidence: parsedDemand.confidence,
-                aiProvider: parsedDemand.aiProvider,
-                aiModel: parsedDemand.aiModel,
-              },
+            demandRecords: {
+              create: demandRecordCreates,
             },
           },
         });
 
-        // Confirmation message
-        const confirmParts = ['✅ <b>ဖိုင်မှတ်ပြီးပါပြီ!</b>', `📎 ${fileInfo.fileName}`];
-        if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-          confirmParts.push(`📊 Report Type: Business Report`);
-          if (parsedDemand.totalSales) confirmParts.push(`💰 Total Sales: ${parsedDemand.totalSales.toLocaleString()}`);
-          if (parsedDemand.demand) confirmParts.push(`📈 Demand: ${parsedDemand.demand}`);
-          if (parsedDemand.serviceName) confirmParts.push(`🛠️ Service: ${parsedDemand.serviceName}`);
-          if (parsedDemand.appointments) confirmParts.push(`📅 Appointments: ${parsedDemand.appointments}`);
-          if (parsedDemand.projectName) confirmParts.push(`📁 Project: ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
-          if (parsedDemand.marketingBudget) confirmParts.push(`💸 Marketing: ${parsedDemand.marketingBudget.toLocaleString()}`);
-        } else {
-          confirmParts.push(`🔮 Report Type: Future Plan`);
-          if (parsedDemand.followUpClient) confirmParts.push(`👤 Follow-up: ${parsedDemand.followUpClient}`);
-          if (parsedDemand.focusService) confirmParts.push(`🎯 Focus: ${parsedDemand.focusService}`);
-          if (parsedDemand.delayedProject) confirmParts.push(`⚠️ Delayed: ${parsedDemand.delayedProject}`);
-          if (parsedDemand.nextSteps) confirmParts.push(`➡️ Next: ${parsedDemand.nextSteps}`);
-        }
-        confirmParts.push(`\n📋 ${parsedDemand.note}`);
+        // Confirmation message — summarize every extracted record.
+        const confirmParts = [
+          `✅ <b>ဖိုင်မှတ်ပြီးပါပြီ!</b> (${parsedDemands.length} record${parsedDemands.length === 1 ? '' : 's'})`,
+          `📎 ${fileInfo.fileName}`,
+        ];
+
+        parsedDemands.forEach((parsedDemand, idx) => {
+          const header = `\n<b>#${idx + 1}</b>`;
+          const lines: string[] = [header];
+          if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
+            if (parsedDemand.customerName) lines.push(`👤 Customer: ${parsedDemand.customerName}`);
+            if (parsedDemand.totalSales) lines.push(`💰 Total Sales: ${parsedDemand.totalSales.toLocaleString()}`);
+            if (parsedDemand.demand) lines.push(`📈 Demand: ${parsedDemand.demand}`);
+            if (parsedDemand.serviceName) lines.push(`🛠️ Service: ${parsedDemand.serviceName}`);
+            if (parsedDemand.appointments) lines.push(`📅 Appointments: ${parsedDemand.appointments}`);
+            if (parsedDemand.projectName) lines.push(`📁 Project: ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
+            if (parsedDemand.marketingBudget) lines.push(`💸 Marketing: ${parsedDemand.marketingBudget.toLocaleString()}`);
+          } else {
+            if (parsedDemand.followUpClient) lines.push(`👤 Follow-up: ${parsedDemand.followUpClient}`);
+            if (parsedDemand.focusService) lines.push(`🎯 Focus: ${parsedDemand.focusService}`);
+            if (parsedDemand.delayedProject) lines.push(`⚠️ Delayed: ${parsedDemand.delayedProject}`);
+            if (parsedDemand.nextSteps) lines.push(`➡️ Next: ${parsedDemand.nextSteps}`);
+          }
+          if (parsedDemand.note) lines.push(`📋 ${parsedDemand.note}`);
+          confirmParts.push(lines.join('\n'));
+        });
 
         await sendTelegramMessage({
           botToken: settings.botToken,
@@ -804,40 +819,42 @@ export async function POST(req: NextRequest) {
         chatId,
         chatTitle: message.chat.title || null,
         receivedAt,
-        demandRecord: {
-          create: {
-            senderId: sender.id,
-            customerId,
-            reportType: parsedDemand.reportType,
-            customerName: parsedDemand.customerName,
-            category: parsedDemand.category,
-            status: parsedDemand.status,
-            note: parsedDemand.note,
-            totalSales: parsedDemand.totalSales,
-            demand: parsedDemand.demand,
-            serviceName: parsedDemand.serviceName,
-            serviceAmount: parsedDemand.serviceAmount,
-            serviceQty: parsedDemand.serviceQty,
-            appointments: parsedDemand.appointments,
-            projectName: parsedDemand.projectName,
-            projectStatus: parsedDemand.projectStatus,
-            marketingBudget: parsedDemand.marketingBudget,
-            followUpClient: parsedDemand.followUpClient,
-            followUpReason: parsedDemand.followUpReason,
-            focusService: parsedDemand.focusService,
-            focusReason: parsedDemand.focusReason,
-            delayedProject: parsedDemand.delayedProject,
-            delayReason: parsedDemand.delayReason,
-            nextSteps: parsedDemand.nextSteps,
-            quantity: parsedDemand.quantity,
-            product: parsedDemand.product,
-            amount: parsedDemand.amount,
-            unit: parsedDemand.unit,
-            followUpDate: parsedDemand.followUpDate,
-            confidence: parsedDemand.confidence,
-            aiProvider: parsedDemand.aiProvider,
-            aiModel: parsedDemand.aiModel,
-          },
+        demandRecords: {
+          create: [
+            {
+              senderId: sender.id,
+              customerId,
+              reportType: parsedDemand.reportType,
+              customerName: parsedDemand.customerName,
+              category: parsedDemand.category,
+              status: parsedDemand.status,
+              note: parsedDemand.note,
+              totalSales: parsedDemand.totalSales,
+              demand: parsedDemand.demand,
+              serviceName: parsedDemand.serviceName,
+              serviceAmount: parsedDemand.serviceAmount,
+              serviceQty: parsedDemand.serviceQty,
+              appointments: parsedDemand.appointments,
+              projectName: parsedDemand.projectName,
+              projectStatus: parsedDemand.projectStatus,
+              marketingBudget: parsedDemand.marketingBudget,
+              followUpClient: parsedDemand.followUpClient,
+              followUpReason: parsedDemand.followUpReason,
+              focusService: parsedDemand.focusService,
+              focusReason: parsedDemand.focusReason,
+              delayedProject: parsedDemand.delayedProject,
+              delayReason: parsedDemand.delayReason,
+              nextSteps: parsedDemand.nextSteps,
+              quantity: parsedDemand.quantity,
+              product: parsedDemand.product,
+              amount: parsedDemand.amount,
+              unit: parsedDemand.unit,
+              followUpDate: parsedDemand.followUpDate,
+              confidence: parsedDemand.confidence,
+              aiProvider: parsedDemand.aiProvider,
+              aiModel: parsedDemand.aiModel,
+            },
+          ],
         },
       },
     });
