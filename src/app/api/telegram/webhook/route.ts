@@ -281,30 +281,38 @@ const REPORT_TYPE_BUTTONS = {
 function getFormatPrompt(reportType: ReportType): string {
   if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
     return [
-      "<b>📈 Business Report</b> ရွေးထားပါတယ်။",
+      "📈 <b>လုပ်ငန်းအစီရင်ခံစာ (Business Report) Mode</b>",
       "",
-      "ဒီ format နဲ့ပို့လို့ရပါတယ်:",
-      "Total Sales: (ရောင်းရငွေ)",
-      "Demand: (demand အရေအတွက်)",
-      "Service: (နာမည်) - Amount: (ငွေ) - Qty: (အရေအတွက်)",
-      "Appointments: (ချိန်းဆိုမှု အရေအတွက်)",
-      "Project: (နာမည်) - Status: (on_track/delayed/completed)",
-      "Marketing Budget: (ကုန်ကျစရိတ်)",
+      "ဤကဏ္ဍတွင် အစီရင်ခံစာ စာသား သို့မဟုတ် သက်ဆိုင်ရာ Excel / CSV ဖိုင်များကို တိုက်ရိုက် ပေးပို့နိုင်ပါသည်။",
       "",
-      "မှတ်ချက်: မလိုတာတွေ ချန်ထားလို့ရပါတယ်။",
+      "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း ရေးသားပေးပို့နိုင်ပါသည် -</b>",
+      "<pre>",
+      "• Total Sales: [ရောင်းရငွေပမာဏ]",
+      "• Demand: [ဝယ်လိုအား အသေးစိတ်]",
+      "• Service: [ဝန်ဆောင်မှုအမည်] - Amount: [ဝင်ငွေ] - Qty: [အရေအတွက်]",
+      "• Appointments: [ချိန်းဆိုမှု အရေအတွက်]",
+      "• Project: [စီမံကိန်းအမည်] - Status: [on_track / delayed / completed / at_risk]",
+      "• Marketing Budget: [စျေးကွက်မြှင့်တင်ရေး အသုံးစရိတ်]",
+      "• Note: [အခြားမှတ်ချက်]",
+      "</pre>",
+      "💡 <i>အကြံပြုချက်: မလိုအပ်သော စာကြောင်းများကို ချန်လှပ်ထားနိုင်ပါသည်။ Excel/CSV ဖိုင် တင်သွင်းပါကလည်း AI မှ အလိုအလျောက် ဆန်းစစ်ပေးမည် ဖြစ်ပါသည်။</i>",
     ].join("\n");
   }
 
   return [
-    "<b>🔮 Future Plan Report</b> ရွေးထားပါတယ်။",
+    "🔮 <b>ရှေ့လုပ်ငန်းစဉ်အစီအမံ (Future Plan) Mode</b>",
     "",
-    "ဒီ format နဲ့ပို့လို့ရပါတယ်:",
-    "Follow-up: (client နာမည်) - Reason: (ဘာကြောင့်)",
-    "Focus Service: (service နာမည်) - Reason: (ဘာကြောင့်)",
-    "Delayed Project: (project နာမည်) - Reason: (ဘာကြောင့်)",
-    "Next Steps: (ဘာတွေဆက်လုပ်မလဲ)",
+    "ဤကဏ္ဍတွင် အစီအမံ စာသား သို့မဟုတ် သက်ဆိုင်ရာ Excel / CSV ဖိုင်များကို တိုက်ရိုက် ပေးပို့နိုင်ပါသည်။",
     "",
-    "မှတ်ချက်: မလိုတာတွေ ချန်ထားလို့ရပါတယ်။",
+    "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း ရေးသားပေးပို့နိုင်ပါသည် -</b>",
+    "<pre>",
+    "• Follow-up: [Client နာမည်] - Reason: [ဆက်သွယ်ရမည့် အကြောင်းရင်း]",
+    "• Focus Service: [ဝန်ဆောင်မှုအမည်] - Reason: [အကြောင်းရင်း]",
+    "• Delayed Project: [စီမံကိန်းအမည်] - Reason: [အကြောင်းရင်း]",
+    "• Next Steps: [ရှေ့ဆက်လုပ်ဆောင်မည့် အဆင့်များ]",
+    "• Note: [အခြားမှတ်ချက်]",
+    "</pre>",
+    "💡 <i>အကြံပြုချက်: မလိုအပ်သော စာကြောင်းများကို ချန်လှပ်ထားနိုင်ပါသည်။ Excel/CSV ဖိုင် တင်သွင်းပါကလည်း AI မှ အလိုအလျောက် ဆန်းစစ်ပေးမည် ဖြစ်ပါသည်။</i>",
   ].join("\n");
 }
 
@@ -421,8 +429,19 @@ async function processFileInBackground({
         }
         if (progressMsgId) {
           const statusText = errorMsg
-            ? `⚠️ <b>${fileInfo.fileName}</b> ဖတ်ရာတွင် အမှားအချို့ရှိခဲ့သည်။ (${current}/${total} chunks)\n\n<code>${errorMsg}</code>`
-            : `⏳ <b>${fileInfo.fileName}</b> ဖိုင်ကို ဖတ်နေပါသည်... (${current}/${total} chunks ပြီးစီး)`;
+            ? [
+                "⚠️ <b>ဖိုင်ဆန်းစစ်မှု သတိပေးချက်</b>",
+                "━━━━━━━━━━━━━━━━━━━━",
+                `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+                `⚙️ <b>အခြေအနေ:</b> အပိုင်း (<code>${current}/${total}</code>) chunks ဖတ်ယူရာတွင် ချို့ယွင်းချက် ရှိခဲ့ပါသည်။`,
+                `❌ <b>အသေးစိတ်:</b> <code>${errorMsg}</code>`,
+              ].join("\n")
+            : [
+                "⏳ <b>ဖိုင်ကို အသေးစိတ် ဆန်းစစ်နေပါသည်</b>",
+                "━━━━━━━━━━━━━━━━━━━━",
+                `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+                `📊 <b>တိုးတက်မှု အခြေအနေ:</b> အပိုင်း (<code>${current}/${total}</code>) chunks ကို ဆန်းစစ်နေပါသည်...`,
+              ].join("\n");
 
           await editTelegramMessage({
             botToken: settings.botToken,
@@ -534,40 +553,56 @@ async function processFileInBackground({
     // Confirmation message — summarize every extracted record.
     const confirmParts = [];
     if (errors.length > 0) {
-      confirmParts.push(`⚠️ <b>ဖိုင်ကို အပြည့်အစုံ မဖတ်နိုင်ခဲ့ပါ။</b> (${parsedDemands.length} records သွင်းပြီး)`);
-      confirmParts.push(`📎 ${fileInfo.fileName}`);
-      confirmParts.push(`\n❌ <b>အဆင်မပြေခဲ့သည့် Chunk များ:</b>`);
+      confirmParts.push([
+        "⚠️ <b>ဖိုင်အချက်အလက် တင်သွင်းမှု သတိပေးချက်</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+        `⚠️ <b>အခြေအနေ:</b> အချက်အလက်များအား အပြည့်အစုံ ဖတ်ယူနိုင်ခြင်း မရှိပါ။ (မှတ်တမ်း <b>${parsedDemands.length}</b> ခုအား သွင်းယူပြီး)`,
+        "",
+        "❌ <b>ချို့ယွင်းချက်ရှိခဲ့သော အပိုင်းများ (Chunks):</b>",
+      ].join("\n"));
       errors.forEach((errLine) => {
-        confirmParts.push(`• ${errLine}`);
+        confirmParts.push(`• <code>${errLine}</code>`);
       });
+      confirmParts.push(""); // empty line
     } else {
-      confirmParts.push(`✅ <b>ဖိုင်မှတ်ပြီးပါပြီ!</b> (${parsedDemands.length} record${parsedDemands.length === 1 ? '' : 's'})`);
-      confirmParts.push(`📎 ${fileInfo.fileName}`);
+      confirmParts.push([
+        "✅ <b>ဖိုင်အချက်အလက် တင်သွင်းမှု အောင်မြင်ပါသည်</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+        `📊 <b>စုစုပေါင်း မှတ်တမ်း:</b> <b>${parsedDemands.length}</b> records`,
+        "",
+      ].join("\n"));
+    }
+
+    if (parsedDemands.length > 0) {
+      confirmParts.push([
+        "📋 <b>နမူနာ တင်သွင်းခဲ့သည့် အချက်အလက်များ (ပထမဆုံး ၁၀ ခု)</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+      ].join("\n"));
     }
 
     parsedDemands.slice(0, 10).forEach((parsedDemand, idx) => {
-      const header = `\n<b>#${idx + 1}</b>`;
-      const lines: string[] = [header];
+      const recordHeader = `<b>#${idx + 1} 👤 ${parsedDemand.customerName || parsedDemand.followUpClient || 'အမည်မဖော်ပြထားသူ'}</b>`;
+      const lines: string[] = [recordHeader];
       if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-        if (parsedDemand.customerName) lines.push(`👤 Customer: ${parsedDemand.customerName}`);
-        if (parsedDemand.totalSales) lines.push(`💰 Total Sales: ${parsedDemand.totalSales.toLocaleString()}`);
-        if (parsedDemand.demand) lines.push(`📈 Demand: ${parsedDemand.demand}`);
-        if (parsedDemand.serviceName) lines.push(`🛠️ Service: ${parsedDemand.serviceName}`);
-        if (parsedDemand.appointments) lines.push(`📅 Appointments: ${parsedDemand.appointments}`);
-        if (parsedDemand.projectName) lines.push(`📁 Project: ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
-        if (parsedDemand.marketingBudget) lines.push(`💸 Marketing: ${parsedDemand.marketingBudget.toLocaleString()}`);
+        if (parsedDemand.totalSales) lines.push(`  ▫️ <b>Total Sales:</b> 💰 ${parsedDemand.totalSales.toLocaleString()} Ks`);
+        if (parsedDemand.demand) lines.push(`  ▫️ <b>Demand:</b> 📈 ${parsedDemand.demand}`);
+        if (parsedDemand.serviceName) lines.push(`  ▫️ <b>Service:</b> 🛠️ ${parsedDemand.serviceName}`);
+        if (parsedDemand.appointments) lines.push(`  ▫️ <b>Appointments:</b> 📅 ${parsedDemand.appointments}`);
+        if (parsedDemand.projectName) lines.push(`  ▫️ <b>Project:</b> 📁 ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
+        if (parsedDemand.marketingBudget) lines.push(`  ▫️ <b>Marketing:</b> 💸 ${parsedDemand.marketingBudget.toLocaleString()} Ks`);
       } else {
-        if (parsedDemand.followUpClient) lines.push(`👤 Follow-up: ${parsedDemand.followUpClient}`);
-        if (parsedDemand.focusService) lines.push(`🎯 Focus: ${parsedDemand.focusService}`);
-        if (parsedDemand.delayedProject) lines.push(`⚠️ Delayed: ${parsedDemand.delayedProject}`);
-        if (parsedDemand.nextSteps) lines.push(`➡️ Next: ${parsedDemand.nextSteps}`);
+        if (parsedDemand.focusService) lines.push(`  ▫️ <b>Focus:</b> 🎯 ${parsedDemand.focusService}`);
+        if (parsedDemand.delayedProject) lines.push(`  ▫️ <b>Delayed:</b> ⚠️ ${parsedDemand.delayedProject}`);
+        if (parsedDemand.nextSteps) lines.push(`  ▫️ <b>Next:</b> ➡️ ${parsedDemand.nextSteps}`);
       }
-      if (parsedDemand.note) lines.push(`📋 ${parsedDemand.note}`);
+      if (parsedDemand.note) lines.push(`  ▫️ <b>Note:</b> 📋 <i>${parsedDemand.note}</i>`);
       confirmParts.push(lines.join('\n'));
     });
 
     if (parsedDemands.length > 10) {
-      confirmParts.push(`\n... <i>နှင့် ကျန်ရှိသော ${parsedDemands.length - 10} records ကိုလည်း သိမ်းဆည်းပြီးပါပြီ။</i>`);
+      confirmParts.push(`\n... <i>နှင့် ကျန်ရှိသော ${parsedDemands.length - 10} records ကိုလည်း အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။</i>`);
     }
 
     if (progressMsgId) {
@@ -586,18 +621,27 @@ async function processFileInBackground({
     }
   } catch (err: any) {
     console.error('Background file processing error:', err);
+    const errorText = [
+      "❌ <b>ဖိုင်ဆန်းစစ်ရာတွင် ချို့ယွင်းချက် ဖြစ်ပေါ်ခဲ့ပါသည်</b>",
+      "━━━━━━━━━━━━━━━━━━━━",
+      `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+      "⚠️ <b>အခြေအနေ:</b> နည်းပညာဆိုင်ရာ ချို့ယွင်းချက် ဖြစ်ပေါ်ခဲ့ပါသည်။ ကျေးဇူးပြု၍ ပြန်လည်ကြိုးစားပေးပါရန်။",
+      "",
+      "🔍 <b>အသေးစိတ် ချို့ယွင်းချက်:</b>",
+      `<code>${err.message || err}</code>`,
+    ].join("\n");
     if (progressMsgId) {
       await editTelegramMessage({
         botToken: settings.botToken,
         chatId,
         messageId: progressMsgId,
-        text: `❌ <b>ဖိုင်ဖတ်ရာတွင် အမှားရှိပါသည်။ ပြန်လည်ကြိုးစားပါ။</b>\n\nError: <code>${err.message || err}</code>`,
+        text: errorText,
       });
     } else {
       await sendTelegramMessage({
         botToken: settings.botToken,
         chatId,
-        text: `❌ <b>ဖိုင်ဖတ်ရာတွင် အမှားရှိပါသည်။ ပြန်လည်ကြိုးစားပါ။</b>\n\nError: <code>${err.message || err}</code>`,
+        text: errorText,
       });
     }
   }
@@ -634,12 +678,16 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: [
-              "🤖 <b>Q & A Mode</b>",
+              "🤖 <b>Q&A (အမေး/အဖြေ) ကဏ္ဍ</b>",
               "",
-              "မေးချင်တာကို ရိုက်ပြီး မေးမြန်းနိုင်ပါတယ်။",
-              "ရှိပြီးသား business data တွေအပေါ်မှာ AI က ဖြေပေးပါမယ်။",
+              "စနစ်အတွင်းရှိ လုပ်ငန်းဆိုင်ရာ အချက်အလက်များ (Business Data) ကို အခြေခံ၍ <b>Gemini AI</b> မှ ဆန်းစစ်ဖြေကြားပေးမည် ဖြစ်ပါသည်။ သိရှိလိုသည်များကို မေးမြန်းနိုင်ပါသည်။",
               "",
-              "Menu သို့ ပြန်သွားချင်ရင် /start နှိပ်ပါ။",
+              "💡 <i>ဥပမာမေးခွန်းများ -</i>",
+              "• <code>ယနေ့ အရောင်းရဆုံး ဝန်ဆောင်မှုက ဘာလဲ?</code>",
+              "• <code>ပြီးခဲ့တဲ့အပတ်က ဘယ်စီမံကိန်းတွေ ကြန့်ကြာနေသလဲ?</code>",
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "↩️ <b>အဓိက Menu သို့ ပြန်သွားရန်:</b> /start သို့မဟုတ် /menu ဟု ပေးပို့နိုင်ပါသည်။",
             ].join("\n"),
           });
         }
@@ -653,7 +701,16 @@ export async function POST(req: NextRequest) {
             botToken: settings?.botToken,
             chatId: BigInt(chatId),
             messageId,
-            text: "📊 <b>Reports</b>\n\nဘယ် report အမျိုးအစား ရွေးချင်ပါသလဲ။",
+            text: [
+              "📊 <b>အစီရင်ခံစာ တင်သွင်းခြင်း (Reports Intake)</b>",
+              "",
+              "တင်သွင်းလိုသည့် အစီရင်ခံစာ အမျိုးအစားကို ရွေးချယ်ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "📈 <b>Business Report:</b> နေ့စဉ် အရောင်း၊ ဝယ်လိုအား၊ လုပ်ငန်းနှင့် စီမံကိန်း အခြေအနေများ။",
+              "🔮 <b>Future Plan:</b> ရှေ့ဆက်လုပ်ဆောင်မည့် အစီအစဉ်များနှင့် Follow-up Client များ။",
+              "━━━━━━━━━━━━━━━━━━━━",
+            ].join("\n"),
             replyMarkup: REPORT_TYPE_BUTTONS,
           });
         }
@@ -667,7 +724,17 @@ export async function POST(req: NextRequest) {
             botToken: settings?.botToken,
             chatId: BigInt(chatId),
             messageId,
-            text: "👋 ဘာလုပ်ချင်ပါသလဲ။",
+            text: [
+              "👋 <b>မင်္ဂလာပါ ခင်ဗျာ/ရှင်။</b>",
+              "",
+              "<b>Company Data System</b> မှ လှိုက်လှဲစွာ ကြိုဆိုပါသည်။",
+              "လုပ်ဆောင်လိုသည့် လုပ်ငန်းစဉ်အမျိုးအစားကို အောက်ပါ Menu မှ ရွေးချယ်ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "🤖 <b>Q&A မေးမြန်းရန်:</b> လုပ်ငန်းဆိုင်ရာ အချက်အလက်များကို AI ဖြင့် မေးမြန်းဆန်းစစ်ရန်။",
+              "📊 <b>အစီရင်ခံစာများ တင်သွင်းရန်:</b> Daily Reports နှင့် Future Plans များ တင်သွင်းရန်။",
+              "━━━━━━━━━━━━━━━━━━━━",
+            ].join("\n"),
             replyMarkup: MAIN_MENU_BUTTONS,
           });
         }
@@ -731,7 +798,17 @@ export async function POST(req: NextRequest) {
       await sendTelegramMessage({
         botToken: settings?.botToken,
         chatId,
-        text: "👋 <b>မင်္ဂလာပါ!</b>\n\nဘာလုပ်ချင်ပါသလဲခင်‌ဗျာ။",
+        text: [
+          "👋 <b>မင်္ဂလာပါ ခင်ဗျာ/ရှင်။</b>",
+          "",
+          "<b>Company Data System</b> မှ လှိုက်လှဲစွာ ကြိုဆိုပါသည်။",
+          "လုပ်ဆောင်လိုသည့် လုပ်ငန်းစဉ်အမျိုးအစားကို အောက်ပါ Menu မှ ရွေးချယ်ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
+          "",
+          "━━━━━━━━━━━━━━━━━━━━",
+          "🤖 <b>Q&A မေးမြန်းရန်:</b> လုပ်ငန်းဆိုင်ရာ အချက်အလက်များကို AI ဖြင့် မေးမြန်းဆန်းစစ်ရန်။",
+          "📊 <b>အစီရင်ခံစာများ တင်သွင်းရန်:</b> Daily Reports နှင့် Future Plans များ တင်သွင်းရန်။",
+          "━━━━━━━━━━━━━━━━━━━━",
+        ].join("\n"),
         replyMarkup: MAIN_MENU_BUTTONS,
       });
       return NextResponse.json({ ok: true });
@@ -755,7 +832,12 @@ export async function POST(req: NextRequest) {
         await sendTelegramMessage({
           botToken: settings?.botToken,
           chatId,
-          text: "⚠️ Q & A mode မှာ ဖိုင်လက်ခံလို့မရပါ။\n\nReport mode ကိုပြောင်းပြီး ဖိုင်ပို့ပေးပါ။\n/start နှိပ်ပြီး Reports ကိုရွေးပါ။",
+          text: [
+            "⚠️ <b>Q&A မေးမြန်းခြင်း ကဏ္ဍတွင် ဖိုင်များ ပေးပို့၍ မရနိုင်ပါ။</b>",
+            "",
+            "အစီရင်ခံစာ (Report) တင်သွင်းရန်အတွက် Report Mode သို့ ပြောင်းလဲပေးပို့ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
+            "/start သို့မဟုတ် /menu ကိုနှိပ်၍ 'Reports' ကို ရွေးချယ်နိုင်ပါသည်။",
+          ].join("\n"),
         });
         return NextResponse.json({ ok: true });
       }
@@ -765,7 +847,11 @@ export async function POST(req: NextRequest) {
         await sendTelegramMessage({
           botToken: settings?.botToken,
           chatId,
-          text: "⚠️ ဖိုင်ဆိုဒ် ကြီးလွန်းပါသည်။ 10MB အောက် ဖိုင်ပို့ပေးပါ။",
+          text: [
+            "⚠️ <b>ပေးပို့သော ဖိုင်အရွယ်အစားမှာ သတ်မှတ်ချက်ထက် ကျော်လွန်နေပါသည်။</b>",
+            "",
+            "ကျေးဇူးပြု၍ ဖိုင်အရွယ်အစား 10MB အောက်သာ ရှိသော ဖိုင်များကို ပေးပို့ပေးပါရန်။",
+          ].join("\n"),
         });
         return NextResponse.json({ ok: true });
       }
@@ -775,7 +861,11 @@ export async function POST(req: NextRequest) {
         await sendTelegramMessage({
           botToken: settings?.botToken,
           chatId,
-          text: "⚠️ Gemini API key သို့မဟုတ် Bot Token မရှိသေးပါ။ Settings မှာ ထည့်ပါ။",
+          text: [
+            "⚠️ <b>စနစ်ပြင်ဆင်မှု လိုအပ်ချက်ရှိနေပါသည်။</b>",
+            "",
+            "Gemini API key သို့မဟုတ် Bot Token ထည့်သွင်းထားခြင်း မရှိသေးပါ။ ကျေးဇူးပြု၍ settings စာမျက်နှာတွင် သွားရောက်ထည့်သွင်းပေးပါရန်။",
+          ].join("\n"),
         });
         return NextResponse.json({ ok: true });
       }
@@ -797,25 +887,36 @@ export async function POST(req: NextRequest) {
       const progressMsg = await sendTelegramMessage({
         botToken: settings.botToken,
         chatId,
-        text: `⏳ <b>${fileInfo.fileName}</b> ဖိုင်ကို ဖတ်နေပါသည်...`,
+        text: [
+          "⏳ <b>ဖိုင်တင်သွင်းမှုကို စတင်လုပ်ဆောင်နေပါသည်</b>",
+          "━━━━━━━━━━━━━━━━━━━━",
+          `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+          "⚙️ <b>အခြေအနေ:</b> အချက်အလက်များအား ဖတ်ယူရန် ပြင်ဆင်နေပါသည်...",
+        ].join("\n"),
       });
       const progressMsgId = progressMsg?.message_id || null;
 
       // Download the file
       const downloaded = await downloadTelegramFile(settings.botToken, fileInfo.fileId);
       if (!downloaded) {
+        const errorText = [
+          "❌ <b>ဖိုင်ဒေါင်းလုဒ် ရယူခြင်း မအောင်မြင်ပါ</b>",
+          "━━━━━━━━━━━━━━━━━━━━",
+          `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+          "⚠️ <b>အကြံပြုချက်:</b> ဖိုင်အား ပြန်လည်ပေးပို့ပေးပါရန် သို့မဟုတ် ဖိုင်ပုံစံ မှန်ကန်မှု ရှိမရှိ စစ်ဆေးပေးပါရန်။",
+        ].join("\n");
         if (progressMsgId) {
           await editTelegramMessage({
             botToken: settings.botToken,
             chatId,
             messageId: progressMsgId,
-            text: "❌ ဖိုင်ဒေါင်းလုဒ် မအောင်မြင်ပါ။ ပြန်လည်ပို့ပေးပါ။",
+            text: errorText,
           });
         } else {
           await sendTelegramMessage({
             botToken: settings.botToken,
             chatId,
-            text: "❌ ဖိုင်ဒေါင်းလုဒ် မအောင်မြင်ပါ။ ပြန်လည်ပို့ပေးပါ။",
+            text: errorText,
           });
         }
         return NextResponse.json({ ok: true });
@@ -1012,23 +1113,32 @@ export async function POST(req: NextRequest) {
     });
 
     // Confirmation message
-    const confirmParts = ['✅ <b>မှတ်ပြီးပါပြီ!</b>'];
+    const confirmParts = [
+      "✅ <b>အစီရင်ခံစာ မှတ်တမ်းတင်ခြင်း အောင်မြင်ပါသည်</b>",
+      "━━━━━━━━━━━━━━━━━━━━",
+      ""
+    ];
     if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-      confirmParts.push(`📊 Report Type: Business Report`);
-      if (parsedDemand.totalSales) confirmParts.push(`💰 Total Sales: ${parsedDemand.totalSales.toLocaleString()}`);
-      if (parsedDemand.demand) confirmParts.push(`📈 Demand: ${parsedDemand.demand}`);
-      if (parsedDemand.serviceName) confirmParts.push(`🛠️ Service: ${parsedDemand.serviceName}`);
-      if (parsedDemand.appointments) confirmParts.push(`📅 Appointments: ${parsedDemand.appointments}`);
-      if (parsedDemand.projectName) confirmParts.push(`📁 Project: ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
-      if (parsedDemand.marketingBudget) confirmParts.push(`💸 Marketing: ${parsedDemand.marketingBudget.toLocaleString()}`);
+      confirmParts.push("📊 <b>အမျိုးအစား:</b> 📈 လုပ်ငန်းအစီရင်ခံစာ (Business Report)");
+      if (parsedDemand.customerName) confirmParts.push(`👤 <b>Customer:</b> ${parsedDemand.customerName}`);
+      if (parsedDemand.totalSales) confirmParts.push(`💰 <b>Total Sales:</b> ${parsedDemand.totalSales.toLocaleString()} Ks`);
+      if (parsedDemand.demand) confirmParts.push(`📈 <b>Demand:</b> ${parsedDemand.demand}`);
+      if (parsedDemand.serviceName) confirmParts.push(`🛠️ <b>Service:</b> ${parsedDemand.serviceName}`);
+      if (parsedDemand.appointments) confirmParts.push(`📅 <b>Appointments:</b> ${parsedDemand.appointments}`);
+      if (parsedDemand.projectName) confirmParts.push(`📁 <b>Project:</b> ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
+      if (parsedDemand.marketingBudget) confirmParts.push(`💸 <b>Marketing:</b> ${parsedDemand.marketingBudget.toLocaleString()} Ks`);
     } else {
-      confirmParts.push(`🔮 Report Type: Future Plan`);
-      if (parsedDemand.followUpClient) confirmParts.push(`👤 Follow-up: ${parsedDemand.followUpClient}`);
-      if (parsedDemand.focusService) confirmParts.push(`🎯 Focus: ${parsedDemand.focusService}`);
-      if (parsedDemand.delayedProject) confirmParts.push(`⚠️ Delayed: ${parsedDemand.delayedProject}`);
-      if (parsedDemand.nextSteps) confirmParts.push(`➡️ Next: ${parsedDemand.nextSteps}`);
+      confirmParts.push("📊 <b>အမျိုးအစား:</b> 🔮 ရှေ့လုပ်ငန်းစဉ်အစီအမံ (Future Plan)");
+      if (parsedDemand.followUpClient) confirmParts.push(`👤 <b>Follow-up Client:</b> ${parsedDemand.followUpClient}`);
+      if (parsedDemand.focusService) confirmParts.push(`🎯 <b>Focus Service:</b> ${parsedDemand.focusService}`);
+      if (parsedDemand.delayedProject) confirmParts.push(`⚠️ <b>Delayed Project:</b> ${parsedDemand.delayedProject}`);
+      if (parsedDemand.nextSteps) confirmParts.push(`➡️ <b>Next Steps:</b> ${parsedDemand.nextSteps}`);
     }
-    confirmParts.push(`\n📋 ${parsedDemand.note}`);
+    if (parsedDemand.note) {
+      confirmParts.push("");
+      confirmParts.push("━━━━━━━━━━━━━━━━━━━━");
+      confirmParts.push(`📋 <b>မှတ်စု/အကြောင်းအရာ:</b>\n<i>${parsedDemand.note}</i>`);
+    }
 
     await sendTelegramMessage({
       botToken: settings?.botToken,
