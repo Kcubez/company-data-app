@@ -74,6 +74,10 @@ export async function GET(req: NextRequest) {
   });
 }
 
+function normalizeCustomerName(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
@@ -88,7 +92,14 @@ export async function POST(req: NextRequest) {
   }
 
   const customer = await prisma.customer.create({
-    data: { name, phone, email, company, notes },
+    data: {
+      name,
+      nameNormalized: normalizeCustomerName(name),
+      phone,
+      email,
+      company,
+      notes,
+    },
   });
 
   return NextResponse.json({ customer });
@@ -107,21 +118,17 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ message: "ID is required" }, { status: 400 });
   }
 
+  const data: Record<string, unknown> = { phone, email, company, notes, status };
+  if (typeof name === "string" && name.length > 0) {
+    data.name = name;
+    data.nameNormalized = normalizeCustomerName(name);
+  }
+
   const customer = await prisma.customer.update({
     where: { id },
-    data: { name, phone, email, company, notes, status },
+    data,
   });
 
   return NextResponse.json({ customer });
 }
 
-export async function DELETE(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
-
-  const { count } = await prisma.customer.deleteMany({});
-
-  return NextResponse.json({ success: true, count });
-}

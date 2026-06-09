@@ -60,9 +60,16 @@ export async function PUT(req: NextRequest) {
 
     let webhookRegistered = false;
 
-    // If a bot token is provided, register the webhook with Telegram
+    // Read the existing settings so we can unregister the old webhook when
+    // the bot token changes (otherwise the old bot would keep receiving events).
+    const existingSettings = await prisma.botSettings.findUnique({
+      where: { userId: session.user.id },
+      select: { botToken: true },
+    });
+    const oldBotToken = existingSettings?.botToken ?? null;
+
+    // If a NEW bot token is provided, register the webhook with Telegram.
     if (botToken && !botToken.includes("•")) {
-      // Only register if it's a real token (not the masked one)
       const telegramRes = await fetch(
         `https://api.telegram.org/bot${botToken}/setWebhook`,
         {
@@ -87,6 +94,15 @@ export async function PUT(req: NextRequest) {
       }
 
       webhookRegistered = true;
+
+      // Drop the webhook on the previous token (if any) so it stops receiving
+      // updates. Best-effort — failures here are non-fatal.
+      if (oldBotToken && oldBotToken !== botToken) {
+        await fetch(
+          `https://api.telegram.org/bot${oldBotToken}/deleteWebhook`,
+          { method: "POST" },
+        ).catch((err) => console.error("Failed to delete old webhook:", err));
+      }
     }
 
     // Determine the token to save

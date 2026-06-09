@@ -36,13 +36,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import type { TelegramSender } from '@/lib/api';
 
 export default function MessagesPage() {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
 
-  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedSenderId, setSelectedSenderId] = useState<string | undefined>(undefined);
@@ -51,14 +59,19 @@ export default function MessagesPage() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
-      setPage(1); // Reset to page 1 on search
+      setLimit(10); // Reset limit to 10 on search
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
 
+  // Reset limit on sender selection change
+  useEffect(() => {
+    setLimit(10);
+  }, [selectedSenderId]);
+
   const { data: messagesData, isLoading: messagesLoading } = useMessages({
-    page,
-    limit: 20,
+    page: 1, // Always load page 1, expanding the list in-place via limit
+    limit,
     search: debouncedSearch || undefined,
     senderId: selectedSenderId,
   });
@@ -69,7 +82,6 @@ export default function MessagesPage() {
 
   const handleSenderFilter = useCallback((senderId: string | undefined) => {
     setSelectedSenderId(senderId);
-    setPage(1);
   }, []);
 
   const statCards = [
@@ -280,17 +292,82 @@ export default function MessagesPage() {
                         </span>
                       </div>
 
-                      <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap break-words">
+                      <p className="text-slate-300 text-sm leading-relaxed line-clamp-2 break-words">
                         {message.text}
                       </p>
 
-                      {message.chatTitle && (
-                        <div className="flex items-center gap-1.5 mt-2">
-                          <span className="text-xs text-slate-500">
-                            💬 {message.chatTitle}
+                      <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-800/40">
+                        {message.chatTitle ? (
+                          <span className="text-xs text-slate-500 flex items-center gap-1">
+                            <span>💬</span>
+                            <span className="truncate max-w-[150px] sm:max-w-[200px]">{message.chatTitle}</span>
                           </span>
-                        </div>
-                      )}
+                        ) : (
+                          <span className="text-xs text-slate-600">Direct Message</span>
+                        )}
+
+                        <Dialog>
+                          <DialogTrigger
+                            render={
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 h-7 px-3 rounded-lg transition-all cursor-pointer"
+                              >
+                                Details
+                              </button>
+                            }
+                          />
+                          <DialogContent className="bg-slate-900 border border-slate-800 text-slate-200 rounded-2xl p-6 sm:max-w-md max-h-[85vh] overflow-y-auto">
+                            <DialogHeader className="mb-4">
+                              <DialogTitle className="text-white text-lg font-bold">Message Details</DialogTitle>
+                              <DialogDescription className="text-slate-500 text-xs">
+                                Full transcript from Telegram bot
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-850/50 border border-slate-800">
+                                <Avatar className="h-10 w-10 border border-slate-700 bg-slate-800 shrink-0">
+                                  <AvatarFallback className="bg-indigo-500/20 text-indigo-400 text-sm font-medium">
+                                    {message.sender?.displayName?.[0]?.toUpperCase() ?? 'T'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0">
+                                  <p className="font-medium text-slate-200 text-sm truncate">
+                                    {message.sender?.displayName ?? 'Unknown'}
+                                  </p>
+                                  {message.sender?.username && (
+                                    <p className="text-xs text-slate-500 truncate">
+                                      @{message.sender.username}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="space-y-1.5 bg-slate-800/20 p-3 rounded-xl border border-slate-850/80 text-xs text-slate-400">
+                                <div className="flex justify-between">
+                                  <span>Message ID:</span>
+                                  <span className="font-mono text-slate-300">{message.telegramMsgId}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Chat Room:</span>
+                                  <span className="text-slate-300">{message.chatTitle || 'Direct Message'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Received At:</span>
+                                  <span className="text-slate-300">{new Date(message.receivedAt).toLocaleString()}</span>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Message Text</label>
+                                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 text-sm leading-relaxed whitespace-pre-wrap break-words max-h-60 overflow-y-auto font-sans">
+                                  {message.text}
+                                </div>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
                     </div>
 
                     {/* Delete button with custom AlertDialog */}
@@ -332,53 +409,20 @@ export default function MessagesPage() {
             )}
           </div>
 
-          {/* Pagination */}
-          {messagesData && messagesData.totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-6">
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-
-              {generatePageNumbers(page, messagesData.totalPages).map((p, i) =>
-                p === '...' ? (
-                  <span key={`dots-${i}`} className="text-slate-500 px-1">
-                    ···
-                  </span>
-                ) : (
-                  <Button
-                    key={p}
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setPage(p as number)}
-                    className={`w-9 h-9 ${
-                      page === p
-                        ? 'bg-indigo-500/20 text-indigo-400 font-medium'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                    }`}
-                  >
-                    {p}
-                  </Button>
-                )
+          {/* See More Button */}
+          {messagesData && (
+            <div className="flex flex-col items-center justify-center gap-3 mt-8">
+              {messagesData.total > limit && (
+                <Button
+                  variant="outline"
+                  onClick={() => setLimit((prev) => prev + 10)}
+                  className="bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 hover:text-indigo-300 border-indigo-500/20 rounded-xl px-8 py-2 font-medium transition-all cursor-pointer"
+                >
+                  See More
+                </Button>
               )}
-
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={page >= messagesData.totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                className="text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-
-              <span className="text-xs text-slate-500 ml-2">
-                {messagesData.total} messages
+              <span className="text-xs text-slate-500">
+                Showing {Math.min(limit, messagesData.total)} of {messagesData.total} messages
               </span>
             </div>
           )}

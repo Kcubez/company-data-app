@@ -189,22 +189,20 @@ export default function FuturePlansPage() {
       <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
         <div className="hidden md:grid grid-cols-12 gap-3 border-b border-slate-800 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
           <div className="col-span-2">Reporter</div>
-          <div className="col-span-3">Note</div>
+          <div className="col-span-4">Note</div>
           <div className="col-span-2">Follow-up</div>
           <div className="col-span-2">Focus</div>
           <div className="col-span-2">Next Steps</div>
-          <div className="col-span-1 text-right">AI</div>
         </div>
 
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="grid grid-cols-12 gap-3 border-b border-slate-800/70 px-4 py-4">
               <Skeleton className="col-span-2 h-5 bg-slate-800" />
-              <Skeleton className="col-span-3 h-5 bg-slate-800" />
+              <Skeleton className="col-span-4 h-5 bg-slate-800" />
               <Skeleton className="col-span-2 h-5 bg-slate-800" />
               <Skeleton className="col-span-2 h-5 bg-slate-800" />
               <Skeleton className="col-span-2 h-5 bg-slate-800" />
-              <Skeleton className="col-span-1 h-5 bg-slate-800" />
             </div>
           ))
         ) : data?.records.length ? (
@@ -219,7 +217,7 @@ export default function FuturePlansPage() {
                   {formatDistanceToNow(new Date(record.createdAt), { addSuffix: true })}
                 </p>
               </div>
-              <div className="md:col-span-3 min-w-0">
+              <div className="md:col-span-4 min-w-0">
                 <p className="line-clamp-2 text-sm text-slate-300">{record.note}</p>
               </div>
               <div className="md:col-span-2 min-w-0">
@@ -230,9 +228,6 @@ export default function FuturePlansPage() {
               </div>
               <div className="md:col-span-2 min-w-0">
                 <p className="truncate text-sm text-slate-400">{record.nextSteps || '-'}</p>
-              </div>
-              <div className="md:col-span-1 text-right text-xs text-slate-500">
-                {Math.round(record.confidence * 100)}%
               </div>
             </div>
           ))

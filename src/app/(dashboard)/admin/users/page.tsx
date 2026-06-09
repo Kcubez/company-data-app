@@ -6,7 +6,6 @@ import {
   useBanUser,
   useUnbanUser,
   useCreateUser,
-  useUpdateUser,
 } from '@/hooks/use-users';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -18,6 +17,8 @@ import {
   type UpdateUserFormValues,
 } from '@/lib/validations';
 import { format } from 'date-fns';
+import { useQueryClient } from '@tanstack/react-query';
+import { userKeys } from '@/hooks/use-users';
 import {
   Shield,
   ShieldAlert,
@@ -87,7 +88,7 @@ export default function AdminUsersPage() {
   const banUser = useBanUser();
   const unbanUser = useUnbanUser();
   const createUser = useCreateUser();
-  const updateUser = useUpdateUser('');
+  const queryClient = useQueryClient();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -110,19 +111,6 @@ export default function AdminUsersPage() {
     createForm.reset();
   };
 
-  const onEditSubmit = async (values: UpdateUserFormValues) => {
-    if (!editingUser) return;
-    updateUser.mutate(
-      { ...values },
-      {
-        onSuccess: () => {
-          setIsEditOpen(false);
-          setEditingUser(null);
-        },
-      }
-    );
-  };
-
   const openEditModal = (user: AdminUser) => {
     setEditingUser(user);
     editForm.reset({
@@ -130,19 +118,12 @@ export default function AdminUsersPage() {
       email: user.email,
       role: user.role as 'user' | 'admin',
     });
-    // Need a separate hook instance for the specific ID, but for simplicity in this file
-    // we can just call mutateAsync directly on the API if we want, or handle it via a wrapper.
-    // Given our hook implementation returns a mutated function tied to an ID,
-    // we should really update the hook to take ID in the mutate call, but we'll use a local workaround.
     setIsEditOpen(true);
   };
 
-  // Local helper for update since hook expects ID initially
   const handleUpdate = async (values: UpdateUserFormValues) => {
     if (!editingUser) return;
     try {
-      // In a real app we'd fetch the api directly or adjust the hook.
-      // We will rely on invalidateQueries to refetch in the background.
       toast.promise(
         fetch(`/api/admin/users/${editingUser.id}`, {
           method: 'PUT',
@@ -156,8 +137,8 @@ export default function AdminUsersPage() {
           loading: 'Updating user...',
           success: () => {
             setIsEditOpen(false);
-            // Quick window reload for hacky state sync since we didn't wire the query client invalidation directly here
-            window.location.reload();
+            setEditingUser(null);
+            queryClient.invalidateQueries({ queryKey: userKeys.lists() });
             return 'User updated successfully';
           },
           error: 'Failed to update user',

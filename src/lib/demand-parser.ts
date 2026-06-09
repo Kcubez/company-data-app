@@ -281,7 +281,7 @@ Extract and return a JSON object with these fields:
   "note": string (clean summary of the report),
   "totalSales": number | null (total sales amount),
   "demand": number | null (demand count or amount),
-  "serviceName": string | null (service/product name mentioned),
+  "serviceName": string | null (must be one of these exact values: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other"),
   "serviceAmount": number | null (revenue from the service),
   "serviceQty": number | null (quantity sold),
   "appointments": number | null (number of appointments),
@@ -520,7 +520,7 @@ STRUCTURED_DATA:
     "note": string (clean summary of this entry),
     "totalSales": number | null,
     "demand": number | null,
-    "serviceName": string | null,
+    "serviceName": string | null (must be one of these exact values: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other"),
     "serviceAmount": number | null,
     "serviceQty": number | null,
     "appointments": number | null,
@@ -597,7 +597,7 @@ The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
 For each data row, extract:
 - "customerName": extract the client/customer name from name columns (e.g., 'FB account Name', 'FB account', 'Client Name', 'Name', etc.).
 - "note": extract/summarize remarks, chat/call notes, and business description (e.g., from 'Remarks', 'Call notes / Chat notes', 'Hp & Fu & No Potential', 'Business', etc.).
-- "serviceName": extract service or product name (e.g., from 'Package', 'Service', 'Product', etc.).
+- "serviceName": extract service or product name (must be classified into one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other").
 - "totalSales": extract total sales or package amount if mentioned.
 - "serviceQty": quantity of services/items.
 - "appointments": number of appointments.
@@ -617,7 +617,7 @@ STRUCTURED_DATA:
     "note": string,
     "totalSales": number | null,
     "demand": number | null,
-    "serviceName": string | null,
+    "serviceName": string | null (must be one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other"),
     "serviceAmount": number | null,
     "serviceQty": number | null,
     "appointments": number | null,

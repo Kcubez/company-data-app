@@ -48,6 +48,23 @@ const statusColors: Record<string, string> = {
   unknown: 'bg-slate-800 text-slate-400 border-slate-700',
 };
 
+const ALLOWED_SERVICES = [
+  "Website Gold Package",
+  "Website Silver Package",
+  "Website Diamond Package",
+  "Messenger Sale Bot",
+  "Telegram Sale Bot",
+  "Genius AutoWriter",
+  "Genius Board",
+  "SOP Generator",
+  "POS",
+  "EMS",
+  "AI for careers ebook",
+  "AI for businesses ebook",
+  "Prompt Packs ebook",
+  "Other"
+];
+
 export default function BusinessReportsPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -58,6 +75,16 @@ export default function BusinessReportsPage() {
   }, [search]);
 
   const { data: bizStats, isLoading: bizLoading } = useBizStats();
+
+  const displayServices = ALLOWED_SERVICES.map(name => {
+    const found = bizStats?.topServices?.find(s => s.name === name);
+    return {
+      name,
+      count: found ? found.count : 0,
+      totalAmount: found ? found.totalAmount : 0,
+      totalQty: found ? found.totalQty : 0,
+    };
+  }).sort((a, b) => b.count - a.count || b.totalAmount - a.totalAmount);
   const { data, isLoading } = useDemandRecords({
     page: 1,
     limit: 50,
@@ -165,19 +192,18 @@ export default function BusinessReportsPage() {
                   <Skeleton key={i} className="h-10 w-full bg-slate-800 rounded-lg" />
                 ))}
               </div>
-            ) : bizStats?.topServices && bizStats.topServices.length > 0 ? (
+            ) : displayServices.length > 0 ? (
               <div className="space-y-3">
-                {bizStats.topServices.map((service, i) => {
-                  const maxAmount = bizStats.topServices[0].totalAmount || 1;
-                  const barWidth = Math.max((service.totalAmount / maxAmount) * 100, 8);
+                {displayServices.map((service, i) => {
+                  const maxCount = displayServices[0].count || 1;
+                  const barWidth = service.count > 0 ? Math.max((service.count / maxCount) * 100, 8) : 0;
                   return (
                     <div key={i} className="space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-white truncate">{service.name}</span>
-                        <div className="flex items-center gap-3 text-xs text-slate-400">
-                          <span>{service.count} reports</span>
-                          <span className="text-emerald-400 font-medium">{service.totalAmount.toLocaleString()}</span>
-                        </div>
+                        <span className="text-xs text-slate-400">
+                          {service.count} {service.count === 1 ? 'sale' : 'sales'}
+                        </span>
                       </div>
                       <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
                         <div
@@ -244,21 +270,19 @@ export default function BusinessReportsPage() {
       <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
         <div className="hidden md:grid grid-cols-12 gap-3 border-b border-slate-800 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
           <div className="col-span-3">Reporter</div>
-          <div className="col-span-4">Note</div>
+          <div className="col-span-5">Note</div>
           <div className="col-span-1">Sales</div>
           <div className="col-span-2">Service</div>
           <div className="col-span-1">Status</div>
-          <div className="col-span-1 text-right">AI</div>
         </div>
 
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="grid grid-cols-12 gap-3 border-b border-slate-800/70 px-4 py-4">
               <Skeleton className="col-span-3 h-5 bg-slate-800" />
-              <Skeleton className="col-span-4 h-5 bg-slate-800" />
+              <Skeleton className="col-span-5 h-5 bg-slate-800" />
               <Skeleton className="col-span-1 h-5 bg-slate-800" />
               <Skeleton className="col-span-2 h-5 bg-slate-800" />
-              <Skeleton className="col-span-1 h-5 bg-slate-800" />
               <Skeleton className="col-span-1 h-5 bg-slate-800" />
             </div>
           ))
@@ -275,7 +299,7 @@ export default function BusinessReportsPage() {
                   {formatDistanceToNow(new Date(record.createdAt), { addSuffix: true })}
                 </p>
               </div>
-              <div className="md:col-span-4 min-w-0">
+              <div className="md:col-span-5 min-w-0">
                 <p className="line-clamp-2 text-sm leading-6 text-slate-300">{record.note}</p>
               </div>
               <div className="md:col-span-1 text-sm text-slate-300">
@@ -288,9 +312,6 @@ export default function BusinessReportsPage() {
                 <Badge variant="outline" className="bg-slate-800 text-slate-300 border-slate-700 text-xs">
                   {record.category}
                 </Badge>
-              </div>
-              <div className="md:col-span-1 text-right text-xs text-slate-500">
-                {Math.round(record.confidence * 100)}%
               </div>
             </div>
           ))

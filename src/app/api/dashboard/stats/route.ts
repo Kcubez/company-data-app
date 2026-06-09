@@ -38,23 +38,90 @@ export async function GET(req: NextRequest) {
   const planCount = await prisma.demandRecord.count({ where: { reportType: 'future_plan' } });
 
   // Service breakdown (top services)
+  const ALLOWED_SERVICES = [
+    "Website Gold Package",
+    "Website Silver Package",
+    "Website Diamond Package",
+    "Messenger Sale Bot",
+    "Telegram Sale Bot",
+    "Genius AutoWriter",
+    "Genius Board",
+    "SOP Generator",
+    "POS",
+    "EMS",
+    "AI for careers ebook",
+    "AI for businesses ebook",
+    "Prompt Packs ebook",
+    "Other"
+  ];
+
+  function standardizeServiceName(name: string | null | undefined): string {
+    if (!name) return "Other";
+    const clean = name.trim().toLowerCase();
+
+    if (clean.includes("diamond")) return "Website Diamond Package";
+    if (clean.includes("gold")) return "Website Gold Package";
+    if (clean.includes("silver")) return "Website Silver Package";
+
+    if (clean.includes("messenger") && (clean.includes("bot") || clean.includes("sale"))) {
+      return "Messenger Sale Bot";
+    }
+    if (clean.includes("telegram") && (clean.includes("bot") || clean.includes("sale"))) {
+      return "Telegram Sale Bot";
+    }
+
+    if (clean.includes("autowriter") || clean.includes("auto writer")) {
+      return "Genius AutoWriter";
+    }
+    if (clean.includes("genius board") || clean.includes("geniusboard") || clean.includes("board")) {
+      return "Genius Board";
+    }
+
+    if (clean.includes("sop")) return "SOP Generator";
+    if (clean === "pos" || clean.includes("point of sale") || clean.includes("point of sales") || clean.includes("pos ")) {
+      return "POS";
+    }
+    if (clean === "ems" || clean.includes("ems")) return "EMS";
+
+    if (clean.includes("career") && clean.includes("ebook")) return "AI for careers ebook";
+    if (clean.includes("business") && clean.includes("ebook")) return "AI for businesses ebook";
+    if (clean.includes("prompt") && clean.includes("ebook")) return "Prompt Packs ebook";
+
+    if (
+      clean.includes("website") || 
+      clean.includes("web dev") || 
+      clean.includes("web site") || 
+      clean.includes("app dev") || 
+      clean.includes("software dev")
+    ) {
+      return "Website Silver Package";
+    }
+
+    return "Other";
+  }
+
   const serviceRecords = await prisma.demandRecord.findMany({
     where: { reportType: 'business_report', serviceName: { not: null } },
     select: { serviceName: true, serviceAmount: true, serviceQty: true },
   });
+  
   const serviceMap = new Map<string, { count: number; totalAmount: number; totalQty: number }>();
+  // Initialize all allowed services with 0
+  for (const s of ALLOWED_SERVICES) {
+    serviceMap.set(s, { count: 0, totalAmount: 0, totalQty: 0 });
+  }
+
   for (const r of serviceRecords) {
-    if (!r.serviceName) continue;
-    const existing = serviceMap.get(r.serviceName) || { count: 0, totalAmount: 0, totalQty: 0 };
+    const stdName = standardizeServiceName(r.serviceName);
+    const existing = serviceMap.get(stdName) || { count: 0, totalAmount: 0, totalQty: 0 };
     existing.count++;
     existing.totalAmount += r.serviceAmount || 0;
     existing.totalQty += r.serviceQty || 0;
-    serviceMap.set(r.serviceName, existing);
+    serviceMap.set(stdName, existing);
   }
   const topServices = Array.from(serviceMap.entries())
     .map(([name, stats]) => ({ name, ...stats }))
-    .sort((a, b) => b.totalAmount - a.totalAmount)
-    .slice(0, 10);
+    .sort((a, b) => b.count - a.count || b.totalAmount - a.totalAmount);
 
   // Project statuses
   const projectRecords = await prisma.demandRecord.findMany({
@@ -99,17 +166,25 @@ export async function GET(req: NextRequest) {
     take: 5,
   });
 
-  // Weekly activity
+  // Weekly activity — single groupBy over the last 7 days, then fill missing days.
+  const weekStart = new Date(startOfToday);
+  weekStart.setDate(weekStart.getDate() - 6);
+  const grouped = await prisma.demandRecord.groupBy({
+    by: ['createdAt'],
+    where: { createdAt: { gte: weekStart } },
+    _count: { _all: true },
+  });
+  const countsByDay = new Map<string, number>();
+  for (const row of grouped) {
+    const key = row.createdAt.toISOString().slice(0, 10);
+    countsByDay.set(key, (countsByDay.get(key) ?? 0) + row._count._all);
+  }
   const weeklyActivity: { date: string; count: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const dayStart = new Date(startOfToday);
     dayStart.setDate(dayStart.getDate() - i);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
-    const count = await prisma.demandRecord.count({
-      where: { createdAt: { gte: dayStart, lt: dayEnd } },
-    });
-    weeklyActivity.push({ date: dayStart.toISOString().slice(0, 10), count });
+    const key = dayStart.toISOString().slice(0, 10);
+    weeklyActivity.push({ date: key, count: countsByDay.get(key) ?? 0 });
   }
 
   // Bot status

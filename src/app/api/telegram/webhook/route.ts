@@ -8,7 +8,6 @@ import {
   isFileTooLarge,
   REPORT_TYPES,
   type ReportType,
-  type ParsedDemandRecord,
 } from "@/lib/demand-parser";
 import { NextRequest, NextResponse, after } from "next/server";
 
@@ -317,61 +316,65 @@ function getFormatPrompt(reportType: ReportType): string {
 }
 
 async function buildQAContext(): Promise<string> {
+  const [bizReports, futurePlans, qaDocs, customers] = await Promise.all([
+    prisma.demandRecord.findMany({
+      where: { reportType: 'business_report' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      include: { sender: true },
+    }),
+    prisma.demandRecord.findMany({
+      where: { reportType: 'future_plan' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      include: { sender: true },
+    }),
+    prisma.qADocument.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    }),
+    prisma.customer.findMany({
+      take: 20,
+      orderBy: { updatedAt: 'desc' },
+    }),
+  ]);
+
   const parts: string[] = [];
 
-  // Recent business reports
-  const bizReports = await prisma.demandRecord.findMany({
-    where: { reportType: 'business_report' },
-    orderBy: { createdAt: 'desc' },
-    take: 20,
-    include: { sender: true },
-  });
   if (bizReports.length > 0) {
     parts.push('=== RECENT BUSINESS REPORTS ===');
     for (const r of bizReports) {
       const fields = [
         `Date: ${r.createdAt.toISOString().slice(0, 10)}`,
         `Reporter: ${r.sender.displayName}`,
-        r.totalSales ? `Total Sales: ${r.totalSales}` : '',
-        r.demand ? `Demand: ${r.demand}` : '',
-        r.serviceName ? `Service: ${r.serviceName} (Amount: ${r.serviceAmount || '-'}, Qty: ${r.serviceQty || '-'})` : '',
-        r.appointments ? `Appointments: ${r.appointments}` : '',
-        r.projectName ? `Project: ${r.projectName} (Status: ${r.projectStatus || '-'})` : '',
-        r.marketingBudget ? `Marketing Budget: ${r.marketingBudget}` : '',
-        `Note: ${r.note}`,
-      ].filter(Boolean).join(', ');
+        r.totalSales ? `Total Sales: ${r.totalSales}` : 'Total Sales: —',
+        r.demand ? `Demand: ${r.demand}` : 'Demand: —',
+        r.serviceName ? `Service: ${r.serviceName} (Amount: ${r.serviceAmount ?? '—'}, Qty: ${r.serviceQty ?? '—'})` : 'Service: —',
+        r.appointments ? `Appointments: ${r.appointments}` : 'Appointments: —',
+        r.projectName ? `Project: ${r.projectName} (Status: ${r.projectStatus ?? '—'})` : 'Project: —',
+        r.marketingBudget ? `Marketing Budget: ${r.marketingBudget}` : 'Marketing Budget: —',
+        `Note: ${r.note || '—'}`,
+      ].join(', ');
       parts.push(fields);
     }
   }
 
-  // Recent future plans
-  const futurePlans = await prisma.demandRecord.findMany({
-    where: { reportType: 'future_plan' },
-    orderBy: { createdAt: 'desc' },
-    take: 20,
-    include: { sender: true },
-  });
   if (futurePlans.length > 0) {
     parts.push('\n=== RECENT FUTURE PLANS ===');
     for (const r of futurePlans) {
       const fields = [
         `Date: ${r.createdAt.toISOString().slice(0, 10)}`,
         `Reporter: ${r.sender.displayName}`,
-        r.followUpClient ? `Follow-up Client: ${r.followUpClient} (${r.followUpReason || ''})` : '',
-        r.focusService ? `Focus Service: ${r.focusService} (${r.focusReason || ''})` : '',
-        r.delayedProject ? `Delayed Project: ${r.delayedProject} (${r.delayReason || ''})` : '',
-        r.nextSteps ? `Next Steps: ${r.nextSteps}` : '',
-        `Note: ${r.note}`,
-      ].filter(Boolean).join(', ');
+        r.followUpClient ? `Follow-up Client: ${r.followUpClient} (${r.followUpReason || '—'})` : 'Follow-up Client: —',
+        r.focusService ? `Focus Service: ${r.focusService} (${r.focusReason || '—'})` : 'Focus Service: —',
+        r.delayedProject ? `Delayed Project: ${r.delayedProject} (${r.delayReason || '—'})` : 'Delayed Project: —',
+        r.nextSteps ? `Next Steps: ${r.nextSteps}` : 'Next Steps: —',
+        `Note: ${r.note || '—'}`,
+      ].join(', ');
       parts.push(fields);
     }
   }
 
-  // QA Documents
-  const qaDocs = await prisma.qADocument.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 10,
-  });
   if (qaDocs.length > 0) {
     parts.push('\n=== REFERENCE DOCUMENTS ===');
     for (const doc of qaDocs) {
@@ -379,17 +382,127 @@ async function buildQAContext(): Promise<string> {
     }
   }
 
-  // Customers
-  const customers = await prisma.customer.findMany({
-    take: 20,
-    orderBy: { updatedAt: 'desc' },
-  });
   if (customers.length > 0) {
     parts.push('\n=== CUSTOMERS ===');
     parts.push(customers.map(c => `${c.name} (${c.status})`).join(', '));
   }
 
   return parts.join('\n') || 'No business data available yet.';
+}
+
+// Resolve / create customers in batch for a set of parsed demands.
+// Returns a Map keyed by the raw `customerName` from the parser.
+async function resolveCustomersBatch(
+  parsedDemands: { customerName: string | null }[],
+  senderId: string,
+  reportType: ReportType,
+  fileName: string,
+): Promise<Map<string, string>> {
+  // 1. De-duplicate names + normalize.
+  const nameToNormalized = new Map<string, string>();
+  for (const d of parsedDemands) {
+    if (d.customerName) {
+      const normalized = normalizeCustomerName(d.customerName);
+      if (!nameToNormalized.has(d.customerName)) {
+        nameToNormalized.set(d.customerName, normalized);
+      }
+    }
+  }
+  if (nameToNormalized.size === 0) return new Map();
+
+  const allNormalized = Array.from(new Set(nameToNormalized.values()));
+  const allRawNames = Array.from(nameToNormalized.keys());
+
+  // 2. Batch fetch by normalized name, then by raw name.
+  const [byNormalizedRows, byRawNameRows] = await Promise.all([
+    prisma.customer.findMany({
+      where: { nameNormalized: { in: allNormalized } },
+      select: { id: true, name: true, nameNormalized: true },
+    }),
+    prisma.customer.findMany({
+      where: { name: { in: allRawNames } },
+      select: { id: true, name: true, nameNormalized: true },
+    }),
+  ]);
+
+  const idByNormalized = new Map<string, { id: string; name: string; nameNormalized: string | null }>();
+  for (const c of byNormalizedRows) {
+    if (c.nameNormalized) idByNormalized.set(c.nameNormalized, c);
+  }
+  for (const c of byRawNameRows) {
+    if (c.nameNormalized) {
+      // Already known via normalized index — skip duplicate.
+      if (!idByNormalized.has(c.nameNormalized)) idByNormalized.set(c.nameNormalized, c);
+    } else {
+      // Find the raw name's expected normalized key and index it.
+      const targetNormalized = nameToNormalized.get(c.name);
+      if (targetNormalized && !idByNormalized.has(targetNormalized)) {
+        idByNormalized.set(targetNormalized, c);
+      }
+    }
+  }
+
+  // 3. Create any customers that are still missing, with P2002 race recovery.
+  const missingNames: { raw: string; normalized: string }[] = [];
+  for (const [raw, normalized] of nameToNormalized.entries()) {
+    if (!idByNormalized.has(normalized)) missingNames.push({ raw, normalized });
+  }
+
+  for (const m of missingNames) {
+    try {
+      const created = await prisma.customer.create({
+        data: { name: m.raw, nameNormalized: m.normalized },
+        select: { id: true, name: true, nameNormalized: true },
+      });
+      idByNormalized.set(m.normalized, created);
+    } catch (err) {
+      if (isPrismaUniqueConstraintError(err)) {
+        // Concurrent worker created the same customer — look it up.
+        const existing = await prisma.customer.findFirst({
+          where: { nameNormalized: m.normalized },
+          select: { id: true, name: true, nameNormalized: true },
+        });
+        if (existing) idByNormalized.set(m.normalized, existing);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  // 4. Backfill `nameNormalized` for rows found by raw name only.
+  const toBackfill = Array.from(idByNormalized.values()).filter(
+    (c) => !c.nameNormalized && nameToNormalized.has(c.name),
+  );
+  if (toBackfill.length > 0) {
+    await Promise.all(
+      toBackfill.map((c) => {
+        const normalized = nameToNormalized.get(c.name)!;
+        return prisma.customer.update({
+          where: { id: c.id },
+          data: { nameNormalized: normalized, updatedAt: new Date() },
+        });
+      }),
+    );
+  }
+
+  // 5. Build the final raw-name -> id map and create one activity per distinct customer.
+  const rawNameToId = new Map<string, string>();
+  for (const [raw, normalized] of nameToNormalized.entries()) {
+    const entry = idByNormalized.get(normalized);
+    if (entry) rawNameToId.set(raw, entry.id);
+  }
+
+  const activityCreates = Array.from(rawNameToId.entries()).map(([, id]) => ({
+    customerId: id,
+    senderId,
+    action: reportType,
+    description: `File: ${fileName}`,
+  }));
+  if (activityCreates.length > 0) {
+    await prisma.customerActivity.createMany({ data: activityCreates });
+  }
+
+  return rawNameToId;
 }
 
 async function processFileInBackground({
@@ -465,48 +578,20 @@ async function processFileInBackground({
       },
     });
 
-    // For each extracted demand record, resolve / create the customer
-    // and build the nested create input.
+    // Resolve all customers in batch (fixes N+1 + handles unique-constraint race).
+    const customerIdByName = await resolveCustomersBatch(
+      parsedDemands,
+      senderId,
+      reportType,
+      fileInfo.fileName,
+    );
+
+    // Build the demand-record insert inputs.
     const demandRecordCreates: Prisma.DemandRecordUncheckedCreateInput[] = [];
     for (const parsedDemand of parsedDemands) {
-      let customerId: string | null = null;
-      if (parsedDemand.customerName) {
-        const normalizedName = normalizeCustomerName(parsedDemand.customerName);
-        let customer = await prisma.customer.findFirst({
-          where: { nameNormalized: normalizedName },
-        });
-        if (!customer) {
-          customer = await prisma.customer.findUnique({
-            where: { name: parsedDemand.customerName },
-          });
-        }
-        if (customer) {
-          await prisma.customer.update({
-            where: { id: customer.id },
-            data: {
-              updatedAt: new Date(),
-              nameNormalized: customer.nameNormalized || normalizedName,
-            },
-          });
-        } else {
-          customer = await prisma.customer.create({
-            data: {
-              name: parsedDemand.customerName,
-              nameNormalized: normalizedName,
-            },
-          });
-        }
-        customerId = customer.id;
-
-        await prisma.customerActivity.create({
-          data: {
-            customerId: customer.id,
-            senderId: senderId,
-            action: reportType,
-            description: `File: ${fileInfo.fileName} - ${parsedDemand.note}`,
-          },
-        });
-      }
+      const customerId = parsedDemand.customerName
+        ? customerIdByName.get(parsedDemand.customerName) ?? null
+        : null;
 
       demandRecordCreates.push({
         messageId: telegramMessageId,
