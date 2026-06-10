@@ -47,8 +47,8 @@ export function SetupForm() {
 
       // Success! Send them to login
       router.push("/admin/login?setup=success");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setIsLoading(false);
     }

@@ -49,6 +49,7 @@ const statusColors: Record<string, string> = {
 
 const actionIcons: Record<string, typeof CheckCircle> = {
   follow_up: User,
+  demand_report: FileText,
   business_report: FileText,
   future_plan: AlertCircle,
   update: AlertCircle,

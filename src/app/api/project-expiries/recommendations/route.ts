@@ -1,0 +1,187 @@
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { GoogleGenAI } from "@google/genai";
+import { differenceInDays } from "date-fns";
+import { NextRequest, NextResponse } from "next/server";
+
+async function generateContentWithRetry(
+  genAI: GoogleGenAI,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  options: { model: string; contents: string | any[] },
+  maxRetries = 3,
+  delayMs = 1500
+): Promise<{ text?: string }> {
+  let lastError: unknown = null;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await (genAI.models.generateContent(options) as Promise<{ text?: string }>);
+      return response;
+    } catch (err) {
+      lastError = err;
+      const errStr = typeof err === "object" && err !== null ? JSON.stringify(err) : String(err);
+      if (
+        errStr.includes("503") ||
+        errStr.includes("429") ||
+        errStr.toLowerCase().includes("unavailable") ||
+        errStr.toLowerCase().includes("fetch failed")
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs * Math.pow(2, i)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
+export async function GET(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const settings = await prisma.botSettings.findFirst({
+      where: { isActive: true },
+      select: { geminiApiKey: true, geminiModel: true },
+    });
+
+    const today = new Date();
+
+    // Fetch all projects sorted by most urgent expiry
+    const projects = await prisma.projectExpiration.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+
+    if (projects.length === 0) {
+      return NextResponse.json({ recommendations: [] });
+    }
+
+    // Annotate each project with urgency info
+    const annotated = projects.map((p) => {
+      const domainDays = p.domainExpireDate
+        ? differenceInDays(p.domainExpireDate, today)
+        : null;
+      const hostingDays = p.hostingExpireDate
+        ? differenceInDays(p.hostingExpireDate, today)
+        : null;
+
+      const minDays =
+        domainDays !== null && hostingDays !== null
+          ? Math.min(domainDays, hostingDays)
+          : domainDays ?? hostingDays;
+
+      let urgency = "safe";
+      if (minDays !== null && minDays < 0) urgency = "expired";
+      else if (minDays !== null && minDays <= 15) urgency = "critical";
+      else if (minDays !== null && minDays <= 30) urgency = "warning";
+
+      return { ...p, domainDays, hostingDays, minDays, urgency };
+    });
+
+    // Prioritise urgent/expired first
+    const sorted = [...annotated].sort((a, b) => {
+      const order = { expired: 0, critical: 1, warning: 2, safe: 3 };
+      return (order[a.urgency as keyof typeof order] ?? 4) -
+        (order[b.urgency as keyof typeof order] ?? 4);
+    });
+
+    // Heuristic fallback
+    const buildHeuristicRecommendations = () =>
+      sorted.slice(0, 5).map((p) => {
+        let insight = "";
+        if (p.urgency === "expired") {
+          insight = `Domain or hosting has already expired — renew immediately to avoid website downtime.`;
+        } else if (p.urgency === "critical") {
+          insight = `Expiring within ${p.minDays} day(s). Contact ${p.domainProvider || p.hostingProvider || "provider"} now to renew.`;
+        } else if (p.urgency === "warning") {
+          insight = `Expiring in ${p.minDays} days. Schedule renewal soon to avoid disruption.`;
+        } else {
+          insight = `No immediate action needed (${p.minDays !== null ? `${p.minDays} days remaining` : "no expiry date set"}).`;
+        }
+        return { projectName: p.projectName, insight };
+      });
+
+    if (!settings?.geminiApiKey) {
+      return NextResponse.json({ recommendations: buildHeuristicRecommendations() });
+    }
+
+    const dataSummary = sorted
+      .slice(0, 15)
+      .map((p, i) => {
+        const dLine = p.domainExpireDate
+          ? `Domain expires: ${p.domainExpireDate.toISOString().slice(0, 10)} (${p.domainDays} days)`
+          : "Domain: no expiry set";
+        const hLine = p.hostingExpireDate
+          ? `Hosting expires: ${p.hostingExpireDate.toISOString().slice(0, 10)} (${p.hostingDays} days)`
+          : "Hosting: no expiry set";
+        return `${i + 1}. Project: "${p.projectName}" | URL: ${p.url || "N/A"} | Package: ${p.packageName || "N/A"} | ${dLine} | ${hLine} | Domain provider: ${p.domainProvider || "N/A"} | Hosting provider: ${p.hostingProvider || "N/A"}`;
+      })
+      .join("\n");
+
+    const prompt = `You are a smart website infrastructure advisor. Below is a list of client websites with their domain and hosting expiry dates.
+Compile a prioritised action list — most urgent first (expired or expiring very soon).
+For each project output a single, brief, 1-sentence actionable recommendation.
+Output ONLY a JSON array of objects with fields "projectName" and "insight". No markdown, no extra text.
+
+Projects:
+"""
+${dataSummary}
+"""
+
+Example output:
+[
+  {
+    "projectName": "ClientSite.com",
+    "insight": "Domain expired 3 days ago — renew via Namecheap immediately to restore the website."
+  }
+]`;
+
+    const genAI = new GoogleGenAI({ apiKey: settings.geminiApiKey });
+    const modelName = settings.geminiModel || "gemini-3.1-flash-lite-preview";
+
+    const response = await generateContentWithRetry(genAI, {
+      model: modelName,
+      contents: prompt,
+    });
+
+    const responseText = response?.text;
+    if (!responseText) {
+      return NextResponse.json({ recommendations: buildHeuristicRecommendations() });
+    }
+
+    const cleanedJson = responseText
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+
+    const recommendations = JSON.parse(cleanedJson);
+    if (!Array.isArray(recommendations)) throw new Error("Not an array");
+
+    return NextResponse.json({ recommendations });
+  } catch (err) {
+    console.error("Project expiry recommendations failed:", err);
+    // Graceful fallback
+    try {
+      const projects = await prisma.projectExpiration.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      });
+      const today = new Date();
+      const fallback = projects.map((p) => {
+        const days = p.domainExpireDate ? differenceInDays(p.domainExpireDate, today) : null;
+        const insight =
+          days !== null && days < 0
+            ? `Domain has expired — renew immediately.`
+            : days !== null && days <= 30
+            ? `Domain expires in ${days} day(s) — schedule renewal.`
+            : `Check expiry dates for this project.`;
+        return { projectName: p.projectName, insight };
+      });
+      return NextResponse.json({ recommendations: fallback });
+    } catch {
+      return NextResponse.json({ recommendations: [] });
+    }
+  }
+}

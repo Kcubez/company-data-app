@@ -29,7 +29,7 @@ import {
   Calendar,
   Trash2,
 } from 'lucide-react';
-import { customersApi } from '@/lib/api';
+import { customersApi, type Customer } from '@/lib/api';
 import { toast } from 'sonner';
 
 const statusColors: Record<string, string> = {
@@ -159,7 +159,7 @@ export default function CustomersPage() {
             No customers found. Telegram messages will create customer records automatically.
           </div>
         ) : (
-          data?.customers?.map((customer: any) => (
+          data?.customers?.map((customer: Customer) => (
             <Card key={customer.id} className="bg-gray-900/50 border-gray-800 hover:border-gray-700 transition-colors relative group">
               <Link href={`/customers/${customer.id}`} className="block">
                 <CardHeader className="pb-3">

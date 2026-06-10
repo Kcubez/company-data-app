@@ -16,3 +16,13 @@ export function useDemandRecordStats() {
     refetchInterval: 10000,
   });
 }
+
+export function useDemandRecordRecommendations() {
+  return useQuery({
+    queryKey: ["demand-record-recommendations"],
+    queryFn: () => demandRecordsApi.recommendations(),
+    // AI calls are costly — fetch once on mount, then only on manual refresh.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+}

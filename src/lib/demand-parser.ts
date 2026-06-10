@@ -2,24 +2,27 @@ import { GoogleGenAI } from "@google/genai";
 import * as XLSX from "xlsx";
 
 export const REPORT_TYPES = {
-  BUSINESS_REPORT: "business_report",
-  FUTURE_PLAN: "future_plan",
+  DEMAND_REPORT: "demand_report",
   QA: "qa",
+  PROJECT_EXPIRY: "project_expiry",
+  WEBSITE_UPDATE: "website_update",
 } as const;
 
 export type ReportType = (typeof REPORT_TYPES)[keyof typeof REPORT_TYPES];
 
 export function isReportType(value: string | null | undefined): value is ReportType {
   return (
-    value === REPORT_TYPES.BUSINESS_REPORT ||
-    value === REPORT_TYPES.FUTURE_PLAN ||
-    value === REPORT_TYPES.QA
+    value === REPORT_TYPES.DEMAND_REPORT ||
+    value === REPORT_TYPES.QA ||
+    value === REPORT_TYPES.PROJECT_EXPIRY ||
+    value === REPORT_TYPES.WEBSITE_UPDATE
   );
 }
 
 export type ParsedDemandRecord = {
-  reportType: ReportType;
   customerName: string | null;
+  customerPhone: string | null;
+  customerCompany: string | null;
   category: string;
   status: string;
   note: string;
@@ -27,46 +30,29 @@ export type ParsedDemandRecord = {
   aiProvider: string;
   aiModel: string | null;
   followUpDate: Date | null;
-  // Business Report fields
-  totalSales: number | null;
-  demand: number | null;
   serviceName: string | null;
   serviceAmount: number | null;
   serviceQty: number | null;
-  appointments: number | null;
-  projectName: string | null;
-  projectStatus: string | null;
-  marketingBudget: number | null;
-  // Future Plan fields
-  followUpClient: string | null;
-  followUpReason: string | null;
-  focusService: string | null;
-  focusReason: string | null;
-  delayedProject: string | null;
-  delayReason: string | null;
-  nextSteps: string | null;
-  // Legacy
-  quantity: number | null;
-  product: string | null;
-  amount: number | null;
-  unit: string | null;
+  createdAt?: Date | null;
 };
 
 async function generateContentWithRetry(
-  genAI: any,
+  genAI: GoogleGenAI,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   options: { model: string; contents: string | any[] },
   maxRetries = 3,
   delayMs = 1500
-): Promise<any> {
-  let lastError: any = null;
+): Promise<{ text?: string }> {
+  let lastError: unknown = null;
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const response = await genAI.models.generateContent(options);
+      const response = await (genAI.models.generateContent(options) as Promise<{ text?: string }>);
       return response;
-    } catch (err: any) {
+    } catch (err) {
       lastError = err;
-      const status = err.status || err.statusCode;
-      const errStr = typeof err === 'object' ? JSON.stringify(err) : String(err);
+      const status = typeof err === 'object' && err !== null ? (err as Record<string, unknown>).status || (err as Record<string, unknown>).statusCode : undefined;
+      const errStr = typeof err === 'object' && err !== null ? JSON.stringify(err) : String(err);
+      const errMsg = err instanceof Error ? err.message : String(err);
       
       if (
         status === 503 ||
@@ -79,7 +65,7 @@ async function generateContentWithRetry(
         errStr.toLowerCase().includes('socket') ||
         errStr.toLowerCase().includes('fetch failed')
       ) {
-        console.warn(`Gemini API returned retryable error (attempt ${i + 1}/${maxRetries}):`, err.message || err);
+        console.warn(`Gemini API returned retryable error (attempt ${i + 1}/${maxRetries}):`, errMsg);
         await new Promise((resolve) => setTimeout(resolve, delayMs * Math.pow(2, i)));
         continue;
       }
@@ -125,152 +111,89 @@ function cleanValue(value: string): string {
   return value.replace(/^[:\-=\s]+/, '').replace(/[\s.,:;]+$/, '').trim();
 }
 
-function parseBusinessReport(text: string): Partial<ParsedDemandRecord> {
-  const totalSales = extractNumber(text, [
-    /(?:total\s*sales?|sales?)\s*[:=-]?\s*([\d,]+\.?\d*)/i,
+function parseDemandSheet(text: string): Partial<ParsedDemandRecord> {
+  const customerName = extractString(text, [
+    /(?:customer|client|name|fb account Name|fb account)\s*[:=-]?\s*([^\n,]+)/i,
   ]);
 
-  const demand = extractNumber(text, [
-    /(?:demand)\s*[:=-]?\s*([\d,]+\.?\d*)/i,
+  const customerPhone = extractString(text, [
+    /(?:phone|ph|contact|ph no|phone no|tel|ph_no)\s*[:=-]?\s*([0-9+\-\s]+)/i,
+  ]);
+
+  const customerCompany = extractString(text, [
+    /(?:business|company|org|shop|industry|company name)\s*[:=-]?\s*([^\n,]+)/i,
   ]);
 
   const serviceName = extractString(text, [
-    /(?:service)\s*[:=-]?\s*([^\n,\-]+?)(?:\s*[-:]|\s+amount|\s+qty|$)/i,
+    /(?:service|package|product)\s*[:=-]?\s*([^\n,\-]+?)(?:\s*[-:]|\s+amount|\s+qty|$)/i,
   ]);
 
   const serviceAmount = extractNumber(text, [
-    /(?:service.*?amount)\s*[:=-]?\s*([\d,]+\.?\d*)/i,
-    /(?:amount)\s*[:=-]?\s*([\d,]+\.?\d*)/i,
+    /(?:service.*?amount|package.*?amount|amount|revenue|income|price)\s*[:=-]?\s*([\d,]+\.?\d*)/i,
   ]);
 
   const serviceQty = extractNumber(text, [
-    /(?:service.*?qty|service.*?quantity|qty)\s*[:=-]?\s*([\d,]+)/i,
+    /(?:service.*?qty|package.*?qty|qty|quantity)\s*[:=-]?\s*([\d,]+)/i,
   ]);
 
-  const appointments = extractNumber(text, [
-    /(?:appointments?)\s*[:=-]?\s*([\d,]+)/i,
-    /([\d,]+)\s*(?:appointments?)/i,
+  const followUpDateStr = extractString(text, [
+    /(?:follow[\s-]?up[\s-]?date|next[\s-]?fu|next[\s-]?fu[\s-]?date|date|fu[\s-]?date)\s*[:=-]?\s*([^\n]+)/i,
   ]);
 
-  const projectName = extractString(text, [
-    /(?:project)\s*[:=-]?\s*([^\n,\-]+?)(?:\s*[-:]|\s+status|$)/i,
-  ]);
-
-  const projectStatus = extractString(text, [
-    /(?:status)\s*[:=-]?\s*(on.?track|delayed|completed|at.?risk)/i,
-  ]);
-
-  const marketingBudget = extractNumber(text, [
-    /(?:marketing\s*budget|marketing)\s*[:=-]?\s*([\d,]+\.?\d*)/i,
-  ]);
+  let followUpDate: Date | null = null;
+  if (followUpDateStr) {
+    const parsedDate = Date.parse(followUpDateStr.trim());
+    if (!isNaN(parsedDate)) {
+      followUpDate = new Date(parsedDate);
+    }
+  }
 
   return {
-    totalSales,
-    demand,
+    customerName: customerName ? cleanValue(customerName) : null,
+    customerPhone: customerPhone ? cleanValue(customerPhone) : null,
+    customerCompany: customerCompany ? cleanValue(customerCompany) : null,
     serviceName: serviceName ? cleanValue(serviceName) : null,
     serviceAmount,
     serviceQty: serviceQty ? Math.round(serviceQty) : null,
-    appointments: appointments ? Math.round(appointments) : null,
-    projectName: projectName ? cleanValue(projectName) : null,
-    projectStatus: projectStatus ? cleanValue(projectStatus).toLowerCase().replace(/\s+/g, '_') : null,
-    marketingBudget,
+    followUpDate,
   };
 }
 
-function parseFuturePlan(text: string): Partial<ParsedDemandRecord> {
-  const followUpClient = extractString(text, [
-    /(?:follow[\s-]?up)\s*[:=-]?\s*([^\n,\-]+?)(?:\s*[-:]|\s+reason|$)/i,
-    /(?:client|customer)\s*[:=-]?\s*([^\n,]+)/i,
-  ]);
-
-  const followUpReason = extractString(text, [
-    /(?:follow[\s-]?up.*?reason)\s*[:=-]?\s*([^\n]+)/i,
-  ]);
-
-  const focusService = extractString(text, [
-    /(?:focus\s*service|focus)\s*[:=-]?\s*([^\n,\-]+?)(?:\s*[-:]|\s+reason|$)/i,
-  ]);
-
-  const focusReason = extractString(text, [
-    /(?:focus.*?reason)\s*[:=-]?\s*([^\n]+)/i,
-  ]);
-
-  const delayedProject = extractString(text, [
-    /(?:delayed?\s*project|delayed?)\s*[:=-]?\s*([^\n,\-]+?)(?:\s*[-:]|\s+reason|$)/i,
-  ]);
-
-  const delayReason = extractString(text, [
-    /(?:delay.*?reason)\s*[:=-]?\s*([^\n]+)/i,
-  ]);
-
-  const nextSteps = extractString(text, [
-    /(?:next\s*steps?)\s*[:=-]?\s*([^\n]+)/i,
-  ]);
-
-  return {
-    followUpClient: followUpClient ? cleanValue(followUpClient) : null,
-    followUpReason: followUpReason ? cleanValue(followUpReason) : null,
-    focusService: focusService ? cleanValue(focusService) : null,
-    focusReason: focusReason ? cleanValue(focusReason) : null,
-    delayedProject: delayedProject ? cleanValue(delayedProject) : null,
-    delayReason: delayReason ? cleanValue(delayReason) : null,
-    nextSteps: nextSteps ? cleanValue(nextSteps) : null,
-  };
-}
-
-function parseDemandMessage(text: string, reportType: ReportType): ParsedDemandRecord {
+export function parseDemandMessage(text: string, _reportType?: ReportType): ParsedDemandRecord {
   const baseRecord: ParsedDemandRecord = {
-    reportType,
     customerName: null,
+    customerPhone: null,
+    customerCompany: null,
     category: 'general',
     status: 'new',
     note: text.trim(),
-    confidence: 0.3,
+    confidence: 0.35,
     aiProvider: 'heuristic',
     aiModel: null,
     followUpDate: null,
-    totalSales: null,
-    demand: null,
     serviceName: null,
     serviceAmount: null,
     serviceQty: null,
-    appointments: null,
-    projectName: null,
-    projectStatus: null,
-    marketingBudget: null,
-    followUpClient: null,
-    followUpReason: null,
-    focusService: null,
-    focusReason: null,
-    delayedProject: null,
-    delayReason: null,
-    nextSteps: null,
-    quantity: null,
-    product: null,
-    amount: null,
-    unit: null,
   };
 
-  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-    const extracted = parseBusinessReport(text);
-    Object.assign(baseRecord, extracted);
-    baseRecord.category = 'business';
-    const fieldsFound = [extracted.totalSales, extracted.demand, extracted.serviceName, extracted.appointments, extracted.projectName, extracted.marketingBudget].filter(v => v !== null && v !== undefined).length;
-    baseRecord.confidence = Math.min(0.3 + fieldsFound * 0.1, 0.8);
-  } else if (reportType === REPORT_TYPES.FUTURE_PLAN) {
-    const extracted = parseFuturePlan(text);
-    Object.assign(baseRecord, extracted);
-    baseRecord.category = 'planning';
-    const fieldsFound = [extracted.followUpClient, extracted.focusService, extracted.delayedProject, extracted.nextSteps].filter(v => v !== null && v !== undefined).length;
-    baseRecord.confidence = Math.min(0.3 + fieldsFound * 0.12, 0.8);
-  }
+  const extracted = parseDemandSheet(text);
+  Object.assign(baseRecord, extracted);
+  baseRecord.category = 'demand';
+  const fieldsFound = [
+    extracted.customerName,
+    extracted.customerPhone,
+    extracted.customerCompany,
+    extracted.serviceName,
+    extracted.serviceAmount,
+    extracted.followUpDate
+  ].filter(v => v !== null && v !== undefined).length;
+  baseRecord.confidence = Math.min(0.35 + fieldsFound * 0.12, 0.85);
 
   return baseRecord;
 }
 
-function buildGeminiPrompt(text: string, reportType: ReportType): string {
-  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-    return `You are a business report data extractor. Extract structured data from this business report message.
+function buildGeminiPrompt(text: string): string {
+  return `You are a business demand sheet data extractor. Extract structured data from this business report message.
 The message may be in Burmese (Myanmar) or English or mixed.
 
 Message:
@@ -278,76 +201,43 @@ Message:
 
 Extract and return a JSON object with these fields:
 {
-  "note": string (clean summary of the report),
-  "totalSales": number | null (total sales amount),
-  "demand": number | null (demand count or amount),
+  "note": string (clean summary of the call notes, chat notes, or remarks),
+  "customerName": string | null (client / customer name if mentioned),
+  "customerPhone": string | null (client's phone number if mentioned),
+  "customerCompany": string | null (client's business/company name or shop name if mentioned),
   "serviceName": string | null (must be one of these exact values: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other"),
-  "serviceAmount": number | null (revenue from the service),
+  "serviceAmount": number | null (revenue / package amount from the service),
   "serviceQty": number | null (quantity sold),
-  "appointments": number | null (number of appointments),
-  "projectName": string | null (project name),
-  "projectStatus": "on_track" | "delayed" | "completed" | "at_risk" | null,
-  "marketingBudget": number | null (marketing spend),
-  "customerName": string | null (customer name if mentioned),
-  "category": "sales" | "service" | "project" | "marketing" | "general",
-  "status": "new" | "in_progress" | "completed"
+  "followUpDate": string | null (next follow-up date in YYYY-MM-DD format if mentioned),
+  "category": "sales" | "inquiry" | "follow_up" | "general",
+  "status": "new" | "contacted" | "quoted" | "pending" | "closed"
 }
 
 Rules:
 - Extract numbers even if written in Burmese digits.
-- If a field is not mentioned, set it to null.
-- For category, pick the most relevant one based on what the report is mainly about.
-- Return ONLY valid JSON, no explanation.`;
-  }
-
-  return `You are a future planning data extractor. Extract structured data from this planning/follow-up message.
-The message may be in Burmese (Myanmar) or English or mixed.
-
-Message:
-"""${text}"""
-
-Extract and return a JSON object with these fields:
-{
-  "note": string (clean summary),
-  "followUpClient": string | null (client who needs follow-up),
-  "followUpReason": string | null (why follow-up is needed),
-  "focusService": string | null (service to focus on),
-  "focusReason": string | null (why to focus on this service),
-  "delayedProject": string | null (project that is delayed),
-  "delayReason": string | null (reason for delay),
-  "nextSteps": string | null (what to do next),
-  "customerName": string | null (customer name if mentioned),
-  "category": "follow_up" | "focus" | "delay" | "planning" | "general",
-  "status": "new" | "pending" | "in_progress"
-}
-
-Rules:
-- Extract client/project/service names accurately.
 - If a field is not mentioned, set it to null.
 - Return ONLY valid JSON, no explanation.`;
 }
 
 export async function parseDemandMessageWithGemini({
   text,
-  receivedAt,
-  reportType,
   apiKey,
   model,
 }: {
   text: string;
-  receivedAt: Date;
-  reportType: ReportType;
+  receivedAt?: Date;
+  reportType?: ReportType;
   apiKey?: string | null;
   model?: string | null;
 }): Promise<ParsedDemandRecord> {
-  const fallback = parseDemandMessage(text, reportType);
+  const fallback = parseDemandMessage(text);
 
   if (!apiKey) return fallback;
 
   try {
     const genAI = new GoogleGenAI({ apiKey });
     const modelName = model || 'gemini-3.1-flash-lite-preview';
-    const prompt = buildGeminiPrompt(text, reportType);
+    const prompt = buildGeminiPrompt(text);
 
     const response = await generateContentWithRetry(genAI, {
       model: modelName,
@@ -364,29 +254,14 @@ export async function parseDemandMessageWithGemini({
 
     const parsed = JSON.parse(cleanedJson);
 
-    if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-      return {
-        ...fallback,
-        aiProvider: 'gemini',
-        aiModel: modelName,
-        confidence: 0.9,
-        note: typeof parsed.note === 'string' ? parsed.note : fallback.note,
-        customerName: parsed.customerName || fallback.customerName,
-        category: parsed.category || fallback.category,
-        status: parsed.status || fallback.status,
-        totalSales: typeof parsed.totalSales === 'number' ? parsed.totalSales : fallback.totalSales,
-        demand: typeof parsed.demand === 'number' ? parsed.demand : fallback.demand,
-        serviceName: parsed.serviceName || fallback.serviceName,
-        serviceAmount: typeof parsed.serviceAmount === 'number' ? parsed.serviceAmount : fallback.serviceAmount,
-        serviceQty: typeof parsed.serviceQty === 'number' ? parsed.serviceQty : fallback.serviceQty,
-        appointments: typeof parsed.appointments === 'number' ? parsed.appointments : fallback.appointments,
-        projectName: parsed.projectName || fallback.projectName,
-        projectStatus: parsed.projectStatus || fallback.projectStatus,
-        marketingBudget: typeof parsed.marketingBudget === 'number' ? parsed.marketingBudget : fallback.marketingBudget,
-      };
+    let followUpDate: Date | null = null;
+    if (parsed.followUpDate) {
+      const parsedDate = Date.parse(parsed.followUpDate);
+      if (!isNaN(parsedDate)) {
+        followUpDate = new Date(parsedDate);
+      }
     }
 
-    // Future Plan
     return {
       ...fallback,
       aiProvider: 'gemini',
@@ -394,15 +269,14 @@ export async function parseDemandMessageWithGemini({
       confidence: 0.9,
       note: typeof parsed.note === 'string' ? parsed.note : fallback.note,
       customerName: parsed.customerName || fallback.customerName,
+      customerPhone: parsed.customerPhone || fallback.customerPhone,
+      customerCompany: parsed.customerCompany || fallback.customerCompany,
       category: parsed.category || fallback.category,
       status: parsed.status || fallback.status,
-      followUpClient: parsed.followUpClient || fallback.followUpClient,
-      followUpReason: parsed.followUpReason || fallback.followUpReason,
-      focusService: parsed.focusService || fallback.focusService,
-      focusReason: parsed.focusReason || fallback.focusReason,
-      delayedProject: parsed.delayedProject || fallback.delayedProject,
-      delayReason: parsed.delayReason || fallback.delayReason,
-      nextSteps: parsed.nextSteps || fallback.nextSteps,
+      serviceName: parsed.serviceName || fallback.serviceName,
+      serviceAmount: typeof parsed.serviceAmount === 'number' ? parsed.serviceAmount : fallback.serviceAmount,
+      serviceQty: typeof parsed.serviceQty === 'number' ? parsed.serviceQty : fallback.serviceQty,
+      followUpDate: followUpDate || fallback.followUpDate,
     };
   } catch (error) {
     console.error('Gemini parsing failed, using heuristic fallback:', error);
@@ -461,8 +335,6 @@ const TEXT_MIME_TYPES = new Set([
   'text/xml',
 ]);
 
-// Gemini's inlineData does not accept xlsx/xls; parse them server-side and
-// send the extracted text to the model instead.
 const SPREADSHEET_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
   'application/vnd.ms-excel', // .xls
@@ -471,7 +343,6 @@ const SPREADSHEET_MIME_TYPES = new Set([
 
 export function isSpreadsheetFile(mimeType: string, fileName: string): boolean {
   if (SPREADSHEET_MIME_TYPES.has(mimeType)) return true;
-  // Some clients (e.g. Telegram) send spreadsheets as application/octet-stream.
   const lower = fileName.toLowerCase();
   return lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.xlsm') || lower.endsWith('.csv');
 }
@@ -494,13 +365,12 @@ export function isFileTooLarge(sizeBytes: number): boolean {
   return sizeBytes > MAX_FILE_SIZE;
 }
 
-function buildFileExtractionPrompt(reportType: ReportType, caption?: string): string {
+function buildFileExtractionPrompt(caption?: string): string {
   const captionNote = caption
     ? `\nThe user also provided this caption/context: "${caption}"\n`
     : '';
 
-  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-    return `You are a business report data extractor. Extract ALL text and data from the uploaded file.
+  return `You are a business demand sheet data extractor. Extract ALL text and data from the uploaded file.
 The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
 
 The file may contain MANY rows / clients / demands. You MUST extract one structured record per logical entry — do NOT collapse multiple clients or rows into a single record. If the file is a single short report with only one demand, return a one-element array.
@@ -517,19 +387,17 @@ STRUCTURED_DATA:
 \`\`\`json
 [
   {
-    "note": string (clean summary of this entry),
-    "totalSales": number | null,
-    "demand": number | null,
+    "note": string (clean summary of the call notes, chat notes, or remarks for this entry),
+    "customerName": string | null (customer name from 'FB account Name' or similar name columns),
+    "customerPhone": string | null (customer phone number if mentioned, e.g. from 'Phone', 'ph', or contact columns),
+    "customerCompany": string | null (customer business/company name or shop name if mentioned, e.g. from 'Business', 'Company', or shop columns),
     "serviceName": string | null (must be one of these exact values: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other"),
-    "serviceAmount": number | null,
-    "serviceQty": number | null,
-    "appointments": number | null,
-    "projectName": string | null,
-    "projectStatus": "on_track" | "delayed" | "completed" | "at_risk" | null,
-    "marketingBudget": number | null,
-    "customerName": string | null,
-    "category": "sales" | "service" | "project" | "marketing" | "general",
-    "status": "new" | "in_progress" | "completed"
+    "serviceAmount": number | null (revenue / package price),
+    "serviceQty": number | null (quantity),
+    "followUpDate": string | null (next follow-up date in YYYY-MM-DD format if mentioned, e.g. from 'Next FU Date' or similar columns),
+    "createdAt": string | null (original date / row date in YYYY-MM-DD format if mentioned, e.g. from 'Date' or similar columns),
+    "category": "sales" | "inquiry" | "follow_up" | "general",
+    "status": "new" | "contacted" | "quoted" | "pending" | "closed"
   }
 ]
 \`\`\`
@@ -540,70 +408,29 @@ Rules:
 - Extract ALL text content from the file into EXTRACTED_TEXT, even if it doesn't fit the structured fields.
 - If a structured field is not found for an entry, set it to null.
 - Return BOTH the extracted text AND the JSON array.`;
-  }
-
-  return `You are a future planning data extractor. Extract ALL text and data from the uploaded file.
-The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
-
-The file may contain MANY rows / clients / plans. You MUST extract one structured record per logical entry — do NOT collapse multiple clients or rows into a single record. If the file is a single short note with only one follow-up, return a one-element array.
-
-First, provide a complete text extraction of everything in the file.
-Then, extract structured data and return a JSON ARRAY (one element per client/plan/follow-up).
-
-Return your response in this exact format:
-
-EXTRACTED_TEXT:
-[All text content from the file goes here]
-
-STRUCTURED_DATA:
-\`\`\`json
-[
-  {
-    "note": string (clean summary of this entry),
-    "followUpClient": string | null,
-    "followUpReason": string | null,
-    "focusService": string | null,
-    "focusReason": string | null,
-    "delayedProject": string | null,
-    "delayReason": string | null,
-    "nextSteps": string | null,
-    "customerName": string | null,
-    "category": "follow_up" | "focus" | "delay" | "planning" | "general",
-    "status": "new" | "pending" | "in_progress"
-  }
-]
-\`\`\`
-
-Rules:
-- Return a JSON ARRAY, not a single object.
-- Create one array element per client / row / plan in the file. If the file has 30 follow-ups, return 30 (or more) elements.
-- Extract ALL text content from the file into EXTRACTED_TEXT, even if it doesn't fit the structured fields.
-- If a structured field is not found for an entry, set it to null.
-- Return BOTH the extracted text AND the JSON array.`;
 }
 
-function buildSpreadsheetExtractionPrompt(reportType: ReportType, headers: any[], caption?: string): string {
+function buildSpreadsheetExtractionPrompt(headers: unknown[], caption?: string): string {
   const captionNote = caption
     ? `\nThe user also provided this caption/context: "${caption}"\n`
     : '';
 
   const headerList = headers.map(h => `'${h}'`).join(', ');
 
-  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-    return `You are a business report spreadsheet parser. Extract structured data from this sheet chunk.
+  return `You are a business demand spreadsheet parser. Extract structured data from this sheet chunk.
 The spreadsheet has these headers: [${headerList}].
 The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
 
 For each data row, extract:
-- "customerName": extract the client/customer name from name columns (e.g., 'FB account Name', 'FB account', 'Client Name', 'Name', etc.).
-- "note": extract/summarize remarks, chat/call notes, and business description (e.g., from 'Remarks', 'Call notes / Chat notes', 'Hp & Fu & No Potential', 'Business', etc.).
-- "serviceName": extract service or product name (must be classified into one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other").
-- "totalSales": extract total sales or package amount if mentioned.
+- "customerName": extract the client/customer name from name columns (e.g. 'FB account Name', 'FB account', 'Client Name', etc.).
+- "customerPhone": extract the client/customer phone number (e.g. from 'Phone', 'ph', 'Phone no', etc.).
+- "customerCompany": extract the client/customer business/company name or shop name (e.g. from 'Business', 'Company', 'Shop', etc.).
+- "note": extract/summarize remarks, chat/call notes, and business description (e.g. from 'Remarks', 'Call notes / Chat notes', 'Hp & Fu & No Potential', etc.).
+- "serviceName": extract service or package name (must be classified into one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other").
+- "serviceAmount": extract package price/amount.
 - "serviceQty": quantity of services/items.
-- "appointments": number of appointments.
-- "projectName": project name.
-- "projectStatus": status of the project.
-- "marketingBudget": budget.
+- "followUpDate": extract next follow-up date in YYYY-MM-DD format (e.g. from 'Next FU Date').
+- "createdAt": extract record/row date in YYYY-MM-DD format (e.g. from 'Date' or similar date columns).
 
 Return your response in this exact format:
 
@@ -615,63 +442,16 @@ STRUCTURED_DATA:
 [
   {
     "note": string,
-    "totalSales": number | null,
-    "demand": number | null,
+    "customerName": string | null,
+    "customerPhone": string | null,
+    "customerCompany": string | null,
     "serviceName": string | null (must be one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other"),
     "serviceAmount": number | null,
     "serviceQty": number | null,
-    "appointments": number | null,
-    "projectName": string | null,
-    "projectStatus": "on_track" | "delayed" | "completed" | "at_risk" | null,
-    "marketingBudget": number | null,
-    "customerName": string | null,
-    "category": "sales" | "service" | "project" | "marketing" | "general",
-    "status": "new" | "in_progress" | "completed"
-  }
-]
-\`\`\`
-
-Rules:
-- Return a JSON ARRAY, not a single object.
-- Create exactly one array element per data row.
-- If a value is not present in a row, use null.`;
-  }
-
-  // Future Plan
-  return `You are a business planning and follow-up spreadsheet parser. Extract structured data from this sheet chunk.
-The spreadsheet has these headers: [${headerList}].
-The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
-
-For each data row, extract:
-- "followUpClient" and "customerName": extract the client/customer name from name columns (e.g., 'FB account Name', 'FB account', 'Client Name', 'Name', etc.). Always populate both fields with the extracted name so they are not null.
-- "note": extract/summarize remarks, chat/call notes, and business description (e.g., from 'Remarks', 'Call notes / Chat notes', 'Hp & Fu & No Potential', 'Business', etc.).
-- "followUpReason": why follow-up is needed.
-- "focusService": service/product to focus on (e.g., from 'Package', 'Service', 'Product', etc.).
-- "focusReason": focus reason.
-- "delayedProject": name of any delayed project.
-- "delayReason": reason for delay.
-- "nextSteps": next action items.
-
-Return your response in this exact format:
-
-EXTRACTED_TEXT:
-[Plain text summary of all rows in this chunk]
-
-STRUCTURED_DATA:
-\`\`\`json
-[
-  {
-    "note": string,
-    "followUpClient": string | null,
-    "followUpReason": string | null,
-    "focusService": string | null,
-    "focusReason": string | null,
-    "delayedProject": string | null,
-    "delayReason": string | null,
-    "nextSteps": string | null,
-    "customerName": string | null,
-    "category": "follow_up" | "focus" | "delay" | "planning" | "general",
-    "status": "new" | "pending" | "in_progress"
+    "followUpDate": string | null,
+    "createdAt": string | null,
+    "category": "sales" | "inquiry" | "follow_up" | "general",
+    "status": "new" | "contacted" | "quoted" | "pending" | "closed"
   }
 ]
 \`\`\`
@@ -683,13 +463,11 @@ Rules:
 }
 
 function parseFileExtractionResponse(
-  responseText: string,
-  reportType: ReportType,
+  responseText: string
 ): { extractedText: string; records: Record<string, unknown>[] } {
   let extractedText = responseText;
   let records: Record<string, unknown>[] = [];
 
-  // Try to split EXTRACTED_TEXT and STRUCTURED_DATA sections
   const textMatch = responseText.match(
     /EXTRACTED_TEXT:\s*\n([\s\S]*?)(?=STRUCTURED_DATA:|$)/i,
   );
@@ -704,8 +482,6 @@ function parseFileExtractionResponse(
       if (Array.isArray(parsed)) {
         records = parsed.filter((r) => r && typeof r === 'object') as Record<string, unknown>[];
       } else if (parsed && typeof parsed === 'object') {
-        // Model returned a single object — wrap it as a one-element array so the
-        // downstream loop still creates one record.
         records = [parsed as Record<string, unknown>];
       }
     } catch {
@@ -719,53 +495,51 @@ function parseFileExtractionResponse(
 function buildRecordFromStructuredData(
   structuredData: Record<string, unknown>,
   extractedText: string,
-  reportType: ReportType,
-  modelName: string,
+  modelName: string
 ): ParsedDemandRecord {
   const fallback = parseDemandMessage(
-    (structuredData.note as string) || extractedText.slice(0, 500),
-    reportType,
+    (structuredData.note as string) || extractedText.slice(0, 500)
   );
 
-  const parsed: ParsedDemandRecord = {
+  let followUpDate: Date | null = null;
+  if (structuredData.followUpDate) {
+    const parsedDate = Date.parse(String(structuredData.followUpDate));
+    if (!isNaN(parsedDate)) {
+      followUpDate = new Date(parsedDate);
+    }
+  }
+
+  let createdAt: Date | null = null;
+  if (structuredData.createdAt) {
+    const parsedDate = Date.parse(String(structuredData.createdAt));
+    if (!isNaN(parsedDate)) {
+      createdAt = new Date(parsedDate);
+    }
+  }
+
+  return {
     ...fallback,
     aiProvider: 'gemini',
     aiModel: modelName,
     confidence: 0.85,
     note: (structuredData.note as string) || extractedText.slice(0, 500),
     customerName: (structuredData.customerName as string) || null,
+    customerPhone: (structuredData.customerPhone as string) || null,
+    customerCompany: (structuredData.customerCompany as string) || null,
     category: (structuredData.category as string) || fallback.category,
     status: (structuredData.status as string) || fallback.status,
+    serviceName: (structuredData.serviceName as string) || null,
+    serviceAmount: typeof structuredData.serviceAmount === 'number' ? structuredData.serviceAmount : null,
+    serviceQty: typeof structuredData.serviceQty === 'number' ? structuredData.serviceQty : null,
+    followUpDate,
+    createdAt: createdAt || undefined,
   };
-
-  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-    parsed.totalSales = typeof structuredData.totalSales === 'number' ? structuredData.totalSales : null;
-    parsed.demand = typeof structuredData.demand === 'number' ? structuredData.demand : null;
-    parsed.serviceName = (structuredData.serviceName as string) || null;
-    parsed.serviceAmount = typeof structuredData.serviceAmount === 'number' ? structuredData.serviceAmount : null;
-    parsed.serviceQty = typeof structuredData.serviceQty === 'number' ? structuredData.serviceQty : null;
-    parsed.appointments = typeof structuredData.appointments === 'number' ? structuredData.appointments : null;
-    parsed.projectName = (structuredData.projectName as string) || null;
-    parsed.projectStatus = (structuredData.projectStatus as string) || null;
-    parsed.marketingBudget = typeof structuredData.marketingBudget === 'number' ? structuredData.marketingBudget : null;
-  } else {
-    parsed.followUpClient = (structuredData.followUpClient as string) || null;
-    parsed.followUpReason = (structuredData.followUpReason as string) || null;
-    parsed.focusService = (structuredData.focusService as string) || null;
-    parsed.focusReason = (structuredData.focusReason as string) || null;
-    parsed.delayedProject = (structuredData.delayedProject as string) || null;
-    parsed.delayReason = (structuredData.delayReason as string) || null;
-    parsed.nextSteps = (structuredData.nextSteps as string) || null;
-  }
-
-  return parsed;
 }
 
 export async function extractDataFromFile({
   fileBuffer,
   mimeType,
   fileName,
-  reportType,
   caption,
   apiKey,
   model,
@@ -774,7 +548,7 @@ export async function extractDataFromFile({
   fileBuffer: Buffer;
   mimeType: string;
   fileName: string;
-  reportType: ReportType;
+  reportType?: ReportType;
   caption?: string;
   apiKey: string;
   model?: string | null;
@@ -782,9 +556,8 @@ export async function extractDataFromFile({
 }): Promise<{ extractedText: string; parsed: ParsedDemandRecord[] }> {
   const genAI = new GoogleGenAI({ apiKey });
   const modelName = model || 'gemini-3.1-flash-lite-preview';
-  const prompt = buildFileExtractionPrompt(reportType, caption);
+  const prompt = buildFileExtractionPrompt(caption);
 
-  // For text-based files, read content directly and send as text
   const isTextFile = TEXT_MIME_TYPES.has(mimeType);
   const isSpreadsheet = isSpreadsheetFile(mimeType, fileName);
 
@@ -795,11 +568,10 @@ export async function extractDataFromFile({
       const allParsedRecords: ParsedDemandRecord[] = [];
       const batchSize = 5;
 
-      // Calculate total chunks first
       let totalChunks = 0;
       for (const sheetName of workbook.SheetNames) {
         const sheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+        const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1 });
         if (rows.length === 0) continue;
         const dataRows = rows.slice(1).filter((row) => {
           if (!row || !Array.isArray(row) || row.length === 0) return false;
@@ -821,7 +593,7 @@ export async function extractDataFromFile({
 
       for (const sheetName of workbook.SheetNames) {
         const sheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+        const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1 });
         if (rows.length === 0) continue;
 
         const headerRow = rows[0];
@@ -836,7 +608,6 @@ export async function extractDataFromFile({
 
         if (dataRows.length === 0) continue;
 
-        // If sheet is small, process in one call to save API calls
         if (dataRows.length <= batchSize) {
           processedChunks++;
           const subGrid = [headerRow, ...dataRows];
@@ -850,7 +621,7 @@ export async function extractDataFromFile({
           }
 
           const textContent = `=== Sheet: ${sheetName} ===\n${csv}`;
-          const sheetPrompt = buildSpreadsheetExtractionPrompt(reportType, headerRow, caption);
+          const sheetPrompt = buildSpreadsheetExtractionPrompt(headerRow, caption);
           const fullPrompt = `${sheetPrompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
 
           try {
@@ -860,25 +631,25 @@ export async function extractDataFromFile({
             });
             const resText = response?.text || '';
             if (resText) {
-              const { extractedText, records } = parseFileExtractionResponse(resText, reportType);
+              const { extractedText, records } = parseFileExtractionResponse(resText);
               allExtractedTexts.push(extractedText);
               records.forEach((structuredData) => {
-                allParsedRecords.push(buildRecordFromStructuredData(structuredData, extractedText, reportType, modelName));
+                allParsedRecords.push(buildRecordFromStructuredData(structuredData, extractedText, modelName));
               });
             }
             if (onProgress) {
               await onProgress(processedChunks, totalChunks);
             }
-          } catch (err: any) {
+          } catch (err) {
             console.error(`Error processing sheet ${sheetName}:`, err);
+            const errMessage = err instanceof Error ? err.message : String(err);
             if (onProgress) {
-              await onProgress(processedChunks, totalChunks, `Sheet '${sheetName}' error: ${err.message || err}`);
+              await onProgress(processedChunks, totalChunks, `Sheet '${sheetName}' error: ${errMessage}`);
             }
           }
         } else {
-          // Chunk data rows in groups of batchSize
           const chunkSize = batchSize;
-          const chunks: any[][][] = [];
+          const chunks: unknown[][][] = [];
           for (let i = 0; i < dataRows.length; i += chunkSize) {
             chunks.push(dataRows.slice(i, i + chunkSize));
           }
@@ -891,11 +662,10 @@ export async function extractDataFromFile({
             const csv = XLSX.utils.sheet_to_csv(subSheet);
 
             const textContent = `=== Sheet: ${sheetName} (Rows ${idx * chunkSize + 1} to ${idx * chunkSize + chunk.length}) ===\n${csv}`;
-            const sheetPrompt = buildSpreadsheetExtractionPrompt(reportType, headerRow, caption);
+            const sheetPrompt = buildSpreadsheetExtractionPrompt(headerRow, caption);
             const fullPrompt = `${sheetPrompt}\n\nFile name: ${fileName}\nFile content:\n"""\n${textContent}\n"""`;
 
             try {
-              // Add a 1-second delay between chunks to prevent Gemini Rate Limit (RPM)
               if (idx > 0) {
                 await new Promise((resolve) => setTimeout(resolve, 1000));
               }
@@ -906,19 +676,20 @@ export async function extractDataFromFile({
               });
               const resText = response?.text || '';
               if (resText) {
-                const { extractedText, records } = parseFileExtractionResponse(resText, reportType);
+                const { extractedText, records } = parseFileExtractionResponse(resText);
                 allExtractedTexts.push(extractedText);
                 records.forEach((structuredData) => {
-                  allParsedRecords.push(buildRecordFromStructuredData(structuredData, extractedText, reportType, modelName));
+                  allParsedRecords.push(buildRecordFromStructuredData(structuredData, extractedText, modelName));
                 });
               }
               if (onProgress) {
                 await onProgress(processedChunks, totalChunks);
               }
-            } catch (chunkErr: any) {
+            } catch (chunkErr) {
               console.error(`Error processing chunk ${idx + 1} of sheet ${sheetName}:`, chunkErr);
+              const errMsg = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
               if (onProgress) {
-                await onProgress(processedChunks, totalChunks, `Sheet '${sheetName}' chunk ${idx + 1} error: ${chunkErr.message || chunkErr}`);
+                await onProgress(processedChunks, totalChunks, `Sheet '${sheetName}' chunk ${idx + 1} error: ${errMsg}`);
               }
             }
           }
@@ -929,7 +700,7 @@ export async function extractDataFromFile({
         extractedText: allExtractedTexts.join('\n\n') || `[Spreadsheet: ${fileName}] - Extracted content`,
         parsed: allParsedRecords.length > 0 ? allParsedRecords : [
           {
-            ...parseDemandMessage(`File processed: ${fileName}`, reportType),
+            ...parseDemandMessage(`File processed: ${fileName}`),
             aiProvider: 'gemini',
             aiModel: modelName,
             confidence: 0.1,
@@ -954,7 +725,6 @@ export async function extractDataFromFile({
     });
     responseText = response?.text || '';
   } else {
-    // Binary files: send as inlineData (multimodal)
     const base64Data = fileBuffer.toString('base64');
 
     const response = await generateContentWithRetry(genAI, {
@@ -978,12 +748,11 @@ export async function extractDataFromFile({
   }
 
   if (!responseText) {
-    // Return a minimal fallback as a one-element array.
     return {
       extractedText: `[File: ${fileName}] - Could not extract content`,
       parsed: [
         {
-          ...parseDemandMessage(`File uploaded: ${fileName}`, reportType),
+          ...parseDemandMessage(`File uploaded: ${fileName}`),
           aiProvider: 'gemini',
           aiModel: modelName,
           confidence: 0.1,
@@ -992,16 +761,14 @@ export async function extractDataFromFile({
     };
   }
 
-  const { extractedText, records } = parseFileExtractionResponse(responseText, reportType);
+  const { extractedText, records } = parseFileExtractionResponse(responseText);
 
-  // If the model returned no parseable records, fall back to a single heuristic
-  // record from the extracted text so the user still sees something.
   if (records.length === 0) {
     return {
       extractedText,
       parsed: [
         {
-          ...parseDemandMessage(extractedText.slice(0, 500), reportType),
+          ...parseDemandMessage(extractedText.slice(0, 500)),
           aiProvider: 'gemini',
           aiModel: modelName,
           confidence: 0.3,
@@ -1011,8 +778,373 @@ export async function extractDataFromFile({
   }
 
   const parsed = records.map((structuredData) =>
-    buildRecordFromStructuredData(structuredData, extractedText, reportType, modelName),
+    buildRecordFromStructuredData(structuredData, extractedText, modelName)
   );
 
   return { extractedText, parsed };
 }
+
+// ─── Project Expiration Parser ──────────────────────────────────────────────
+
+export type ParsedProjectExpiration = {
+  projectName: string;
+  url: string | null;
+  packageName: string | null;
+  domainProvider: string | null;
+  hostingProvider: string | null;
+  hostingRemark: string | null;
+  domainExpireDate: Date | null;
+  hostingExpireDate: Date | null;
+  remark: string | null;
+};
+
+export function parseExcelDate(val: any): Date | null {
+  if (val === null || val === undefined || val === '') return null;
+  if (val instanceof Date) return val;
+  const num = Number(val);
+  if (!isNaN(num) && num > 0) {
+    return new Date(Math.round((num - 25569) * 86400 * 1000));
+  }
+  const str = String(val).trim();
+  if (!str) return null;
+  const parsed = Date.parse(str);
+  if (!isNaN(parsed)) return new Date(parsed);
+  return null;
+}
+
+export function isProjectExpiryHeaders(headers: string[]): boolean {
+  const normalized = headers.map(h => String(h || '').trim().toLowerCase());
+  return (
+    normalized.includes('domain expiration date') ||
+    normalized.includes('hosting expiration date') ||
+    normalized.includes('check list')
+  );
+}
+
+export function parseProjectExpirySpreadsheet(fileBuffer: Buffer): ParsedProjectExpiration[] {
+  const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+  const allRecords: ParsedProjectExpiration[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { raw: true });
+
+    for (const row of rows) {
+      const getVal = (keys: string[]) => {
+        for (const k of keys) {
+          const matchedKey = Object.keys(row).find(
+            rk => rk.toLowerCase().trim() === k.toLowerCase()
+          );
+          if (matchedKey !== undefined) return row[matchedKey];
+        }
+        return null;
+      };
+
+      const projectName = String(getVal(['Check List', 'Project Name', 'Name']) || '').trim();
+      if (!projectName) continue;
+
+      const url = String(getVal(['URL', 'Link']) || '').trim() || null;
+      const packageName = String(getVal(['Package']) || '').trim() || null;
+      const domainProvider = String(getVal(['Domain Provider']) || '').trim() || null;
+      const hostingProvider = String(getVal(['Hosting Provider']) || '').trim() || null;
+      const hostingRemark = String(getVal(['Hosting Remark']) || '').trim() || null;
+      const domainExpireDate = parseExcelDate(getVal(['Domain Expiration Date', 'Domain Expiry']));
+      const hostingExpireDate = parseExcelDate(getVal(['Hosting Expiration Date', 'Hosting Expiry']));
+      const remark = String(getVal(['Remark', 'Remarks']) || '').trim() || null;
+
+      allRecords.push({
+        projectName,
+        url,
+        packageName,
+        domainProvider,
+        hostingProvider,
+        hostingRemark,
+        domainExpireDate,
+        hostingExpireDate,
+        remark,
+      });
+    }
+  }
+
+  return allRecords;
+}
+
+export type ParsedWebsiteUpdate = {
+  name: string;
+  url: string | null;
+  businessType: string | null;
+  packageName: string | null;
+};
+
+export function isWebsiteUpdateHeaders(headers: string[]): boolean {
+  const normalized = headers.map(h => String(h || '').trim().toLowerCase());
+  return (
+    (normalized.includes('website link') || normalized.includes('website_link') || normalized.includes('website-link')) &&
+    (normalized.includes('business type') || normalized.includes('business_type') || normalized.includes('business-type') || normalized.includes('business')) &&
+    (normalized.includes('name') || normalized.includes('project name') || normalized.includes('project_name'))
+  );
+}
+
+export function parseWebsiteUpdateSpreadsheet(fileBuffer: Buffer): ParsedWebsiteUpdate[] {
+  const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+  const allRecords: ParsedWebsiteUpdate[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { raw: true });
+
+    for (const row of rows) {
+      const getVal = (keys: string[]) => {
+        for (const k of keys) {
+          const matchedKey = Object.keys(row).find(
+            rk => rk.toLowerCase().trim() === k.toLowerCase()
+          );
+          if (matchedKey !== undefined) return row[matchedKey];
+        }
+        return null;
+      };
+
+      const name = String(getVal(['Name', 'Project Name', 'Project_Name']) || '').trim();
+      if (!name) continue;
+
+      const url = String(getVal(['Website Link', 'Website_Link', 'URL', 'Link']) || '').trim() || null;
+      const businessType = String(getVal(['Business Type', 'Business_Type', 'Business']) || '').trim() || null;
+      const packageName = String(getVal(['Package', 'Package Name', 'Package_Name']) || '').trim() || null;
+
+      allRecords.push({
+        name,
+        url,
+        businessType,
+        packageName,
+      });
+    }
+  }
+
+  return allRecords;
+}
+
+export async function parseProjectExpiryMessageWithGemini({
+  text,
+  apiKey,
+  model,
+}: {
+  text: string;
+  apiKey?: string | null;
+  model?: string | null;
+}): Promise<ParsedProjectExpiration> {
+  const fallback = parseProjectExpiryMessage(text);
+  if (!apiKey) return fallback;
+
+  try {
+    const genAI = new GoogleGenAI({ apiKey });
+    const modelName = model || 'gemini-3.1-flash-lite-preview';
+    const prompt = `You are a project expiration data extractor. Extract structured data from this message.
+Message:
+"""${text}"""
+
+Extract and return a JSON object with these fields:
+{
+  "projectName": string (required, name of the project / client website),
+  "url": string | null (website link/URL),
+  "packageName": string | null (subscription package name),
+  "domainProvider": string | null (domain provider, e.g. Namecheap, GoDaddy),
+  "hostingProvider": string | null (hosting provider, e.g. DigitalOcean, AWS),
+  "hostingRemark": string | null (hosting notes/remarks),
+  "domainExpireDate": string | null (domain expiration date in YYYY-MM-DD format),
+  "hostingExpireDate": string | null (hosting expiration date in YYYY-MM-DD format),
+  "remark": string | null (any general remarks or notes)
+}
+
+Rules:
+- If a field is not mentioned, set it to null.
+- Return ONLY valid JSON, no explanation.`;
+
+    const response = await generateContentWithRetry(genAI, {
+      model: modelName,
+      contents: prompt,
+    });
+
+    const responseText = response?.text;
+    if (!responseText) return fallback;
+
+    const cleanedJson = responseText
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim();
+
+    const parsed = JSON.parse(cleanedJson);
+
+    let domainExpireDate: Date | null = null;
+    if (parsed.domainExpireDate) {
+      const p = Date.parse(parsed.domainExpireDate);
+      if (!isNaN(p)) domainExpireDate = new Date(p);
+    }
+
+    let hostingExpireDate: Date | null = null;
+    if (parsed.hostingExpireDate) {
+      const p = Date.parse(parsed.hostingExpireDate);
+      if (!isNaN(p)) hostingExpireDate = new Date(p);
+    }
+
+    return {
+      projectName: parsed.projectName || fallback.projectName,
+      url: parsed.url || fallback.url,
+      packageName: parsed.packageName || fallback.packageName,
+      domainProvider: parsed.domainProvider || fallback.domainProvider,
+      hostingProvider: parsed.hostingProvider || fallback.hostingProvider,
+      hostingRemark: parsed.hostingRemark || fallback.hostingRemark,
+      domainExpireDate: domainExpireDate || fallback.domainExpireDate,
+      hostingExpireDate: hostingExpireDate || fallback.hostingExpireDate,
+      remark: parsed.remark || fallback.remark,
+    };
+  } catch (err) {
+    console.error("Gemini project expiry text parse failed:", err);
+    return fallback;
+  }
+}
+
+export function parseProjectExpiryMessage(text: string): ParsedProjectExpiration {
+  const getVal = (keys: string[]) => {
+    for (const k of keys) {
+      const pattern = new RegExp(`(?:${k})\\s*[:=-]?\\s*([^\\n,]+)`, 'i');
+      const match = text.match(pattern);
+      if (match) return match[1].trim();
+    }
+    return null;
+  };
+
+  const projectName = getVal(['project', 'name', 'check list', 'project name']) || 'Unknown';
+  const url = getVal(['url', 'link', 'website link']) || null;
+  const packageName = getVal(['package', 'package name']) || null;
+  const domainProvider = getVal(['domain provider', 'domain']) || null;
+  const hostingProvider = getVal(['hosting provider', 'hosting']) || null;
+  const hostingRemark = getVal(['hosting remark', 'hosting note']) || null;
+  const domainExpireDateStr = getVal(['domain expire', 'domain expiration', 'domain expiry', 'domain date']);
+  const hostingExpireDateStr = getVal(['hosting expire', 'hosting expiration', 'hosting expiry', 'hosting date']);
+  const remark = getVal(['remark', 'remarks', 'note', 'notes']) || null;
+
+  let domainExpireDate: Date | null = null;
+  if (domainExpireDateStr) {
+    const p = Date.parse(domainExpireDateStr);
+    if (!isNaN(p)) domainExpireDate = new Date(p);
+  }
+
+  let hostingExpireDate: Date | null = null;
+  if (hostingExpireDateStr) {
+    const p = Date.parse(hostingExpireDateStr);
+    if (!isNaN(p)) hostingExpireDate = new Date(p);
+  }
+
+  return {
+    projectName,
+    url,
+    packageName,
+    domainProvider,
+    hostingProvider,
+    hostingRemark,
+    domainExpireDate,
+    hostingExpireDate,
+    remark,
+  };
+}
+
+export async function parseWebsiteUpdateMessageWithGemini({
+  text,
+  apiKey,
+  model,
+}: {
+  text: string;
+  apiKey?: string | null;
+  model?: string | null;
+}): Promise<ParsedWebsiteUpdate & { status: string; remark: string | null }> {
+  const fallback = parseWebsiteUpdateMessage(text);
+  if (!apiKey) return fallback;
+
+  try {
+    const genAI = new GoogleGenAI({ apiKey });
+    const modelName = model || 'gemini-3.1-flash-lite-preview';
+    const prompt = `You are a website update/maintenance data extractor. Extract structured data from this message.
+Message:
+"""${text}"""
+
+Extract and return a JSON object with these fields:
+{
+  "name": string (required, name of the project / client website),
+  "url": string | null (website link/URL),
+  "businessType": string | null (business type / description),
+  "packageName": string | null (package name),
+  "status": "up_to_date" | "pending_update" | "in_progress" (maintenance status, default is "up_to_date"),
+  "remark": string | null (remarks / update logs / notes)
+}
+
+Rules:
+- If a field is not mentioned, set it to null.
+- Return ONLY valid JSON, no explanation.`;
+
+    const response = await generateContentWithRetry(genAI, {
+      model: modelName,
+      contents: prompt,
+    });
+
+    const responseText = response?.text;
+    if (!responseText) return fallback;
+
+    const cleanedJson = responseText
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim();
+
+    const parsed = JSON.parse(cleanedJson);
+
+    return {
+      name: parsed.name || fallback.name,
+      url: parsed.url || fallback.url,
+      businessType: parsed.businessType || fallback.businessType,
+      packageName: parsed.packageName || fallback.packageName,
+      status: parsed.status || fallback.status,
+      remark: parsed.remark || fallback.remark,
+    };
+  } catch (err) {
+    console.error("Gemini website update text parse failed:", err);
+    return fallback;
+  }
+}
+
+export function parseWebsiteUpdateMessage(text: string): ParsedWebsiteUpdate & { status: string; remark: string | null } {
+  const getVal = (keys: string[]) => {
+    for (const k of keys) {
+      const pattern = new RegExp(`(?:${k})\\s*[:=-]?\\s*([^\\n,]+)`, 'i');
+      const match = text.match(pattern);
+      if (match) return match[1].trim();
+    }
+    return null;
+  };
+
+  const name = getVal(['name', 'project name', 'project']) || 'Unknown';
+  const url = getVal(['url', 'link', 'website link', 'website']) || null;
+  const businessType = getVal(['business type', 'business', 'business_type']) || null;
+  const packageName = getVal(['package', 'package name']) || null;
+  const statusVal = getVal(['status', 'update status']) || 'up_to_date';
+  const remark = getVal(['remark', 'remarks', 'note', 'notes']) || null;
+
+  let status = 'up_to_date';
+  if (statusVal) {
+    const lower = statusVal.toLowerCase().replace(/[\s_]/g, '');
+    if (lower.includes('progress') || lower.includes('inprog')) {
+      status = 'in_progress';
+    } else if (lower.includes('pending') || lower.includes('pend')) {
+      status = 'pending_update';
+    }
+  }
+
+  return {
+    name,
+    url,
+    businessType,
+    packageName,
+    status,
+    remark,
+  };
+}
+
+

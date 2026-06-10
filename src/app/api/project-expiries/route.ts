@@ -1,0 +1,137 @@
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { NextRequest, NextResponse } from "next/server";
+
+function serializeProjectExpiration(record: any) {
+  const result = { ...record };
+  if (result.domainExpireDate instanceof Date) result.domainExpireDate = result.domainExpireDate.toISOString();
+  if (result.hostingExpireDate instanceof Date) result.hostingExpireDate = result.hostingExpireDate.toISOString();
+  if (result.createdAt instanceof Date) result.createdAt = result.createdAt.toISOString();
+  if (result.updatedAt instanceof Date) result.updatedAt = result.updatedAt.toISOString();
+  return result;
+}
+
+export async function GET(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = req.nextUrl;
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20")));
+  const search = searchParams.get("search") || "";
+  const filter = searchParams.get("filter") || "all"; // "all" | "expired" | "expiring_soon" | "active"
+
+  const where: any = {};
+
+  if (search) {
+    where.OR = [
+      { projectName: { contains: search, mode: "insensitive" } },
+      { url: { contains: search, mode: "insensitive" } },
+      { domainProvider: { contains: search, mode: "insensitive" } },
+      { hostingProvider: { contains: search, mode: "insensitive" } },
+      { remark: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
+  const now = new Date();
+  const next30Days = new Date();
+  next30Days.setDate(now.getDate() + 30);
+
+  if (filter === "expired") {
+    where.OR = [
+      { domainExpireDate: { lt: now } },
+      { hostingExpireDate: { lt: now } },
+    ];
+  } else if (filter === "expiring_soon") {
+    where.OR = [
+      {
+        domainExpireDate: {
+          gte: now,
+          lte: next30Days,
+        },
+      },
+      {
+        hostingExpireDate: {
+          gte: now,
+          lte: next30Days,
+        },
+      },
+    ];
+  } else if (filter === "active") {
+    where.AND = [
+      {
+        OR: [
+          { domainExpireDate: { gt: next30Days } },
+          { domainExpireDate: null },
+        ],
+      },
+      {
+        OR: [
+          { hostingExpireDate: { gt: next30Days } },
+          { hostingExpireDate: null },
+        ],
+      },
+    ];
+  }
+
+  const [records, total, stats] = await Promise.all([
+    prisma.projectExpiration.findMany({
+      where,
+      orderBy: [
+        { domainExpireDate: "asc" },
+        { hostingExpireDate: "asc" },
+      ],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.projectExpiration.count({ where }),
+    prisma.$transaction(async (tx) => {
+      const all = await tx.projectExpiration.findMany({
+        select: {
+          domainExpireDate: true,
+          hostingExpireDate: true,
+        },
+      });
+
+      let expiredCount = 0;
+      let expiringSoonCount = 0;
+      let activeCount = 0;
+
+      for (const item of all) {
+        const hasExpired =
+          (item.domainExpireDate && item.domainExpireDate < now) ||
+          (item.hostingExpireDate && item.hostingExpireDate < now);
+
+        const isExpiringSoon =
+          !hasExpired &&
+          ((item.domainExpireDate && item.domainExpireDate >= now && item.domainExpireDate <= next30Days) ||
+            (item.hostingExpireDate && item.hostingExpireDate >= now && item.hostingExpireDate <= next30Days));
+
+        if (hasExpired) {
+          expiredCount++;
+        } else if (isExpiringSoon) {
+          expiringSoonCount++;
+        } else {
+          activeCount++;
+        }
+      }
+
+      return {
+        total: all.length,
+        expired: expiredCount,
+        expiringSoon: expiringSoonCount,
+        active: activeCount,
+      };
+    }),
+  ]);
+
+  return NextResponse.json({
+    records: records.map(serializeProjectExpiration),
+    total,
+    page,
+    totalPages: Math.ceil(total / limit),
+    stats,
+  });
+}

@@ -123,7 +123,7 @@ model TelegramSender {
   displayName     String
   messageCount    Int      @default(0)
   lastMessageAt   DateTime?
-  activeReportType String   @default("business_report")
+  activeReportType String   @default("none")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -159,38 +159,17 @@ model DemandRecord {
   sender          TelegramSender   @relation(fields: [senderId], references: [id], onDelete: Cascade)
   customerId      String?
   customer        Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  reportType      String           @default("business_report")
   customerName    String?
   category        String           @default("general")
   status          String           @default("new")
   note            String
 
-  // Business Report fields
-  totalSales      Float?
-  demand          Float?
+  // Demand Sheet fields
   serviceName     String?
   serviceAmount   Float?
   serviceQty      Int?
-  appointments    Int?
-  projectName     String?
-  projectStatus   String?          // "on_track" | "delayed" | "completed" | "at_risk"
-  marketingBudget Float?
-
-  // Future Plan Report fields
-  followUpClient  String?
-  followUpReason  String?
-  focusService    String?
-  focusReason     String?
-  delayedProject  String?
-  delayReason     String?
-  nextSteps       String?
-
-  // Legacy / general fields
-  quantity        Int?
-  product         String?
-  amount          Float?
-  unit            String?
   followUpDate    DateTime?
+
   confidence      Float            @default(0.35)
   aiProvider      String           @default("heuristic")
   aiModel         String?
@@ -201,14 +180,12 @@ model DemandRecord {
   @@map("demand_record")
   @@index([messageId])
   @@index([senderId])
-  @@index([reportType])
   @@index([category])
   @@index([status])
   @@index([followUpDate])
   @@index([createdAt])
   @@index([customerId])
   @@index([serviceName])
-  @@index([projectName])
 }
 
 // ─── Q&A Knowledge Base ──────────────────────────────────────────────────────
@@ -243,3 +220,35 @@ model BotSettings {
 
   @@map("bot_settings")
 }
+
+model ProjectExpiration {
+  id                    String            @id @default(cuid())
+  projectName           String            @map("project_name")
+  url                   String?
+  packageName           String?           @map("package_name")
+  domainProvider        String?           @map("domain_provider")
+  hostingProvider       String?           @map("hosting_provider")
+  hostingRemark         String?           @map("hosting_remark")
+  domainExpireDate      DateTime?         @map("domain_expire_date")
+  hostingExpireDate     DateTime?         @map("hosting_expire_date")
+  remark                String?
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  @@map("project_expiration")
+}
+
+model WebsiteUpdate {
+  id              String            @id @default(cuid())
+  name            String
+  url             String?
+  businessType    String?           @map("business_type")
+  packageName     String?           @map("package_name")
+  status          String            @default("up_to_date") // "up_to_date" | "pending_update" | "in_progress"
+  remark          String?
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  @@map("website_update")
+}
+

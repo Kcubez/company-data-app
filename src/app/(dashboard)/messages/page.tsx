@@ -13,7 +13,6 @@ import {
   Search,
   Trash2,
   ChevronLeft,
-  ChevronRight,
   Inbox,
   Radio,
   ClipboardList,
@@ -48,7 +47,6 @@ import type { TelegramSender } from '@/lib/api';
 
 export default function MessagesPage() {
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === 'admin';
 
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
@@ -64,11 +62,6 @@ export default function MessagesPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Reset limit on sender selection change
-  useEffect(() => {
-    setLimit(10);
-  }, [selectedSenderId]);
-
   const { data: messagesData, isLoading: messagesLoading } = useMessages({
     page: 1, // Always load page 1, expanding the list in-place via limit
     limit,
@@ -82,6 +75,7 @@ export default function MessagesPage() {
 
   const handleSenderFilter = useCallback((senderId: string | undefined) => {
     setSelectedSenderId(senderId);
+    setLimit(10);
   }, []);
 
   const statCards = [
@@ -547,34 +541,3 @@ function EmptyState({
   );
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function generatePageNumbers(
-  current: number,
-  total: number
-): (number | string)[] {
-  if (total <= 7) {
-    return Array.from({ length: total }, (_, i) => i + 1);
-  }
-
-  const pages: (number | string)[] = [1];
-
-  if (current > 3) {
-    pages.push('...');
-  }
-
-  const start = Math.max(2, current - 1);
-  const end = Math.min(total - 1, current + 1);
-
-  for (let i = start; i <= end; i++) {
-    pages.push(i);
-  }
-
-  if (current < total - 2) {
-    pages.push('...');
-  }
-
-  pages.push(total);
-
-  return pages;
-}

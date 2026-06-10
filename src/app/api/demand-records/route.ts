@@ -20,6 +20,12 @@ function serializeDemandRecord(record: Record<string, unknown>) {
     }
     result.sender = sender;
   }
+  if (result.customer && typeof result.customer === "object") {
+    const customer = { ...(result.customer as Record<string, unknown>) };
+    if (customer.createdAt instanceof Date) customer.createdAt = customer.createdAt.toISOString();
+    if (customer.updatedAt instanceof Date) customer.updatedAt = customer.updatedAt.toISOString();
+    result.customer = customer;
+  }
   return result;
 }
 
@@ -35,14 +41,12 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
   const category = searchParams.get("category") || "";
-  const reportType = searchParams.get("reportType") || "";
   const senderId = searchParams.get("senderId") || "";
 
   const where: Record<string, unknown> = {};
 
   if (status) where.status = status;
   if (category) where.category = category;
-  if (reportType) where.reportType = reportType;
   if (senderId) where.senderId = senderId;
 
   if (search) {
@@ -60,6 +64,7 @@ export async function GET(req: NextRequest) {
       include: {
         sender: true,
         message: true,
+        customer: true,
       },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * limit,

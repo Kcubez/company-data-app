@@ -48,7 +48,7 @@ export async function GET(
     ...customer.demandRecords.map((d) => ({
       id: d.id,
       type: "demand" as const,
-      reportType: d.reportType,
+      reportType: "demand_report",
       customerName: d.customerName,
       category: d.category,
       status: d.status,

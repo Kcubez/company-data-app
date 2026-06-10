@@ -1,13 +1,17 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
+import * as XLSX from "xlsx";
 import {
-  isReportType,
   parseDemandMessageWithGemini,
   answerQuestionWithGemini,
   extractDataFromFile,
   isFileTooLarge,
-  REPORT_TYPES,
-  type ReportType,
+  isProjectExpiryHeaders,
+  parseProjectExpirySpreadsheet,
+  isWebsiteUpdateHeaders,
+  parseWebsiteUpdateSpreadsheet,
+  parseProjectExpiryMessageWithGemini,
+  parseWebsiteUpdateMessageWithGemini,
 } from "@/lib/demand-parser";
 import { NextRequest, NextResponse, after } from "next/server";
 
@@ -54,7 +58,6 @@ async function createTelegramMessageIfNew({
       console.info(`Duplicate Telegram message ignored: ${telegramMsgId}`);
       return null;
     }
-
     throw error;
   }
 }
@@ -80,7 +83,7 @@ async function sendTelegramMessage({
   chatId: bigint | number;
   text: string;
   replyMarkup?: Record<string, unknown>;
-}): Promise<any> {
+}): Promise<{ message_id: number } | null> {
   if (!botToken) return null;
 
   try {
@@ -176,7 +179,6 @@ function getFileInfoFromMessage(message: Record<string, unknown>): {
   mimeType: string;
   fileSize: number;
 } | null {
-  // Document (PDF, Excel, text, etc.)
   const doc = message.document as Record<string, unknown> | undefined;
   if (doc) {
     return {
@@ -187,7 +189,6 @@ function getFileInfoFromMessage(message: Record<string, unknown>): {
     };
   }
 
-  // Photo (array of sizes, pick largest)
   const photos = message.photo as Array<Record<string, unknown>> | undefined;
   if (photos && photos.length > 0) {
     const largest = photos[photos.length - 1];
@@ -199,7 +200,6 @@ function getFileInfoFromMessage(message: Record<string, unknown>): {
     };
   }
 
-  // Audio
   const audio = message.audio as Record<string, unknown> | undefined;
   if (audio) {
     return {
@@ -210,7 +210,6 @@ function getFileInfoFromMessage(message: Record<string, unknown>): {
     };
   }
 
-  // Voice
   const voice = message.voice as Record<string, unknown> | undefined;
   if (voice) {
     return {
@@ -221,7 +220,6 @@ function getFileInfoFromMessage(message: Record<string, unknown>): {
     };
   }
 
-  // Video
   const video = message.video as Record<string, unknown> | undefined;
   if (video) {
     return {
@@ -252,6 +250,7 @@ async function upsertSender(from: {
       displayName: displayName || "Unknown",
       messageCount: 0,
       lastMessageAt: null,
+      activeReportType: 'none',
     },
     update: {
       firstName: from.first_name || undefined,
@@ -265,68 +264,136 @@ async function upsertSender(from: {
 const MAIN_MENU_BUTTONS = {
   inline_keyboard: [
     [{ text: "🤖 Q & A", callback_data: "mode:qa" }],
-    [{ text: "📊 Reports", callback_data: "mode:reports" }],
+    [{ text: "📋 Demand Sheet", callback_data: "mode:demand_report" }],
+    [{ text: "⏰ Project Expiries", callback_data: "mode:project_expiry" }],
+    [{ text: "🔧 Website Updates", callback_data: "mode:website_update" }],
   ],
 };
 
-const REPORT_TYPE_BUTTONS = {
-  inline_keyboard: [
-    [{ text: "📈 Business Report", callback_data: "report_type:business_report" }],
-    [{ text: "🔮 Future Plan Report", callback_data: "report_type:future_plan" }],
-    [{ text: "⬅️ Back", callback_data: "mode:back" }],
-  ],
-};
-
-function getFormatPrompt(reportType: ReportType): string {
-  if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-    return [
-      "📈 <b>လုပ်ငန်းအစီရင်ခံစာ (Business Report) Mode</b>",
+// Sent when a sender submits data without first picking a report mode.
+// Prevents data from being mis-filed into the wrong report type.
+async function sendPickModePrompt(
+  botToken: string | null | undefined,
+  chatId: bigint,
+) {
+  await sendTelegramMessage({
+    botToken,
+    chatId,
+    text: [
+      "👋 <b>ကဏ္ဍ ရွေးချယ်ရန် လိုအပ်ပါသည်။</b>",
       "",
-      "ဤကဏ္ဍတွင် အစီရင်ခံစာ စာသား သို့မဟုတ် သက်ဆိုင်ရာ Excel / CSV ဖိုင်များကို တိုက်ရိုက် ပေးပို့နိုင်ပါသည်။",
+      "အချက်အလက် မထည့်သွင်းမီ မည်သည့် လုပ်ငန်းစဉ်အမျိုးအစားဖြင့် ဆောင်ရွက်မည်ကို အောက်ပါ Menu မှ ဦးစွာ ရွေးချယ်ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
       "",
-      "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း ရေးသားပေးပို့နိုင်ပါသည် -</b>",
-      "<pre>",
-      "• Total Sales: [ရောင်းရငွေပမာဏ]",
-      "• Demand: [ဝယ်လိုအား အသေးစိတ်]",
-      "• Service: [ဝန်ဆောင်မှုအမည်] - Amount: [ဝင်ငွေ] - Qty: [အရေအတွက်]",
-      "• Appointments: [ချိန်းဆိုမှု အရေအတွက်]",
-      "• Project: [စီမံကိန်းအမည်] - Status: [on_track / delayed / completed / at_risk]",
-      "• Marketing Budget: [စျေးကွက်မြှင့်တင်ရေး အသုံးစရိတ်]",
-      "• Note: [အခြားမှတ်ချက်]",
-      "</pre>",
-      "💡 <i>အကြံပြုချက်: မလိုအပ်သော စာကြောင်းများကို ချန်လှပ်ထားနိုင်ပါသည်။ Excel/CSV ဖိုင် တင်သွင်းပါကလည်း AI မှ အလိုအလျောက် ဆန်းစစ်ပေးမည် ဖြစ်ပါသည်။</i>",
-    ].join("\n");
-  }
+      "ရွေးချယ်ပြီးမှသာ ပေးပို့သော အချက်အလက်များကို မှန်ကန်သော ကဏ္ဍတွင် သိမ်းဆည်းပေးနိုင်မည် ဖြစ်ပါသည်။",
+    ].join("\n"),
+    replyMarkup: MAIN_MENU_BUTTONS,
+  });
+}
 
+function getFormatPrompt(): string {
   return [
-    "🔮 <b>ရှေ့လုပ်ငန်းစဉ်အစီအမံ (Future Plan) Mode</b>",
+    "📋 <b>ဝယ်လိုအားနှင့် အရောင်းမှတ်တမ်း (Demand Sheet) Mode</b>",
     "",
-    "ဤကဏ္ဍတွင် အစီအမံ စာသား သို့မဟုတ် သက်ဆိုင်ရာ Excel / CSV ဖိုင်များကို တိုက်ရိုက် ပေးပို့နိုင်ပါသည်။",
+    "ဤကဏ္ဍတွင် အစီရင်ခံစာ စာသား သို့မဟုတ် သက်ဆိုင်ရာ Excel / CSV ဖိုင်များကို တိုက်ရိုက် ပေးပို့နိုင်ပါသည်။",
     "",
     "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း ရေးသားပေးပို့နိုင်ပါသည် -</b>",
     "<pre>",
-    "• Follow-up: [Client နာမည်] - Reason: [ဆက်သွယ်ရမည့် အကြောင်းရင်း]",
-    "• Focus Service: [ဝန်ဆောင်မှုအမည်] - Reason: [အကြောင်းရင်း]",
-    "• Delayed Project: [စီမံကိန်းအမည်] - Reason: [အကြောင်းရင်း]",
-    "• Next Steps: [ရှေ့ဆက်လုပ်ဆောင်မည့် အဆင့်များ]",
+    "• Customer: [Customer နာမည်]",
+    "• Phone: [ဖုန်းနံပါတ်]",
+    "• Business: [လုပ်ငန်း/ကုမ္ပဏီအမည်]",
+    "• Service: [ဝန်ဆောင်မှုအမည်] - Amount: [ဝင်ငွေ] - Qty: [အရေအတွက်]",
+    "• Follow-up Date: [YYYY-MM-DD]",
     "• Note: [အခြားမှတ်ချက်]",
     "</pre>",
     "💡 <i>အကြံပြုချက်: မလိုအပ်သော စာကြောင်းများကို ချန်လှပ်ထားနိုင်ပါသည်။ Excel/CSV ဖိုင် တင်သွင်းပါကလည်း AI မှ အလိုအလျောက် ဆန်းစစ်ပေးမည် ဖြစ်ပါသည်။</i>",
   ].join("\n");
 }
 
+function getProjectExpiryFormatPrompt(): string {
+  return [
+    "⏰ <b>ပရောဂျက် သက်တမ်းကုန်ဆုံးမှု မှတ်တမ်း (Project Expiry) Mode</b>",
+    "",
+    "ဤကဏ္ဍတွင် စီမံကိန်း သက်တမ်းကုန်ဆုံးရက်စွဲများကို တင်သွင်းရန် စာသား သို့မဟုတ် Excel ဖိုင်ကို ပေးပို့နိုင်ပါသည်။",
+    "",
+    "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း ရေးသားပေးပို့နိုင်ပါသည် -</b>",
+    "<pre>",
+    "• Project: [Project အမည်]",
+    "• URL: [Website URL]",
+    "• Package: [Package အမည်]",
+    "• Domain Provider: [Domain ဝန်ဆောင်မှုပေးသူ]",
+    "• Hosting Provider: [Hosting ဝန်ဆောင်မှုပေးသူ]",
+    "• Hosting Remark: [Hosting မှတ်ချက်]",
+    "• Domain Expiry: [YYYY-MM-DD]",
+    "• Hosting Expiry: [YYYY-MM-DD]",
+    "• Remark: [အခြားမှတ်ချက်]",
+    "</pre>",
+  ].join("\n");
+}
+
+function getWebsiteUpdateFormatPrompt(): string {
+  return [
+    "🔧 <b>ဝဘ်ဆိုဒ် အပ်ဒိတ်/ထိန်းသိမ်းမှု မှတ်တမ်း (Website Update) Mode</b>",
+    "",
+    "ဤကဏ္ဍတွင် ဝဘ်ဆိုဒ်အပ်ဒိတ်နှင့် ထိန်းသိမ်းမှု အခြေအနေများကို တင်သွင်းရန် စာသား သို့မဟုတ် Excel ဖိုင်ကို ပေးပို့နိုင်ပါသည်။",
+    "",
+    "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း ရေးသားပေးပို့နိုင်ပါသည် -</b>",
+    "<pre>",
+    "• Name: [ဝဘ်ဆိုဒ်/လုပ်ငန်း အမည်]",
+    "• URL: [Website URL]",
+    "• Business: [လုပ်ငန်းအမျိုးအစား]",
+    "• Package: [Package အမည်]",
+    "• Status: [up_to_date / pending_update / in_progress]",
+    "• Remark: [အခြားမှတ်ချက်]",
+    "</pre>",
+  ].join("\n");
+}
+
+// Return the full format guide for whatever report mode the sender is in.
+function getFormatPromptForMode(mode: string | null | undefined): string {
+  switch (mode) {
+    case 'project_expiry':
+      return getProjectExpiryFormatPrompt();
+    case 'website_update':
+      return getWebsiteUpdateFormatPrompt();
+    case 'demand_report':
+      return getFormatPrompt();
+    default:
+      return [
+        "🤖 <b>Q&A ကဏ္ဍတွင် ရှိနေပါသည်။</b>",
+        "",
+        "ဤကဏ္ဍတွင် ပုံစံ (format) မလိုအပ်ပါ — သိရှိလိုသည်များကို တိုက်ရိုက် မေးမြန်းနိုင်ပါသည်။",
+        "အစီရင်ခံစာ တင်သွင်းလိုပါက /menu မှ သက်ဆိုင်ရာ ကဏ္ဍကို ရွေးချယ်ပါ။",
+      ].join("\n");
+  }
+}
+
+// A compact footer reminding the sender of the expected fields for the
+// current report mode. Appended to confirmation messages so users can see
+// what to include next time without re-opening the menu.
+function getFormatHintFooter(mode: string): string {
+  let fields = "";
+  if (mode === 'demand_report') {
+    fields = "Customer • Phone • Business • Service / Amount / Qty • Follow-up Date • Note";
+  } else if (mode === 'project_expiry') {
+    fields = "Project • URL • Package • Domain / Hosting Provider • Domain / Hosting Expiry • Remark";
+  } else if (mode === 'website_update') {
+    fields = "Name • URL • Business • Package • Status • Remark";
+  }
+  return [
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+    `💡 <i>ပိုပြည့်စုံစေရန် ဖြည့်နိုင်သော အကွက်များ:</i>`,
+    `<i>${fields}</i>`,
+    `<i>ပုံစံ အပြည့်အစုံ ကြည့်ရန် /format ၊ ကဏ္ဍ ပြောင်းရန် /menu ကို ပေးပို့ပါ။</i>`,
+  ].join("\n");
+}
+
+
 async function buildQAContext(): Promise<string> {
-  const [bizReports, futurePlans, qaDocs, customers] = await Promise.all([
+  const [demandRecords, qaDocs, customers, projectExpiries, websiteUpdates] = await Promise.all([
     prisma.demandRecord.findMany({
-      where: { reportType: 'business_report' },
       orderBy: { createdAt: 'desc' },
-      take: 20,
-      include: { sender: true },
-    }),
-    prisma.demandRecord.findMany({
-      where: { reportType: 'future_plan' },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
+      take: 30,
       include: { sender: true },
     }),
     prisma.qADocument.findMany({
@@ -337,40 +404,61 @@ async function buildQAContext(): Promise<string> {
       take: 20,
       orderBy: { updatedAt: 'desc' },
     }),
+    prisma.projectExpiration.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    }),
+    prisma.websiteUpdate.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    }),
   ]);
 
   const parts: string[] = [];
 
-  if (bizReports.length > 0) {
-    parts.push('=== RECENT BUSINESS REPORTS ===');
-    for (const r of bizReports) {
+  if (demandRecords.length > 0) {
+    parts.push('=== RECENT DEMAND SHEETS ===');
+    for (const r of demandRecords) {
       const fields = [
         `Date: ${r.createdAt.toISOString().slice(0, 10)}`,
         `Reporter: ${r.sender.displayName}`,
-        r.totalSales ? `Total Sales: ${r.totalSales}` : 'Total Sales: —',
-        r.demand ? `Demand: ${r.demand}` : 'Demand: —',
+        r.customerName ? `Customer: ${r.customerName}` : 'Customer: —',
         r.serviceName ? `Service: ${r.serviceName} (Amount: ${r.serviceAmount ?? '—'}, Qty: ${r.serviceQty ?? '—'})` : 'Service: —',
-        r.appointments ? `Appointments: ${r.appointments}` : 'Appointments: —',
-        r.projectName ? `Project: ${r.projectName} (Status: ${r.projectStatus ?? '—'})` : 'Project: —',
-        r.marketingBudget ? `Marketing Budget: ${r.marketingBudget}` : 'Marketing Budget: —',
+        r.followUpDate ? `Follow-up Date: ${r.followUpDate.toISOString().slice(0, 10)}` : 'Follow-up: —',
         `Note: ${r.note || '—'}`,
       ].join(', ');
       parts.push(fields);
     }
   }
 
-  if (futurePlans.length > 0) {
-    parts.push('\n=== RECENT FUTURE PLANS ===');
-    for (const r of futurePlans) {
+  if (projectExpiries.length > 0) {
+    parts.push('\n=== PROJECT EXPIRATIONS (DOMAINS & HOSTING) ===');
+    for (const pe of projectExpiries) {
       const fields = [
-        `Date: ${r.createdAt.toISOString().slice(0, 10)}`,
-        `Reporter: ${r.sender.displayName}`,
-        r.followUpClient ? `Follow-up Client: ${r.followUpClient} (${r.followUpReason || '—'})` : 'Follow-up Client: —',
-        r.focusService ? `Focus Service: ${r.focusService} (${r.focusReason || '—'})` : 'Focus Service: —',
-        r.delayedProject ? `Delayed Project: ${r.delayedProject} (${r.delayReason || '—'})` : 'Delayed Project: —',
-        r.nextSteps ? `Next Steps: ${r.nextSteps}` : 'Next Steps: —',
-        `Note: ${r.note || '—'}`,
-      ].join(', ');
+        `Project: ${pe.projectName}`,
+        pe.url ? `URL: ${pe.url}` : 'URL: —',
+        pe.packageName ? `Package: ${pe.packageName}` : 'Package: —',
+        pe.domainProvider ? `Domain Provider: ${pe.domainProvider}` : 'Domain Provider: —',
+        pe.domainExpireDate ? `Domain Expiry: ${pe.domainExpireDate.toISOString().slice(0, 10)}` : 'Domain Expiry: —',
+        pe.hostingProvider ? `Hosting Provider: ${pe.hostingProvider}` : 'Hosting Provider: —',
+        pe.hostingExpireDate ? `Hosting Expiry: ${pe.hostingExpireDate.toISOString().slice(0, 10)}` : 'Hosting Expiry: —',
+        pe.remark ? `Remark: ${pe.remark}` : '',
+      ].filter(Boolean).join(', ');
+      parts.push(fields);
+    }
+  }
+
+  if (websiteUpdates.length > 0) {
+    parts.push('\n=== WEBSITE MAINTENANCE & UPDATES ===');
+    for (const wu of websiteUpdates) {
+      const fields = [
+        `Name: ${wu.name}`,
+        wu.url ? `URL: ${wu.url}` : 'URL: —',
+        wu.businessType ? `Business: ${wu.businessType}` : 'Business: —',
+        wu.packageName ? `Package: ${wu.packageName}` : 'Package: —',
+        `Status: ${wu.status}`,
+        wu.remark ? `Remark: ${wu.remark}` : '',
+      ].filter(Boolean).join(', ');
       parts.push(fields);
     }
   }
@@ -390,22 +478,30 @@ async function buildQAContext(): Promise<string> {
   return parts.join('\n') || 'No business data available yet.';
 }
 
-// Resolve / create customers in batch for a set of parsed demands.
-// Returns a Map keyed by the raw `customerName` from the parser.
 async function resolveCustomersBatch(
-  parsedDemands: { customerName: string | null }[],
+  parsedDemands: {
+    customerName: string | null;
+    customerPhone?: string | null;
+    customerCompany?: string | null;
+  }[],
   senderId: string,
-  reportType: ReportType,
   fileName: string,
 ): Promise<Map<string, string>> {
-  // 1. De-duplicate names + normalize.
   const nameToNormalized = new Map<string, string>();
+  const nameToDetails = new Map<string, { phone: string | null; company: string | null }>();
+
   for (const d of parsedDemands) {
     if (d.customerName) {
       const normalized = normalizeCustomerName(d.customerName);
       if (!nameToNormalized.has(d.customerName)) {
         nameToNormalized.set(d.customerName, normalized);
       }
+
+      const existing = nameToDetails.get(d.customerName);
+      nameToDetails.set(d.customerName, {
+        phone: d.customerPhone || (existing ? existing.phone : null),
+        company: d.customerCompany || (existing ? existing.company : null),
+      });
     }
   }
   if (nameToNormalized.size === 0) return new Map();
@@ -413,7 +509,6 @@ async function resolveCustomersBatch(
   const allNormalized = Array.from(new Set(nameToNormalized.values()));
   const allRawNames = Array.from(nameToNormalized.keys());
 
-  // 2. Batch fetch by normalized name, then by raw name.
   const [byNormalizedRows, byRawNameRows] = await Promise.all([
     prisma.customer.findMany({
       where: { nameNormalized: { in: allNormalized } },
@@ -431,10 +526,8 @@ async function resolveCustomersBatch(
   }
   for (const c of byRawNameRows) {
     if (c.nameNormalized) {
-      // Already known via normalized index — skip duplicate.
       if (!idByNormalized.has(c.nameNormalized)) idByNormalized.set(c.nameNormalized, c);
     } else {
-      // Find the raw name's expected normalized key and index it.
       const targetNormalized = nameToNormalized.get(c.name);
       if (targetNormalized && !idByNormalized.has(targetNormalized)) {
         idByNormalized.set(targetNormalized, c);
@@ -442,7 +535,6 @@ async function resolveCustomersBatch(
     }
   }
 
-  // 3. Create any customers that are still missing, with P2002 race recovery.
   const missingNames: { raw: string; normalized: string }[] = [];
   for (const [raw, normalized] of nameToNormalized.entries()) {
     if (!idByNormalized.has(normalized)) missingNames.push({ raw, normalized });
@@ -450,14 +542,19 @@ async function resolveCustomersBatch(
 
   for (const m of missingNames) {
     try {
+      const details = nameToDetails.get(m.raw);
       const created = await prisma.customer.create({
-        data: { name: m.raw, nameNormalized: m.normalized },
+        data: {
+          name: m.raw,
+          nameNormalized: m.normalized,
+          phone: details?.phone || null,
+          company: details?.company || null,
+        },
         select: { id: true, name: true, nameNormalized: true },
       });
       idByNormalized.set(m.normalized, created);
     } catch (err) {
       if (isPrismaUniqueConstraintError(err)) {
-        // Concurrent worker created the same customer — look it up.
         const existing = await prisma.customer.findFirst({
           where: { nameNormalized: m.normalized },
           select: { id: true, name: true, nameNormalized: true },
@@ -469,23 +566,33 @@ async function resolveCustomersBatch(
     }
   }
 
-  // 4. Backfill `nameNormalized` for rows found by raw name only.
-  const toBackfill = Array.from(idByNormalized.values()).filter(
-    (c) => !c.nameNormalized && nameToNormalized.has(c.name),
-  );
-  if (toBackfill.length > 0) {
-    await Promise.all(
-      toBackfill.map((c) => {
-        const normalized = nameToNormalized.get(c.name)!;
-        return prisma.customer.update({
-          where: { id: c.id },
-          data: { nameNormalized: normalized, updatedAt: new Date() },
-        });
-      }),
-    );
-  }
+  // Update details (phone, company) and backfill normalized name for existing/newly resolved customers
+  await Promise.all(
+    Array.from(idByNormalized.values()).map(async (c) => {
+      const details = nameToDetails.get(c.name);
+      if (!details) return;
+      const updateData: { phone?: string; company?: string; nameNormalized?: string; updatedAt?: Date } = {};
+      if (details.phone) {
+        updateData.phone = details.phone;
+      }
+      if (details.company) {
+        updateData.company = details.company;
+      }
+      const targetNormalized = nameToNormalized.get(c.name);
+      if (targetNormalized && !c.nameNormalized) {
+        updateData.nameNormalized = targetNormalized;
+      }
 
-  // 5. Build the final raw-name -> id map and create one activity per distinct customer.
+      if (Object.keys(updateData).length > 0) {
+        updateData.updatedAt = new Date();
+        await prisma.customer.update({
+          where: { id: c.id },
+          data: updateData,
+        });
+      }
+    })
+  );
+
   const rawNameToId = new Map<string, string>();
   for (const [raw, normalized] of nameToNormalized.entries()) {
     const entry = idByNormalized.get(normalized);
@@ -495,7 +602,7 @@ async function resolveCustomersBatch(
   const activityCreates = Array.from(rawNameToId.entries()).map(([, id]) => ({
     customerId: id,
     senderId,
-    action: reportType,
+    action: 'demand_report',
     description: `File: ${fileName}`,
   }));
   if (activityCreates.length > 0) {
@@ -508,7 +615,6 @@ async function resolveCustomersBatch(
 async function processFileInBackground({
   downloadedBuffer,
   fileInfo,
-  reportType,
   caption,
   settings,
   chatId,
@@ -518,7 +624,6 @@ async function processFileInBackground({
 }: {
   downloadedBuffer: Buffer;
   fileInfo: { fileName: string; mimeType: string; fileSize: number };
-  reportType: ReportType;
   caption?: string;
   settings: { botToken: string | null; geminiApiKey: string | null; geminiModel: string | null };
   chatId: bigint;
@@ -528,11 +633,109 @@ async function processFileInBackground({
 }) {
   const errors: string[] = [];
   try {
+    const isSpreadsheet = fileInfo.mimeType.includes("sheet") ||
+      fileInfo.mimeType.includes("excel") ||
+      fileInfo.fileName.endsWith(".xlsx") ||
+      fileInfo.fileName.endsWith(".xls") ||
+      fileInfo.fileName.endsWith(".xlsm");
+
+    let isExpiryFile = false;
+    let parsedExpiryRecords: any[] = [];
+    let isWebsiteUpdateFile = false;
+    let parsedWebsiteUpdateRecords: any[] = [];
+
+    if (isSpreadsheet) {
+      try {
+        const workbook = XLSX.read(downloadedBuffer, { type: 'buffer' });
+        if (workbook.SheetNames.length > 0) {
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1 });
+          if (rows.length > 0 && Array.isArray(rows[0])) {
+            const headers = rows[0].map(h => String(h || ''));
+            if (isProjectExpiryHeaders(headers)) {
+              isExpiryFile = true;
+              parsedExpiryRecords = parseProjectExpirySpreadsheet(downloadedBuffer);
+            } else if (isWebsiteUpdateHeaders(headers)) {
+              isWebsiteUpdateFile = true;
+              parsedWebsiteUpdateRecords = parseWebsiteUpdateSpreadsheet(downloadedBuffer);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error checking headers for spreadsheet types:", err);
+      }
+    }
+
+    if (isExpiryFile) {
+      const creates = parsedExpiryRecords.map(rec => ({
+        projectName: rec.projectName,
+        url: rec.url,
+        packageName: rec.packageName,
+        domainProvider: rec.domainProvider,
+        hostingProvider: rec.hostingProvider,
+        hostingRemark: rec.hostingRemark,
+        domainExpireDate: rec.domainExpireDate,
+        hostingExpireDate: rec.hostingExpireDate,
+        remark: rec.remark,
+      }));
+
+      if (creates.length > 0) {
+        await prisma.projectExpiration.createMany({
+          data: creates,
+        });
+      }
+
+      if (progressMsgId) {
+        await editTelegramMessage({
+          botToken: settings.botToken,
+          chatId,
+          messageId: progressMsgId,
+          text: [
+            "✅ <b>ဝဘ်ဆိုဒ် သက်တမ်းကုန်ဆုံးမှု စာရင်းသွင်းပြီးပါပြီ</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+            `📊 <b>အရေအတွက်:</b> <code>${creates.length}</code> ပရောဂျက်များကို အောင်မြင်စွာ မှတ်တမ်းတင်ပြီးပါပြီ။`,
+          ].join("\n"),
+        });
+      }
+      return;
+    }
+
+    if (isWebsiteUpdateFile) {
+      const creates = parsedWebsiteUpdateRecords.map(rec => ({
+        name: rec.name,
+        url: rec.url,
+        businessType: rec.businessType,
+        packageName: rec.packageName,
+        status: "up_to_date",
+      }));
+
+      if (creates.length > 0) {
+        await prisma.websiteUpdate.createMany({
+          data: creates,
+        });
+      }
+
+      if (progressMsgId) {
+        await editTelegramMessage({
+          botToken: settings.botToken,
+          chatId,
+          messageId: progressMsgId,
+          text: [
+            "✅ <b>ဝဘ်ဆိုဒ် အပ်ဒိတ်စောင့်ကြည့်မှု စာရင်းသွင်းပြီးပါပြီ</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+            `📊 <b>အရေအတွက်:</b> <code>${creates.length}</code> ခုကို အောင်မြင်စွာ မှတ်တမ်းတင်ပြီးပါပြီ။`,
+          ].join("\n"),
+        });
+      }
+      return;
+    }
+
     const { extractedText, parsed: parsedDemands } = await extractDataFromFile({
       fileBuffer: downloadedBuffer,
       mimeType: fileInfo.mimeType,
       fileName: fileInfo.fileName,
-      reportType,
       caption,
       apiKey: settings.geminiApiKey!,
       model: settings.geminiModel,
@@ -566,11 +769,10 @@ async function processFileInBackground({
       }
     });
 
-    // Store extracted content as QADocument (for Q&A context)
     await prisma.qADocument.create({
       data: {
         title: `📎 ${fileInfo.fileName}`,
-        content: extractedText.slice(0, 10000), // limit content size
+        content: extractedText.slice(0, 10000),
         source: 'telegram_file',
         fileType: fileInfo.mimeType,
         fileName: fileInfo.fileName,
@@ -578,15 +780,12 @@ async function processFileInBackground({
       },
     });
 
-    // Resolve all customers in batch (fixes N+1 + handles unique-constraint race).
     const customerIdByName = await resolveCustomersBatch(
       parsedDemands,
       senderId,
-      reportType,
       fileInfo.fileName,
     );
 
-    // Build the demand-record insert inputs.
     const demandRecordCreates: Prisma.DemandRecordUncheckedCreateInput[] = [];
     for (const parsedDemand of parsedDemands) {
       const customerId = parsedDemand.customerName
@@ -597,35 +796,18 @@ async function processFileInBackground({
         messageId: telegramMessageId,
         senderId: senderId,
         customerId,
-        reportType: parsedDemand.reportType,
         customerName: parsedDemand.customerName,
         category: parsedDemand.category,
         status: parsedDemand.status,
         note: parsedDemand.note,
-        totalSales: parsedDemand.totalSales,
-        demand: parsedDemand.demand,
         serviceName: parsedDemand.serviceName,
         serviceAmount: parsedDemand.serviceAmount,
         serviceQty: parsedDemand.serviceQty,
-        appointments: parsedDemand.appointments,
-        projectName: parsedDemand.projectName,
-        projectStatus: parsedDemand.projectStatus,
-        marketingBudget: parsedDemand.marketingBudget,
-        followUpClient: parsedDemand.followUpClient,
-        followUpReason: parsedDemand.followUpReason,
-        focusService: parsedDemand.focusService,
-        focusReason: parsedDemand.focusReason,
-        delayedProject: parsedDemand.delayedProject,
-        delayReason: parsedDemand.delayReason,
-        nextSteps: parsedDemand.nextSteps,
-        quantity: parsedDemand.quantity,
-        product: parsedDemand.product,
-        amount: parsedDemand.amount,
-        unit: parsedDemand.unit,
         followUpDate: parsedDemand.followUpDate,
         confidence: parsedDemand.confidence,
         aiProvider: parsedDemand.aiProvider,
         aiModel: parsedDemand.aiModel,
+        createdAt: parsedDemand.createdAt || undefined,
       });
     }
 
@@ -635,7 +817,6 @@ async function processFileInBackground({
       });
     }
 
-    // Confirmation message — summarize every extracted record.
     const confirmParts = [];
     if (errors.length > 0) {
       confirmParts.push([
@@ -649,7 +830,7 @@ async function processFileInBackground({
       errors.forEach((errLine) => {
         confirmParts.push(`• <code>${errLine}</code>`);
       });
-      confirmParts.push(""); // empty line
+      confirmParts.push("");
     } else {
       confirmParts.push([
         "✅ <b>ဖိုင်အချက်အလက် တင်သွင်းမှု အောင်မြင်ပါသည်</b>",
@@ -668,20 +849,12 @@ async function processFileInBackground({
     }
 
     parsedDemands.slice(0, 10).forEach((parsedDemand, idx) => {
-      const recordHeader = `<b>#${idx + 1} 👤 ${parsedDemand.customerName || parsedDemand.followUpClient || 'အမည်မဖော်ပြထားသူ'}</b>`;
+      const recordHeader = `<b>#${idx + 1} 👤 ${parsedDemand.customerName || 'အမည်မဖော်ပြထားသူ'}</b>`;
       const lines: string[] = [recordHeader];
-      if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-        if (parsedDemand.totalSales) lines.push(`  ▫️ <b>Total Sales:</b> 💰 ${parsedDemand.totalSales.toLocaleString()} Ks`);
-        if (parsedDemand.demand) lines.push(`  ▫️ <b>Demand:</b> 📈 ${parsedDemand.demand}`);
-        if (parsedDemand.serviceName) lines.push(`  ▫️ <b>Service:</b> 🛠️ ${parsedDemand.serviceName}`);
-        if (parsedDemand.appointments) lines.push(`  ▫️ <b>Appointments:</b> 📅 ${parsedDemand.appointments}`);
-        if (parsedDemand.projectName) lines.push(`  ▫️ <b>Project:</b> 📁 ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
-        if (parsedDemand.marketingBudget) lines.push(`  ▫️ <b>Marketing:</b> 💸 ${parsedDemand.marketingBudget.toLocaleString()} Ks`);
-      } else {
-        if (parsedDemand.focusService) lines.push(`  ▫️ <b>Focus:</b> 🎯 ${parsedDemand.focusService}`);
-        if (parsedDemand.delayedProject) lines.push(`  ▫️ <b>Delayed:</b> ⚠️ ${parsedDemand.delayedProject}`);
-        if (parsedDemand.nextSteps) lines.push(`  ▫️ <b>Next:</b> ➡️ ${parsedDemand.nextSteps}`);
-      }
+      if (parsedDemand.serviceName) lines.push(`  ▫️ <b>Service:</b> 🛠️ ${parsedDemand.serviceName}`);
+      if (parsedDemand.serviceAmount) lines.push(`  ▫️ <b>Amount:</b> 💰 ${parsedDemand.serviceAmount.toLocaleString()} Ks`);
+      if (parsedDemand.serviceQty) lines.push(`  ▫️ <b>Qty:</b> 📦 ${parsedDemand.serviceQty}`);
+      if (parsedDemand.followUpDate) lines.push(`  ▫️ <b>Follow-up:</b> 📅 ${parsedDemand.followUpDate.toISOString().slice(0, 10)}`);
       if (parsedDemand.note) lines.push(`  ▫️ <b>Note:</b> 📋 <i>${parsedDemand.note}</i>`);
       confirmParts.push(lines.join('\n'));
     });
@@ -704,8 +877,9 @@ async function processFileInBackground({
         text: confirmParts.join('\n'),
       });
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error('Background file processing error:', err);
+    const errMessage = err instanceof Error ? err.message : String(err);
     const errorText = [
       "❌ <b>ဖိုင်ဆန်းစစ်ရာတွင် ချို့ယွင်းချက် ဖြစ်ပေါ်ခဲ့ပါသည်</b>",
       "━━━━━━━━━━━━━━━━━━━━",
@@ -713,7 +887,7 @@ async function processFileInBackground({
       "⚠️ <b>အခြေအနေ:</b> နည်းပညာဆိုင်ရာ ချို့ယွင်းချက် ဖြစ်ပေါ်ခဲ့ပါသည်။ ကျေးဇူးပြု၍ ပြန်လည်ကြိုးစားပေးပါရန်။",
       "",
       "🔍 <b>အသေးစိတ် ချို့ယွင်းချက်:</b>",
-      `<code>${err.message || err}</code>`,
+      `<code>${errMessage}</code>`,
     ].join("\n");
     if (progressMsgId) {
       await editTelegramMessage({
@@ -772,83 +946,59 @@ export async function POST(req: NextRequest) {
               "• <code>ပြီးခဲ့တဲ့အပတ်က ဘယ်စီမံကိန်းတွေ ကြန့်ကြာနေသလဲ?</code>",
               "",
               "━━━━━━━━━━━━━━━━━━━━",
-              "↩️ <b>အဓိက Menu သို့ ပြန်သွားရန်:</b> /start သို့မဟုတ် /menu ဟု ပေးပို့နိုင်ပါသည်။",
+              "↩️ <b>အဓิက Menu သို့ ပြန်သွားရန်:</b> /start သို့မဟုတ် /menu ဟု ပေးပို့နိုင်ပါသည်။",
             ].join("\n"),
           });
         }
         return NextResponse.json({ ok: true });
       }
 
-      if (data === 'mode:reports') {
-        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Reports menu');
-        if (chatId && messageId) {
-          await editTelegramMessage({
-            botToken: settings?.botToken,
-            chatId: BigInt(chatId),
-            messageId,
-            text: [
-              "📊 <b>အစီရင်ခံစာ တင်သွင်းခြင်း (Reports Intake)</b>",
-              "",
-              "တင်သွင်းလိုသည့် အစီရင်ခံစာ အမျိုးအစားကို ရွေးချယ်ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
-              "",
-              "━━━━━━━━━━━━━━━━━━━━",
-              "📈 <b>Business Report:</b> နေ့စဉ် အရောင်း၊ ဝယ်လိုအား၊ လုပ်ငန်းနှင့် စီမံကိန်း အခြေအနေများ။",
-              "🔮 <b>Future Plan:</b> ရှေ့ဆက်လုပ်ဆောင်မည့် အစီအစဉ်များနှင့် Follow-up Client များ။",
-              "━━━━━━━━━━━━━━━━━━━━",
-            ].join("\n"),
-            replyMarkup: REPORT_TYPE_BUTTONS,
-          });
-        }
-        return NextResponse.json({ ok: true });
-      }
-
-      if (data === 'mode:back') {
-        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Main menu');
-        if (chatId && messageId) {
-          await editTelegramMessage({
-            botToken: settings?.botToken,
-            chatId: BigInt(chatId),
-            messageId,
-            text: [
-              "👋 <b>မင်္ဂလာပါ ခင်ဗျာ/ရှင်။</b>",
-              "",
-              "<b>Company Data System</b> မှ လှိုက်လှဲစွာ ကြိုဆိုပါသည်။",
-              "လုပ်ဆောင်လိုသည့် လုပ်ငန်းစဉ်အမျိုးအစားကို အောက်ပါ Menu မှ ရွေးချယ်ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
-              "",
-              "━━━━━━━━━━━━━━━━━━━━",
-              "🤖 <b>Q&A မေးမြန်းရန်:</b> လုပ်ငန်းဆိုင်ရာ အချက်အလက်များကို AI ဖြင့် မေးမြန်းဆန်းစစ်ရန်။",
-              "📊 <b>အစီရင်ခံစာများ တင်သွင်းရန်:</b> Daily Reports နှင့် Future Plans များ တင်သွင်းရန်။",
-              "━━━━━━━━━━━━━━━━━━━━",
-            ].join("\n"),
-            replyMarkup: MAIN_MENU_BUTTONS,
-          });
-        }
-        return NextResponse.json({ ok: true });
-      }
-
-      if (data.startsWith('report_type:')) {
-        const selectedType = data.replace('report_type:', '');
-        if (!isReportType(selectedType) || selectedType === 'qa') {
-          return NextResponse.json({ ok: true });
-        }
-
+      if (data === 'mode:demand_report') {
         await prisma.telegramSender.update({
           where: { id: sender.id },
-          data: { activeReportType: selectedType },
+          data: { activeReportType: 'demand_report' },
         });
-
-        await answerCallbackQuery(
-          settings?.botToken,
-          callbackQuery.id,
-          `${selectedType === 'business_report' ? 'Business Report' : 'Future Plan'} selected`
-        );
-
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Demand Sheet mode selected');
         if (chatId && messageId) {
           await editTelegramMessage({
             botToken: settings?.botToken,
             chatId: BigInt(chatId),
             messageId,
-            text: getFormatPrompt(selectedType),
+            text: getFormatPrompt(),
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      if (data === 'mode:project_expiry') {
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: { activeReportType: 'project_expiry' },
+        });
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Project Expiry mode selected');
+        if (chatId && messageId) {
+          await editTelegramMessage({
+            botToken: settings?.botToken,
+            chatId: BigInt(chatId),
+            messageId,
+            text: getProjectExpiryFormatPrompt(),
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      if (data === 'mode:website_update') {
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: { activeReportType: 'website_update' },
+        });
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Website Update mode selected');
+        if (chatId && messageId) {
+          await editTelegramMessage({
+            botToken: settings?.botToken,
+            chatId: BigInt(chatId),
+            messageId,
+            text: getWebsiteUpdateFormatPrompt(),
           });
         }
         return NextResponse.json({ ok: true });
@@ -867,7 +1017,6 @@ export async function POST(req: NextRequest) {
     const hasText = !!message.text;
     const hasFile = !!fileInfo;
 
-    // Ignore messages with neither text nor file
     if (!hasText && !hasFile) {
       return NextResponse.json({ ok: true });
     }
@@ -878,7 +1027,15 @@ export async function POST(req: NextRequest) {
     const sender = await upsertSender(from);
     const chatId = BigInt(message.chat.id);
 
-    // /start command → Main Menu
+    if (message.text === '/format') {
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId,
+        text: getFormatPromptForMode(sender.activeReportType),
+      });
+      return NextResponse.json({ ok: true });
+    }
+
     if (message.text === '/start' || message.text === '/menu') {
       await sendTelegramMessage({
         botToken: settings?.botToken,
@@ -891,8 +1048,11 @@ export async function POST(req: NextRequest) {
           "",
           "━━━━━━━━━━━━━━━━━━━━",
           "🤖 <b>Q&A မေးမြန်းရန်:</b> လုပ်ငန်းဆိုင်ရာ အချက်အလက်များကို AI ဖြင့် မေးမြန်းဆန်းစစ်ရန်။",
-          "📊 <b>အစီရင်ခံစာများ တင်သွင်းရန်:</b> Daily Reports နှင့် Future Plans များ တင်သွင်းရန်။",
+          "📋 <b>Demand Sheet:</b> ဝယ်လိုအားနှင့် အရောင်းမှတ်တမ်းများ တင်သွင်းရန်။",
+          "⏰ <b>Project Expiries:</b> သက်တမ်းကုန်ဆုံးမည့်ရက်များ တင်သွင်းရန်။",
+          "🔧 <b>Website Updates:</b> အပ်ဒိတ်/ထိန်းသိမ်းမှု အခြေအနေများ တင်သွင်းရန်။",
           "━━━━━━━━━━━━━━━━━━━━",
+          "💡 <i>ကဏ္ဍ ရွေးပြီးနောက် ပုံစံ (format) ပြန်ကြည့်ရန် /format ကို ပေးပို့နိုင်ပါသည်။</i>",
         ].join("\n"),
         replyMarkup: MAIN_MENU_BUTTONS,
       });
@@ -912,7 +1072,11 @@ export async function POST(req: NextRequest) {
 
       const activeMode = updatedSender.activeReportType;
 
-      // In Q&A mode, files are not accepted — tell user to switch to Reports
+      if (activeMode === 'none') {
+        await sendPickModePrompt(settings?.botToken, chatId);
+        return NextResponse.json({ ok: true });
+      }
+
       if (activeMode === 'qa') {
         await sendTelegramMessage({
           botToken: settings?.botToken,
@@ -920,14 +1084,13 @@ export async function POST(req: NextRequest) {
           text: [
             "⚠️ <b>Q&A မေးမြန်းခြင်း ကဏ္ဍတွင် ဖိုင်များ ပေးပို့၍ မရနိုင်ပါ။</b>",
             "",
-            "အစီရင်ခံစာ (Report) တင်သွင်းရန်အတွက် Report Mode သို့ ပြောင်းလဲပေးပို့ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
-            "/start သို့မဟုတ် /menu ကိုနှိပ်၍ 'Reports' ကို ရွေးချယ်နိုင်ပါသည်။",
+            "အစီရင်ခံစာ (Report) တင်သွင်းရန်အတွက် Demand Sheet Mode သို့ ပြောင်းလဲပေးပို့ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
+            "/start သို့မဟုတ် /menu ကိုနှိပ်၍ 'Demand Sheet' ကို ရွေးချယ်နိုင်ပါသည်။",
           ].join("\n"),
         });
         return NextResponse.json({ ok: true });
       }
 
-      // Check file size
       if (isFileTooLarge(fileInfo.fileSize)) {
         await sendTelegramMessage({
           botToken: settings?.botToken,
@@ -941,7 +1104,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Check API key
       if (!settings?.geminiApiKey || !settings?.botToken) {
         await sendTelegramMessage({
           botToken: settings?.botToken,
@@ -968,7 +1130,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Send processing indicator
       const progressMsg = await sendTelegramMessage({
         botToken: settings.botToken,
         chatId,
@@ -981,7 +1142,6 @@ export async function POST(req: NextRequest) {
       });
       const progressMsgId = progressMsg?.message_id || null;
 
-      // Download the file
       const downloaded = await downloadTelegramFile(settings.botToken, fileInfo.fileId);
       if (!downloaded) {
         const errorText = [
@@ -1007,17 +1167,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      const reportType: ReportType = isReportType(activeMode) && activeMode !== 'qa'
-        ? activeMode
-        : REPORT_TYPES.BUSINESS_REPORT;
-
-      // Start processing in background using after to keep Vercel execution active
       after(async () => {
         try {
           await processFileInBackground({
             downloadedBuffer: downloaded.buffer,
             fileInfo,
-            reportType,
             caption,
             settings,
             chatId,
@@ -1038,9 +1192,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-
-
-    // Update sender stats
     const receivedAt = new Date(message.date * 1000);
     const updatedSender = await prisma.telegramSender.update({
       where: { id: sender.id },
@@ -1051,6 +1202,12 @@ export async function POST(req: NextRequest) {
     });
 
     const activeMode = updatedSender.activeReportType;
+
+    // ─── No mode selected yet — prompt the user to pick one first ──────
+    if (activeMode === 'none') {
+      await sendPickModePrompt(settings?.botToken, chatId);
+      return NextResponse.json({ ok: true });
+    }
 
     // ─── Q & A Mode ───────────────────────────────────────────────────
     if (activeMode === 'qa') {
@@ -1063,7 +1220,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Store the message
       const telegramMessage = await createTelegramMessageIfNew({
         telegramMsgId: message.message_id,
         text: message.text,
@@ -1076,7 +1232,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Build context and answer
       const context = await buildQAContext();
       const answer = await answerQuestionWithGemini({
         question: message.text,
@@ -1094,11 +1249,114 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // ─── Report Mode (Business or Future Plan) ───────────────────────
-    const reportType: ReportType = isReportType(activeMode) && activeMode !== 'qa'
-      ? activeMode
-      : REPORT_TYPES.BUSINESS_REPORT;
+    // ─── Project Expiry Mode ───────────────────────────────────────────
+    if (activeMode === 'project_expiry') {
+      const telegramMessage = await createTelegramMessageIfNew({
+        telegramMsgId: message.message_id,
+        text: message.text,
+        senderId: sender.id,
+        chatId,
+        chatTitle: message.chat.title || null,
+        receivedAt,
+      });
+      if (!telegramMessage) {
+        return NextResponse.json({ ok: true });
+      }
 
+      const parsedExpiry = await parseProjectExpiryMessageWithGemini({
+        text: message.text,
+        apiKey: settings?.geminiApiKey,
+        model: settings?.geminiModel,
+      });
+
+      await prisma.projectExpiration.create({
+        data: {
+          projectName: parsedExpiry.projectName,
+          url: parsedExpiry.url,
+          packageName: parsedExpiry.packageName,
+          domainProvider: parsedExpiry.domainProvider,
+          hostingProvider: parsedExpiry.hostingProvider,
+          hostingRemark: parsedExpiry.hostingRemark,
+          domainExpireDate: parsedExpiry.domainExpireDate,
+          hostingExpireDate: parsedExpiry.hostingExpireDate,
+          remark: parsedExpiry.remark,
+        },
+      });
+
+      const confirmParts = [
+        "✅ <b>သက်တမ်းကုန်ဆုံးမှုမှတ်တမ်း တင်သွင်းခြင်း အောင်မြင်ပါသည်</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        `📁 <b>ပရောဂျက်:</b> <code>${parsedExpiry.projectName}</code>`,
+      ];
+      if (parsedExpiry.url) confirmParts.push(`🌐 <b>URL:</b> <code>${parsedExpiry.url}</code>`);
+      if (parsedExpiry.packageName) confirmParts.push(`📦 <b>Package:</b> <code>${parsedExpiry.packageName}</code>`);
+      if (parsedExpiry.domainExpireDate) confirmParts.push(`📅 <b>Domain Expiry:</b> <code>${parsedExpiry.domainExpireDate.toISOString().slice(0, 10)}</code>`);
+      if (parsedExpiry.hostingExpireDate) confirmParts.push(`📅 <b>Hosting Expiry:</b> <code>${parsedExpiry.hostingExpireDate.toISOString().slice(0, 10)}</code>`);
+      if (parsedExpiry.remark) confirmParts.push(`📝 <b>မှတ်ချက်:</b> <i>${parsedExpiry.remark}</i>`);
+      confirmParts.push(getFormatHintFooter('project_expiry'));
+
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId,
+        text: confirmParts.join('\n'),
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // ─── Website Update Mode ───────────────────────────────────────────
+    if (activeMode === 'website_update') {
+      const telegramMessage = await createTelegramMessageIfNew({
+        telegramMsgId: message.message_id,
+        text: message.text,
+        senderId: sender.id,
+        chatId,
+        chatTitle: message.chat.title || null,
+        receivedAt,
+      });
+      if (!telegramMessage) {
+        return NextResponse.json({ ok: true });
+      }
+
+      const parsedUpdate = await parseWebsiteUpdateMessageWithGemini({
+        text: message.text,
+        apiKey: settings?.geminiApiKey,
+        model: settings?.geminiModel,
+      });
+
+      await prisma.websiteUpdate.create({
+        data: {
+          name: parsedUpdate.name,
+          url: parsedUpdate.url,
+          businessType: parsedUpdate.businessType,
+          packageName: parsedUpdate.packageName,
+          status: parsedUpdate.status,
+          remark: parsedUpdate.remark,
+        },
+      });
+
+      const confirmParts = [
+        "✅ <b>ဝဘ်ဆိုဒ် အပ်ဒိတ်/ထိန်းသိမ်းမှု မှတ်တမ်း တင်သွင်းခြင်း အောင်မြင်ပါသည်</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        `📁 <b>အမည်:</b> <code>${parsedUpdate.name}</code>`,
+      ];
+      if (parsedUpdate.url) confirmParts.push(`🌐 <b>URL:</b> <code>${parsedUpdate.url}</code>`);
+      if (parsedUpdate.businessType) confirmParts.push(`🏢 <b>လုပ်ငန်း:</b> <code>${parsedUpdate.businessType}</code>`);
+      if (parsedUpdate.packageName) confirmParts.push(`📦 <b>Package:</b> <code>${parsedUpdate.packageName}</code>`);
+      if (parsedUpdate.status) confirmParts.push(`⚙️ <b>အခြေအနေ:</b> <code>${parsedUpdate.status}</code>`);
+      if (parsedUpdate.remark) confirmParts.push(`📝 <b>မှတ်ချက်:</b> <i>${parsedUpdate.remark}</i>`);
+      confirmParts.push(getFormatHintFooter('website_update'));
+
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId,
+        text: confirmParts.join('\n'),
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // ─── Demand Report Mode ───────────────────────────────────────────
     const telegramMessage = await createTelegramMessageIfNew({
       telegramMsgId: message.message_id,
       text: message.text,
@@ -1114,12 +1372,10 @@ export async function POST(req: NextRequest) {
     const parsedDemand = await parseDemandMessageWithGemini({
       text: message.text,
       receivedAt,
-      reportType,
       apiKey: settings?.geminiApiKey,
       model: settings?.geminiModel,
     });
 
-    // Customer matching
     let customerId: string | null = null;
     if (parsedDemand.customerName) {
       const normalizedName = normalizeCustomerName(parsedDemand.customerName);
@@ -1137,6 +1393,8 @@ export async function POST(req: NextRequest) {
           data: {
             updatedAt: new Date(),
             nameNormalized: customer.nameNormalized || normalizedName,
+            ...(parsedDemand.customerPhone ? { phone: parsedDemand.customerPhone } : {}),
+            ...(parsedDemand.customerCompany ? { company: parsedDemand.customerCompany } : {}),
           },
         });
       } else {
@@ -1144,6 +1402,8 @@ export async function POST(req: NextRequest) {
           data: {
             name: parsedDemand.customerName,
             nameNormalized: normalizedName,
+            phone: parsedDemand.customerPhone || null,
+            company: parsedDemand.customerCompany || null,
           },
         });
       }
@@ -1153,43 +1413,24 @@ export async function POST(req: NextRequest) {
         data: {
           customerId: customer.id,
           senderId: sender.id,
-          action: reportType,
+          action: 'demand_report',
           description: parsedDemand.note,
         },
       });
     }
 
-    // Create message + demand record
     await prisma.demandRecord.create({
       data: {
         messageId: telegramMessage.id,
         senderId: sender.id,
         customerId,
-        reportType: parsedDemand.reportType,
         customerName: parsedDemand.customerName,
         category: parsedDemand.category,
         status: parsedDemand.status,
         note: parsedDemand.note,
-        totalSales: parsedDemand.totalSales,
-        demand: parsedDemand.demand,
         serviceName: parsedDemand.serviceName,
         serviceAmount: parsedDemand.serviceAmount,
         serviceQty: parsedDemand.serviceQty,
-        appointments: parsedDemand.appointments,
-        projectName: parsedDemand.projectName,
-        projectStatus: parsedDemand.projectStatus,
-        marketingBudget: parsedDemand.marketingBudget,
-        followUpClient: parsedDemand.followUpClient,
-        followUpReason: parsedDemand.followUpReason,
-        focusService: parsedDemand.focusService,
-        focusReason: parsedDemand.focusReason,
-        delayedProject: parsedDemand.delayedProject,
-        delayReason: parsedDemand.delayReason,
-        nextSteps: parsedDemand.nextSteps,
-        quantity: parsedDemand.quantity,
-        product: parsedDemand.product,
-        amount: parsedDemand.amount,
-        unit: parsedDemand.unit,
         followUpDate: parsedDemand.followUpDate,
         confidence: parsedDemand.confidence,
         aiProvider: parsedDemand.aiProvider,
@@ -1197,33 +1438,22 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Confirmation message
     const confirmParts = [
-      "✅ <b>အစီရင်ခံစာ မှတ်တမ်းတင်ခြင်း အောင်မြင်ပါသည်</b>",
+      "✅ <b>ဝယ်လိုအားမှတ်တမ်းတင်ခြင်း အောင်မြင်ပါသည်</b>",
       "━━━━━━━━━━━━━━━━━━━━",
       ""
     ];
-    if (reportType === REPORT_TYPES.BUSINESS_REPORT) {
-      confirmParts.push("📊 <b>အမျိုးအစား:</b> 📈 လုပ်ငန်းအစီရင်ခံစာ (Business Report)");
-      if (parsedDemand.customerName) confirmParts.push(`👤 <b>Customer:</b> ${parsedDemand.customerName}`);
-      if (parsedDemand.totalSales) confirmParts.push(`💰 <b>Total Sales:</b> ${parsedDemand.totalSales.toLocaleString()} Ks`);
-      if (parsedDemand.demand) confirmParts.push(`📈 <b>Demand:</b> ${parsedDemand.demand}`);
-      if (parsedDemand.serviceName) confirmParts.push(`🛠️ <b>Service:</b> ${parsedDemand.serviceName}`);
-      if (parsedDemand.appointments) confirmParts.push(`📅 <b>Appointments:</b> ${parsedDemand.appointments}`);
-      if (parsedDemand.projectName) confirmParts.push(`📁 <b>Project:</b> ${parsedDemand.projectName} (${parsedDemand.projectStatus || 'new'})`);
-      if (parsedDemand.marketingBudget) confirmParts.push(`💸 <b>Marketing:</b> ${parsedDemand.marketingBudget.toLocaleString()} Ks`);
-    } else {
-      confirmParts.push("📊 <b>အမျိုးအစား:</b> 🔮 ရှေ့လုပ်ငန်းစဉ်အစီအမံ (Future Plan)");
-      if (parsedDemand.followUpClient) confirmParts.push(`👤 <b>Follow-up Client:</b> ${parsedDemand.followUpClient}`);
-      if (parsedDemand.focusService) confirmParts.push(`🎯 <b>Focus Service:</b> ${parsedDemand.focusService}`);
-      if (parsedDemand.delayedProject) confirmParts.push(`⚠️ <b>Delayed Project:</b> ${parsedDemand.delayedProject}`);
-      if (parsedDemand.nextSteps) confirmParts.push(`➡️ <b>Next Steps:</b> ${parsedDemand.nextSteps}`);
-    }
+    if (parsedDemand.customerName) confirmParts.push(`👤 <b>Customer:</b> ${parsedDemand.customerName}`);
+    if (parsedDemand.serviceName) confirmParts.push(`🛠️ <b>Service:</b> ${parsedDemand.serviceName}`);
+    if (parsedDemand.serviceAmount) confirmParts.push(`💰 <b>Amount:</b> ${parsedDemand.serviceAmount.toLocaleString()} Ks`);
+    if (parsedDemand.serviceQty) confirmParts.push(`📦 <b>Qty:</b> ${parsedDemand.serviceQty}`);
+    if (parsedDemand.followUpDate) confirmParts.push(`📅 <b>Follow-up Date:</b> ${parsedDemand.followUpDate.toISOString().slice(0, 10)}`);
     if (parsedDemand.note) {
       confirmParts.push("");
       confirmParts.push("━━━━━━━━━━━━━━━━━━━━");
       confirmParts.push(`📋 <b>မှတ်စု/အကြောင်းအရာ:</b>\n<i>${parsedDemand.note}</i>`);
     }
+    confirmParts.push(getFormatHintFooter('demand_report'));
 
     await sendTelegramMessage({
       botToken: settings?.botToken,

@@ -145,34 +145,15 @@ export type DemandRecord = {
   messageId: string;
   senderId: string;
   sender: TelegramSender;
-  reportType: string;
+  customerId: string | null;
   customerName: string | null;
+  customer?: Customer | null;
   category: string;
   status: string;
   note: string;
-  // Business Report fields
-  totalSales: number | null;
-  demand: number | null;
   serviceName: string | null;
   serviceAmount: number | null;
   serviceQty: number | null;
-  appointments: number | null;
-  projectName: string | null;
-  projectStatus: string | null;
-  marketingBudget: number | null;
-  // Future Plan fields
-  followUpClient: string | null;
-  followUpReason: string | null;
-  focusService: string | null;
-  focusReason: string | null;
-  delayedProject: string | null;
-  delayReason: string | null;
-  nextSteps: string | null;
-  // Legacy
-  quantity: number | null;
-  product: string | null;
-  amount: number | null;
-  unit: string | null;
   followUpDate: string | null;
   confidence: number;
   aiProvider: string;
@@ -188,21 +169,17 @@ export type DemandRecordsResponse = {
   totalPages: number;
 };
 
+export type ServiceStat = {
+  serviceName: string;
+  salesCount: number;
+  totalQty: number;
+  revenue: number;
+};
+
 export type DemandRecordStats = {
   totalRecords: number;
   todayRecords: number;
-  businessReports: number;
-  futurePlans: number;
-  totalSales: number;
-  totalDemand: number;
-  totalAppointments: number;
-  totalMarketingBudget: number;
-  topServices: { name: string; count: number; totalAmount: number; totalQty: number }[];
-  projects: { name: string; status: string; note: string; lastUpdate: string }[];
-  followUps: { client: string; reason: string | null; date: string }[];
-  focusServices: { service: string; reason: string | null }[];
-  delayedProjects: { project: string; reason: string | null }[];
-  weeklyActivity: { date: string; count: number }[];
+  services: ServiceStat[];
 };
 
 export type DemandRecordsParams = {
@@ -211,8 +188,16 @@ export type DemandRecordsParams = {
   search?: string;
   status?: string;
   category?: string;
-  reportType?: string;
   senderId?: string;
+};
+
+export type AIRecommendation = {
+  customerName: string;
+  insight: string;
+};
+
+export type AIRecommendationsResponse = {
+  recommendations: AIRecommendation[];
 };
 
 export const demandRecordsApi = {
@@ -223,12 +208,125 @@ export const demandRecordsApi = {
     if (params.search) searchParams.set("search", params.search);
     if (params.status) searchParams.set("status", params.status);
     if (params.category) searchParams.set("category", params.category);
-    if (params.reportType) searchParams.set("reportType", params.reportType);
     if (params.senderId) searchParams.set("senderId", params.senderId);
     const qs = searchParams.toString();
     return request<DemandRecordsResponse>(`/api/demand-records${qs ? `?${qs}` : ""}`);
   },
   stats: () => request<DemandRecordStats>("/api/demand-records/stats"),
+  recommendations: () => request<AIRecommendationsResponse>("/api/demand-records/recommendations"),
+};
+
+// ─── Project Expiration API ─────────────────────────────────────────────────
+
+export type ProjectExpiration = {
+  id: string;
+  projectName: string;
+  url: string | null;
+  packageName: string | null;
+  domainProvider: string | null;
+  hostingProvider: string | null;
+  hostingRemark: string | null;
+  domainExpireDate: string | null;
+  hostingExpireDate: string | null;
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectExpiriesResponse = {
+  records: ProjectExpiration[];
+  total: number;
+  page: number;
+  totalPages: number;
+  stats: {
+    total: number;
+    expired: number;
+    expiringSoon: number;
+    active: number;
+  };
+};
+
+export type ProjectExpiriesParams = {
+  page?: number;
+  limit?: number;
+  search?: string;
+  filter?: "all" | "expired" | "expiring_soon" | "active";
+};
+
+export const projectExpiriesApi = {
+  list: (params: ProjectExpiriesParams = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    if (params.search) searchParams.set("search", params.search);
+    if (params.filter) searchParams.set("filter", params.filter);
+    const qs = searchParams.toString();
+    return request<ProjectExpiriesResponse>(`/api/project-expiries${qs ? `?${qs}` : ""}`);
+  },
+  recommendations: () =>
+    request<{ recommendations: ProjectExpiryRecommendation[] }>("/api/project-expiries/recommendations"),
+};
+
+export type ProjectExpiryRecommendation = {
+  projectName: string;
+  insight: string;
+};
+
+// ─── Website Updates API ───────────────────────────────────────────────────
+
+export type WebsiteUpdate = {
+  id: string;
+  name: string;
+  url: string | null;
+  businessType: string | null;
+  packageName: string | null;
+  status: "up_to_date" | "pending_update" | "in_progress";
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WebsiteUpdatesResponse = {
+  records: WebsiteUpdate[];
+  total: number;
+  page: number;
+  totalPages: number;
+  stats: {
+    total: number;
+    upToDate: number;
+    pendingUpdate: number;
+    inProgress: number;
+  };
+};
+
+export type WebsiteUpdatesParams = {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: "all" | "up_to_date" | "pending_update" | "in_progress";
+};
+
+export const websiteUpdatesApi = {
+  list: (params: WebsiteUpdatesParams = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    if (params.search) searchParams.set("search", params.search);
+    if (params.status) searchParams.set("status", params.status);
+    const qs = searchParams.toString();
+    return request<WebsiteUpdatesResponse>(`/api/website-updates${qs ? `?${qs}` : ""}`);
+  },
+  update: (id: string, data: { status?: string; remark?: string | null }) =>
+    request<WebsiteUpdate>(`/api/website-updates/${id}`, { method: "PATCH", body: data }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/api/website-updates/${id}`, { method: "DELETE" }),
+  recommendations: () =>
+    request<{ recommendations: WebsiteUpdateRecommendation[] }>("/api/website-updates/recommendations"),
+};
+
+export type WebsiteUpdateRecommendation = {
+  websiteName: string;
+  insight: string;
 };
 
 // ─── Customers API ───────────────────────────────────────────────────────────

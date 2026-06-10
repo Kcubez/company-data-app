@@ -13,7 +13,8 @@ import {
   Settings,
   UserCircle,
   BarChart3,
-  Lightbulb,
+  Clock,
+  Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -85,15 +86,21 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       adminOnly: false,
     },
     {
-      title: 'Business Reports',
-      href: '/business-reports',
+      title: 'Demand Sheets',
+      href: '/demand-sheets',
       icon: BarChart3,
       adminOnly: false,
     },
     {
-      title: 'Future Plans',
-      href: '/future-plans',
-      icon: Lightbulb,
+      title: 'Project Expiries',
+      href: '/project-expiries',
+      icon: Clock,
+      adminOnly: false,
+    },
+    {
+      title: 'Website Updates',
+      href: '/website-updates',
+      icon: Wrench,
       adminOnly: false,
     },
     {

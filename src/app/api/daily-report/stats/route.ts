@@ -14,19 +14,17 @@ export async function GET(req: NextRequest) {
   const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
 
   const [totalReports, todayReports, pendingReports, dueToday] = await Promise.all([
-    prisma.demandRecord.count({ where: { reportType: "business_report" } }),
+    prisma.demandRecord.count(),
     prisma.demandRecord.count({
       where: {
-        reportType: "business_report",
         createdAt: { gte: startOfToday },
       },
     }),
     prisma.demandRecord.count({
-      where: { reportType: "business_report", status: "pending" },
+      where: { status: "pending" },
     }),
     prisma.demandRecord.count({
       where: {
-        reportType: "business_report",
         followUpDate: { gte: startOfToday, lt: endOfToday },
       },
     }),
