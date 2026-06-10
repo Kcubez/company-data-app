@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useWebsiteUpdates, useUpdateWebsiteUpdate } from '@/hooks/use-website-updates';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,9 +31,10 @@ import {
   Clock,
   Bot,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import { WebsiteUpdate } from '@/lib/api';
-import { useWebsiteUpdateRecommendations } from '@/hooks/use-website-updates';
+import { useWebsiteUpdateRecommendations, useDeleteAllWebsiteUpdates } from '@/hooks/use-website-updates';
 
 export default function WebsiteUpdatesPage() {
   const [search, setSearch] = useState('');
@@ -46,6 +47,7 @@ export default function WebsiteUpdatesPage() {
   const [editingRecord, setEditingRecord] = useState<WebsiteUpdate | null>(null);
   const [editStatus, setEditStatus] = useState<string>('up_to_date');
   const [editRemark, setEditRemark] = useState<string>('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -64,6 +66,25 @@ export default function WebsiteUpdatesPage() {
 
   const updateMutation = useUpdateWebsiteUpdate();
   const { data: recsData, isLoading: recsLoading, refetch: recsRefetch, isFetching: recsFetching } = useWebsiteUpdateRecommendations();
+
+  const deleteAllMutation = useDeleteAllWebsiteUpdates();
+
+  const handleDeleteAll = async () => {
+    await deleteAllMutation.mutateAsync();
+    setShowDeleteConfirm(false);
+  };
+
+  // Auto-refresh AI insights once whenever the underlying record count changes
+  // (e.g. new data arrives via Telegram). Bounded — fires only on change, not on a timer.
+  const prevTotalRef = useRef<number | null>(null);
+  useEffect(() => {
+    const total = data?.stats?.total;
+    if (total === undefined) return;
+    if (prevTotalRef.current !== null && total !== prevTotalRef.current) {
+      recsRefetch();
+    }
+    prevTotalRef.current = total;
+  }, [data?.stats?.total, recsRefetch]);
 
   const stats = data?.stats || { total: 0, upToDate: 0, pendingUpdate: 0, inProgress: 0 };
   const records = data?.records || [];
@@ -121,13 +142,25 @@ export default function WebsiteUpdatesPage() {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2">
-          Website Updates & Maintenance
-        </h1>
-        <p className="text-slate-400">
-          Monitor package subscriptions, business types, and change update status for active websites.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2">
+            Website Updates & Maintenance
+          </h1>
+          <p className="text-slate-400">
+            Monitor package subscriptions, business types, and change update status for active websites.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={!records.length || deleteAllMutation.isPending}
+          className="bg-red-950/30 border-red-900/50 text-red-300 hover:bg-red-900/40 hover:text-red-200 shrink-0"
+        >
+          <Trash2 className="w-4 h-4 mr-1.5" />
+          Delete All
+        </Button>
       </div>
 
       {/* KPI Cards */}
@@ -217,7 +250,7 @@ export default function WebsiteUpdatesPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {recsLoading ? (
+          {recsLoading || recsFetching ? (
             <div className="space-y-3">
               <Skeleton className="h-12 w-full bg-slate-800 rounded-xl" />
               <Skeleton className="h-12 w-full bg-slate-800 rounded-xl" />
@@ -244,7 +277,9 @@ export default function WebsiteUpdatesPage() {
             <div className="text-center py-8 text-slate-500">
               <Bot className="w-8 h-8 text-slate-800 mx-auto mb-2" />
               <p className="text-sm font-medium">No pending maintenance actions</p>
-              <p className="text-xs text-slate-600 mt-1">All websites are up to date — great work!</p>
+              <p className="text-xs text-slate-600 mt-1">
+                AI insights appear only for sites marked <span className="text-amber-400">Pending Update</span> or <span className="text-amber-400">In Progress</span>. Set a status via the edit button to get recommendations.
+              </p>
             </div>
           )}
         </CardContent>
@@ -522,6 +557,41 @@ export default function WebsiteUpdatesPage() {
                   <Loader2 className="w-4 h-4 mr-2 animate-spin shrink-0" />
                 )}
                 Save Changes
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 p-6 space-y-4 text-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-red-500/10 text-red-400 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Delete all website records?</h3>
+            </div>
+            <p className="text-sm text-slate-400">
+              This permanently removes <span className="font-semibold text-red-300">all {stats.total} website record(s)</span>. This action cannot be undone — use it to clear test data and re-upload.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleteAllMutation.isPending}
+                className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeleteAll}
+                disabled={deleteAllMutation.isPending}
+                className="bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteAllMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Delete All
               </Button>
             </div>
           </div>

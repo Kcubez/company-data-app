@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { demandRecordsApi, type DemandRecordsParams } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { demandRecordsApi, type DemandRecordsParams, type UpdateDemandRecordPayload } from "@/lib/api";
+import { toast } from "sonner";
 
 export function useDemandRecords(params: DemandRecordsParams = {}) {
   return useQuery({
@@ -24,5 +25,39 @@ export function useDemandRecordRecommendations() {
     // AI calls are costly — fetch once on mount, then only on manual refresh.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useDeleteAllDemandRecords() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => demandRecordsApi.deleteAll(),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["demand-records"] });
+      queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["demand-record-recommendations"] });
+      toast.success(`Deleted ${res.count} demand record(s)`);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to delete records");
+    },
+  });
+}
+
+export function useUpdateDemandRecord() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string } & UpdateDemandRecordPayload) =>
+      demandRecordsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["demand-records"] });
+      queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });
+      toast.success("Record updated successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to update record");
+    },
   });
 }

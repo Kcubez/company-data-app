@@ -200,6 +200,12 @@ export type AIRecommendationsResponse = {
   recommendations: AIRecommendation[];
 };
 
+export type UpdateDemandRecordPayload = {
+  status?: string;
+  note?: string;
+  followUpDate?: string | null;
+};
+
 export const demandRecordsApi = {
   list: (params: DemandRecordsParams = {}) => {
     const searchParams = new URLSearchParams();
@@ -212,8 +218,12 @@ export const demandRecordsApi = {
     const qs = searchParams.toString();
     return request<DemandRecordsResponse>(`/api/demand-records${qs ? `?${qs}` : ""}`);
   },
+  update: (id: string, data: UpdateDemandRecordPayload) =>
+    request<DemandRecord>(`/api/demand-records/${id}`, { method: "PATCH", body: data }),
   stats: () => request<DemandRecordStats>("/api/demand-records/stats"),
   recommendations: () => request<AIRecommendationsResponse>("/api/demand-records/recommendations"),
+  deleteAll: () =>
+    request<{ success: boolean; count: number }>("/api/demand-records", { method: "DELETE" }),
 };
 
 // ─── Project Expiration API ─────────────────────────────────────────────────
@@ -253,6 +263,18 @@ export type ProjectExpiriesParams = {
   filter?: "all" | "expired" | "expiring_soon" | "active";
 };
 
+export type UpdateProjectExpiryPayload = {
+  projectName?: string;
+  url?: string | null;
+  packageName?: string | null;
+  domainProvider?: string | null;
+  hostingProvider?: string | null;
+  hostingRemark?: string | null;
+  domainExpireDate?: string | null;
+  hostingExpireDate?: string | null;
+  remark?: string | null;
+};
+
 export const projectExpiriesApi = {
   list: (params: ProjectExpiriesParams = {}) => {
     const searchParams = new URLSearchParams();
@@ -263,8 +285,12 @@ export const projectExpiriesApi = {
     const qs = searchParams.toString();
     return request<ProjectExpiriesResponse>(`/api/project-expiries${qs ? `?${qs}` : ""}`);
   },
+  update: (id: string, data: UpdateProjectExpiryPayload) =>
+    request<ProjectExpiration>(`/api/project-expiries/${id}`, { method: "PATCH", body: data }),
   recommendations: () =>
     request<{ recommendations: ProjectExpiryRecommendation[] }>("/api/project-expiries/recommendations"),
+  deleteAll: () =>
+    request<{ success: boolean; deleted: number }>("/api/project-expiries", { method: "DELETE" }),
 };
 
 export type ProjectExpiryRecommendation = {
@@ -322,6 +348,8 @@ export const websiteUpdatesApi = {
     request<{ success: boolean }>(`/api/website-updates/${id}`, { method: "DELETE" }),
   recommendations: () =>
     request<{ recommendations: WebsiteUpdateRecommendation[] }>("/api/website-updates/recommendations"),
+  deleteAll: () =>
+    request<{ success: boolean; deleted: number }>("/api/website-updates", { method: "DELETE" }),
 };
 
 export type WebsiteUpdateRecommendation = {
@@ -434,4 +462,102 @@ export const dailyReportApi = {
 
 export const customerFollowupsApi = {
   stats: () => request<CustomerFollowupStats>("/api/customer-followups/stats"),
+};
+
+// ─── Business Reports API ─────────────────────────────────────────────────────
+
+export type BusinessReport = {
+  id: string;
+  reportDate: string;
+  reporterName: string | null;
+  senderId: string | null;
+  sender: { displayName: string; username: string | null } | null;
+  uploadedByUserId: string | null;
+  marketingBudget: number | null;
+  marketingChannel: string | null;
+  callsMade: number | null;
+  appointmentsMade: number | null;
+  appointmentsKept: number | null;
+  newLeads: number | null;
+  totalDemandCount: number | null;
+  totalSalesAmount: number | null;
+  closedDeals: number | null;
+  pendingDeals: number | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BusinessReportStats = {
+  totalReports: number;
+  totalBudget: number;
+  totalSales: number;
+  totalLeads: number;
+  totalClosed: number;
+  totalCalls: number;
+  totalApptsMade: number;
+  totalApptsKept: number;
+  totalDemand: number;
+  totalPending: number;
+  conversionRate: number;
+  apptShowRate: number;
+  costPerLead: number;
+  roi: number;
+  channelPerformance: {
+    channel: string;
+    count: number;
+    budget: number;
+    sales: number;
+    leads: number;
+    closed: number;
+  }[];
+  dailyTrend: { date: string; sales: number; budget: number; leads: number }[];
+};
+
+export type BusinessReportRecommendation = {
+  title: string;
+  insight: string;
+};
+
+export type BusinessReportsParams = {
+  page?: number;
+  limit?: number;
+  channel?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type BusinessReportsResponse = {
+  records: BusinessReport[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export const businessReportsApi = {
+  list: (params: BusinessReportsParams = {}) => {
+    const sp = new URLSearchParams();
+    if (params.page) sp.set("page", String(params.page));
+    if (params.limit) sp.set("limit", String(params.limit));
+    if (params.channel) sp.set("channel", params.channel);
+    if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
+    if (params.dateTo) sp.set("dateTo", params.dateTo);
+    const qs = sp.toString();
+    return request<BusinessReportsResponse>(`/api/business-reports${qs ? `?${qs}` : ""}`);
+  },
+  update: (id: string, data: Partial<BusinessReport>) =>
+    request<{ record: BusinessReport }>(`/api/business-reports/${id}`, { method: "PATCH", body: data }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/api/business-reports/${id}`, { method: "DELETE" }),
+  stats: (params: Pick<BusinessReportsParams, "dateFrom" | "dateTo"> = {}) => {
+    const sp = new URLSearchParams();
+    if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
+    if (params.dateTo) sp.set("dateTo", params.dateTo);
+    const qs = sp.toString();
+    return request<BusinessReportStats>(`/api/business-reports/stats${qs ? `?${qs}` : ""}`);
+  },
+  recommendations: () =>
+    request<{ recommendations: BusinessReportRecommendation[] }>("/api/business-reports/recommendations"),
+  deleteAll: () =>
+    request<{ success: boolean; deleted: number }>("/api/business-reports", { method: "DELETE" }),
 };

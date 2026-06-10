@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { useProjectExpiries } from '@/hooks/use-project-expiries';
+import { ProjectExpiration } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -30,14 +31,24 @@ import {
   FileSpreadsheet,
   Bot,
   RefreshCw,
+  Trash2,
+  Edit2,
+  Loader2,
 } from 'lucide-react';
-import { useProjectExpiryRecommendations } from '@/hooks/use-project-expiries';
+import { useProjectExpiryRecommendations, useDeleteAllProjectExpiries, useUpdateProjectExpiry } from '@/hooks/use-project-expiries';
 
 export default function ProjectExpiriesPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'expired' | 'expiring_soon' | 'active'>('all');
   const [page, setPage] = useState(1);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Edit state
+  const [editingRecord, setEditingRecord] = useState<ProjectExpiration | null>(null);
+  const [editDomainExpiry, setEditDomainExpiry] = useState('');
+  const [editHostingExpiry, setEditHostingExpiry] = useState('');
+  const [editRemark, setEditRemark] = useState('');
+  const [editPackageName, setEditPackageName] = useState('');
   const limit = 20;
 
   useEffect(() => {
@@ -56,6 +67,46 @@ export default function ProjectExpiriesPage() {
   });
 
   const { data: recsData, isLoading: recsLoading, refetch: recsRefetch, isFetching: recsFetching } = useProjectExpiryRecommendations();
+
+  const deleteAllMutation = useDeleteAllProjectExpiries();
+  const updateMutation = useUpdateProjectExpiry();
+
+  const handleDeleteAll = async () => {
+    await deleteAllMutation.mutateAsync();
+    setShowDeleteConfirm(false);
+  };
+
+  const handleEditClick = (record: ProjectExpiration) => {
+    setEditingRecord(record);
+    setEditDomainExpiry(record.domainExpireDate ? record.domainExpireDate.slice(0, 10) : '');
+    setEditHostingExpiry(record.hostingExpireDate ? record.hostingExpireDate.slice(0, 10) : '');
+    setEditRemark(record.remark || '');
+    setEditPackageName(record.packageName || '');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingRecord) return;
+    await updateMutation.mutateAsync({
+      id: editingRecord.id,
+      domainExpireDate: editDomainExpiry || null,
+      hostingExpireDate: editHostingExpiry || null,
+      remark: editRemark || null,
+      packageName: editPackageName || null,
+    });
+    setEditingRecord(null);
+  };
+
+  // Auto-refresh AI insights once whenever the underlying record count changes
+  // (e.g. new data arrives via Telegram). Bounded — fires only on change, not on a timer.
+  const prevTotalRef = useRef<number | null>(null);
+  useEffect(() => {
+    const total = data?.stats?.total;
+    if (total === undefined) return;
+    if (prevTotalRef.current !== null && total !== prevTotalRef.current) {
+      recsRefetch();
+    }
+    prevTotalRef.current = total;
+  }, [data?.stats?.total, recsRefetch]);
 
   const stats = data?.stats || { total: 0, expired: 0, expiringSoon: 0, active: 0 };
   const records = data?.records || [];
@@ -133,73 +184,26 @@ export default function ProjectExpiriesPage() {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight text-white">
-          Project Expiries
-        </h1>
-        <p className="text-slate-400">
-          Track and manage domain names, hosting servers, and active website subscription packages.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-bold tracking-tight text-white">
+            Project Expiries
+          </h1>
+          <p className="text-slate-400">
+            Track and manage domain names, hosting servers, and active website subscription packages.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={!records.length || deleteAllMutation.isPending}
+          className="bg-red-950/30 border-red-900/50 text-red-300 hover:bg-red-900/40 hover:text-red-200 shrink-0"
+        >
+          <Trash2 className="w-4 h-4 mr-1.5" />
+          Delete All
+        </Button>
       </div>
-
-      {/* AI Insights Card */}
-      <Card className="bg-slate-900 border-slate-800 shadow-lg">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-white flex items-center gap-2">
-                <Bot className="w-5 h-5 text-indigo-400 animate-pulse" />
-                🤖 AI Renewal Insights
-              </CardTitle>
-              <CardDescription className="text-slate-400">
-                Gemini AI-powered renewal priority recommendations
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => recsRefetch()}
-              disabled={recsFetching}
-              className="bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 shrink-0"
-            >
-              <RefreshCw className={`w-4 h-4 mr-1.5 ${recsFetching ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {recsLoading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-12 w-full bg-slate-800 rounded-xl" />
-              <Skeleton className="h-12 w-full bg-slate-800 rounded-xl" />
-              <Skeleton className="h-12 w-full bg-slate-800 rounded-xl" />
-            </div>
-          ) : recsData?.recommendations && recsData.recommendations.length > 0 ? (
-            <div className="space-y-3">
-              {recsData.recommendations.map((rec, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-start gap-3 p-3 rounded-xl bg-slate-800/40 border border-slate-800/80 hover:border-slate-700 transition-colors"
-                >
-                  <div className="p-2 rounded-lg bg-orange-500/10 text-orange-400 shrink-0 mt-0.5">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-slate-200">{rec.projectName}</p>
-                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">{rec.insight}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-slate-500">
-              <Bot className="w-8 h-8 text-slate-800 mx-auto mb-2" />
-              <p className="text-sm font-medium">No urgent renewal actions</p>
-              <p className="text-xs text-slate-600 mt-1">All projects are within safe expiry range</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* KPI Cards */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
@@ -261,6 +265,66 @@ export default function ProjectExpiriesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Insights Card */}
+      <Card className="bg-slate-900 border-slate-800 shadow-lg">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Bot className="w-5 h-5 text-indigo-400 animate-pulse" />
+                🤖 AI Renewal Insights
+              </CardTitle>
+              <CardDescription className="text-slate-400">
+                Gemini AI-powered renewal priority recommendations
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => recsRefetch()}
+              disabled={recsFetching}
+              className="bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 shrink-0"
+            >
+              <RefreshCw className={`w-4 h-4 mr-1.5 ${recsFetching ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {recsLoading || recsFetching ? (
+            <div className="space-y-3">
+              <Skeleton className="h-12 w-full bg-slate-800 rounded-xl" />
+              <Skeleton className="h-12 w-full bg-slate-800 rounded-xl" />
+              <Skeleton className="h-12 w-full bg-slate-800 rounded-xl" />
+            </div>
+          ) : recsData?.recommendations && recsData.recommendations.length > 0 ? (
+            <div className="space-y-3">
+              {recsData.recommendations.map((rec, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start gap-3 p-3 rounded-xl bg-slate-800/40 border border-slate-800/80 hover:border-slate-700 transition-colors"
+                >
+                  <div className="p-2 rounded-lg bg-orange-500/10 text-orange-400 shrink-0 mt-0.5">
+                    <Bot className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-200">{rec.projectName}</p>
+                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">{rec.insight}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-slate-500">
+              <Bot className="w-8 h-8 text-slate-800 mx-auto mb-2" />
+              <p className="text-sm font-medium">No urgent renewal actions</p>
+              <p className="text-xs text-slate-600 mt-1">All projects are within safe expiry range</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
 
       {/* Urgent Warning Alerts Box */}
       {!isLoading && urgentRecords.length > 0 && (
@@ -476,21 +540,31 @@ export default function ProjectExpiriesPage() {
                       </div>
 
                       {/* Package & Remarks */}
-                      <div className="col-span-2 min-w-0 space-y-1.5">
-                        {record.packageName ? (
-                          <Badge variant="outline" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20 text-[10px] truncate max-w-full">
-                            Pkg: {record.packageName}
-                          </Badge>
-                        ) : (
-                          <span className="text-[10px] text-slate-600 block italic">No Package</span>
-                        )}
-                        {record.remark ? (
-                          <p className="text-xs text-slate-400 truncate w-full" title={record.remark}>
-                            {record.remark}
-                          </p>
-                        ) : (
-                          <span className="text-[10px] text-slate-600 block italic">No remarks</span>
-                        )}
+                      <div className="col-span-2 min-w-0 space-y-1.5 flex items-start justify-between gap-2">
+                        <div className="flex-1 space-y-1.5 min-w-0">
+                          {record.packageName ? (
+                            <Badge variant="outline" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20 text-[10px] truncate max-w-full">
+                              Pkg: {record.packageName}
+                            </Badge>
+                          ) : (
+                            <span className="text-[10px] text-slate-600 block italic">No Package</span>
+                          )}
+                          {record.remark ? (
+                            <p className="text-xs text-slate-400 truncate w-full" title={record.remark}>
+                              {record.remark}
+                            </p>
+                          ) : (
+                            <span className="text-[10px] text-slate-600 block italic">No remarks</span>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditClick(record)}
+                          className="h-7 w-7 text-slate-400 hover:text-white shrink-0 hover:bg-slate-800 rounded-lg mt-0.5"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </Button>
                       </div>
                     </div>
                   );
@@ -540,6 +614,110 @@ export default function ProjectExpiriesPage() {
           </div>
         )}
       </Card>
+
+      {/* Edit Project Expiry Dialog */}
+      {editingRecord && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 p-6 space-y-4 text-slate-200">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-white">Edit Project Expiry</h3>
+                <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xs">{editingRecord.projectName}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setEditingRecord(null)} className="text-slate-400 hover:text-white">
+                ✕
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Domain Expiry Date</label>
+                <input
+                  type="date"
+                  value={editDomainExpiry}
+                  onChange={e => setEditDomainExpiry(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Hosting Expiry Date</label>
+                <input
+                  type="date"
+                  value={editHostingExpiry}
+                  onChange={e => setEditHostingExpiry(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Package Name</label>
+              <input
+                type="text"
+                value={editPackageName}
+                onChange={e => setEditPackageName(e.target.value)}
+                placeholder="e.g. Basic, Standard, Premium"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-500"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Remark</label>
+              <textarea
+                value={editRemark}
+                onChange={e => setEditRemark(e.target.value)}
+                placeholder="Notes about this project..."
+                className="w-full h-20 bg-slate-800 border border-slate-700 rounded-lg p-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setEditingRecord(null)} className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700">
+                Cancel
+              </Button>
+              <Button onClick={handleSaveEdit} disabled={updateMutation.isPending} className="bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50">
+                {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin shrink-0" />}
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 p-6 space-y-4 text-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-red-500/10 text-red-400 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Delete all project expiries?</h3>
+            </div>
+            <p className="text-sm text-slate-400">
+              This permanently removes <span className="font-semibold text-red-300">all {stats.total} project record(s)</span>. This action cannot be undone — use it to clear test data and re-upload.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleteAllMutation.isPending}
+                className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeleteAll}
+                disabled={deleteAllMutation.isPending}
+                className="bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteAllMutation.isPending && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
+                Delete All
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

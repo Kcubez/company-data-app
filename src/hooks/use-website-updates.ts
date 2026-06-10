@@ -42,3 +42,18 @@ export function useWebsiteUpdateRecommendations() {
     refetchOnWindowFocus: false,
   });
 }
+
+export function useDeleteAllWebsiteUpdates() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => websiteUpdatesApi.deleteAll(),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: websiteUpdatesKeys.all });
+      toast.success(`Deleted ${res.deleted} website record(s)`);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to delete records");
+    },
+  });
+}

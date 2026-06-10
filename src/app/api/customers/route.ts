@@ -132,3 +132,15 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ customer });
 }
 
+// DELETE /api/customers — remove ALL customers (any signed-in user).
+// CustomerActivity cascades; DemandRecord.customerId is set to null (see schema).
+export async function DELETE(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const result = await prisma.customer.deleteMany({});
+  return NextResponse.json({ success: true, count: result.count });
+}
+

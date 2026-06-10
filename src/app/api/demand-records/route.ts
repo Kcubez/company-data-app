@@ -80,3 +80,14 @@ export async function GET(req: NextRequest) {
     totalPages: Math.ceil(total / limit),
   });
 }
+
+// DELETE /api/demand-records — remove ALL demand records (any signed-in user).
+export async function DELETE(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const result = await prisma.demandRecord.deleteMany({});
+  return NextResponse.json({ success: true, count: result.count });
+}

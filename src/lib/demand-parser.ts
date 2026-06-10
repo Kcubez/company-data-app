@@ -6,6 +6,7 @@ export const REPORT_TYPES = {
   QA: "qa",
   PROJECT_EXPIRY: "project_expiry",
   WEBSITE_UPDATE: "website_update",
+  BUSINESS_REPORT: "business_report",
 } as const;
 
 export type ReportType = (typeof REPORT_TYPES)[keyof typeof REPORT_TYPES];
@@ -15,7 +16,8 @@ export function isReportType(value: string | null | undefined): value is ReportT
     value === REPORT_TYPES.DEMAND_REPORT ||
     value === REPORT_TYPES.QA ||
     value === REPORT_TYPES.PROJECT_EXPIRY ||
-    value === REPORT_TYPES.WEBSITE_UPDATE
+    value === REPORT_TYPES.WEBSITE_UPDATE ||
+    value === REPORT_TYPES.BUSINESS_REPORT
   );
 }
 
@@ -1146,5 +1148,214 @@ export function parseWebsiteUpdateMessage(text: string): ParsedWebsiteUpdate & {
     remark,
   };
 }
+// ─── Business Report Parser ──────────────────────────────────────────────────
 
+export type ParsedBusinessReport = {
+  reportDate: Date;
+  reporterName: string | null;
+  marketingBudget: number | null;
+  marketingChannel: string | null;
+  callsMade: number | null;
+  appointmentsMade: number | null;
+  appointmentsKept: number | null;
+  newLeads: number | null;
+  totalDemandCount: number | null;
+  totalSalesAmount: number | null;
+  closedDeals: number | null;
+  pendingDeals: number | null;
+  notes: string | null;
+};
 
+const BUSINESS_REPORT_HEADERS = [
+  'marketing budget',
+  'calls made',
+  'appointments made',
+  'closed deals',
+  'total sales',
+  'new leads',
+];
+
+export function isBusinessReportHeaders(headers: unknown[]): boolean {
+  const normalized = headers.map(h => String(h || '').toLowerCase().trim());
+  const matched = BUSINESS_REPORT_HEADERS.filter(h =>
+    normalized.some(n => n.includes(h))
+  );
+  return matched.length >= 3;
+}
+
+export function parseBusinessReportSpreadsheet(buffer: Buffer): ParsedBusinessReport[] {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const results: ParsedBusinessReport[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+
+    for (const row of rows) {
+      const getStr = (keys: string[]) => {
+        for (const k of keys) {
+          const key = Object.keys(row).find(r => r.toLowerCase().includes(k));
+          if (key && row[key] != null && String(row[key]).trim()) return String(row[key]).trim();
+        }
+        return null;
+      };
+      const getNum = (keys: string[]) => {
+        const v = getStr(keys);
+        if (!v) return null;
+        const n = parseFloat(convertBurmeseDigits(v).replace(/,/g, ''));
+        return isNaN(n) ? null : n;
+      };
+      const getInt = (keys: string[]) => {
+        const n = getNum(keys);
+        return n !== null ? Math.round(n) : null;
+      };
+
+      const dateStr = getStr(['date', 'report date']);
+      let reportDate = new Date();
+      if (dateStr) {
+        const parsed = Date.parse(dateStr);
+        if (!isNaN(parsed)) reportDate = new Date(parsed);
+      }
+
+      results.push({
+        reportDate,
+        reporterName: getStr(['reporter', 'staff', 'name', 'agent']),
+        marketingBudget: getNum(['marketing budget', 'budget', 'ad spend', 'ad cost']),
+        marketingChannel: getStr(['marketing channel', 'channel', 'platform', 'source']),
+        callsMade: getInt(['calls made', 'calls', 'call']),
+        appointmentsMade: getInt(['appointments made', 'appt made', 'appointments']),
+        appointmentsKept: getInt(['appointments kept', 'appt kept', 'kept']),
+        newLeads: getInt(['new leads', 'leads']),
+        totalDemandCount: getInt(['total demand', 'demand count', 'demand']),
+        totalSalesAmount: getNum(['total sales amount', 'total sales', 'sales amount', 'revenue']),
+        closedDeals: getInt(['closed deals', 'closed', 'deals closed']),
+        pendingDeals: getInt(['pending deals', 'pending', 'pipeline']),
+        notes: getStr(['notes', 'note', 'remarks', 'remark', 'comment']),
+      });
+    }
+  }
+
+  return results.filter(r => r.reportDate);
+}
+
+export function parseBusinessReportMessage(text: string): ParsedBusinessReport {
+  const getVal = (keys: string[]) => {
+    for (const k of keys) {
+      const p = new RegExp(`(?:${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s*[:=-]?\\s*([^\n,]+)`, 'i');
+      const m = convertBurmeseDigits(text).match(p);
+      if (m) return m[1].trim();
+    }
+    return null;
+  };
+  const getNum = (keys: string[]) => {
+    const v = getVal(keys);
+    if (!v) return null;
+    const n = parseFloat(v.replace(/,/g, ''));
+    return isNaN(n) ? null : n;
+  };
+  const getInt = (keys: string[]) => {
+    const n = getNum(keys);
+    return n !== null ? Math.round(n) : null;
+  };
+
+  const dateStr = getVal(['date', 'report date', 'ရက်']);
+  let reportDate = new Date();
+  if (dateStr) {
+    const parsed = Date.parse(dateStr);
+    if (!isNaN(parsed)) reportDate = new Date(parsed);
+  }
+
+  return {
+    reportDate,
+    reporterName: getVal(['reporter', 'reported by', 'staff', 'name']) || null,
+    marketingBudget: getNum(['marketing budget', 'budget', 'ad spend', 'ad cost', 'ကြော်ငြာ']),
+    marketingChannel: getVal(['channel', 'marketing channel', 'platform', 'source']),
+    callsMade: getInt(['calls made', 'calls', 'call', 'ဖုန်းခေါ်']),
+    appointmentsMade: getInt(['appointments made', 'appt made', 'appointments', 'appointment', 'ချိန်းဆိုမှု']),
+    appointmentsKept: getInt(['appointments kept', 'appt kept', 'kept', 'ဆုံတွေ့']),
+    newLeads: getInt(['new leads', 'leads', 'lead', 'lead count', 'customer count', 'ဖောက်သည်']),
+    totalDemandCount: getInt(['total demand', 'demand count', 'demand', 'total demand count']),
+    totalSalesAmount: getNum(['total sales amount', 'total sales', 'sales amount', 'sales', 'revenue', 'ရောင်းရငွေ']),
+    closedDeals: getInt(['closed deals', 'closed', 'deals closed', 'deal closed']),
+    pendingDeals: getInt(['pending deals', 'pending', 'pipeline']),
+    notes: getVal(['notes', 'note', 'remarks', 'remark', 'မှတ်ချက်']) || text.trim() || null,
+  };
+}
+
+export async function parseBusinessReportWithGemini({
+  text,
+  apiKey,
+  model,
+}: {
+  text: string;
+  apiKey?: string | null;
+  model?: string | null;
+}): Promise<ParsedBusinessReport> {
+  const fallback = parseBusinessReportMessage(text);
+  if (!apiKey) return fallback;
+
+  try {
+    const genAI = new GoogleGenAI({ apiKey });
+    const modelName = model || 'gemini-3.1-flash-lite-preview';
+
+    const prompt = `You are a business activity report extractor. Extract structured data from this daily/weekly report message.
+The message may be in Burmese (Myanmar), English, or mixed.
+
+Message:
+"""${text}"""
+
+Extract and return a JSON object with these fields:
+{
+  "reportDate": string | null (date this report covers, YYYY-MM-DD format),
+  "reporterName": string | null (person who wrote the report),
+  "marketingBudget": number | null (ad spend / marketing cost in Ks),
+  "marketingChannel": string | null (Facebook | Google | Referral | Walk-in | Telegram | Other),
+  "callsMade": number | null (number of calls made),
+  "appointmentsMade": number | null (appointments scheduled),
+  "appointmentsKept": number | null (appointments that actually happened),
+  "newLeads": number | null (new potential customers found),
+  "totalDemandCount": number | null (total demand records / sales requests),
+  "totalSalesAmount": number | null (total revenue / sales amount in Ks),
+  "closedDeals": number | null (deals confirmed / closed),
+  "pendingDeals": number | null (deals still pending),
+  "notes": string | null (any other remarks or observations)
+}
+
+Rules:
+- Extract numbers even if written in Burmese digits.
+- If a field is not mentioned, set it to null.
+- Return ONLY valid JSON, no explanation.`;
+
+    const response = await generateContentWithRetry(genAI, { model: modelName, contents: prompt });
+    const responseText = response?.text;
+    if (!responseText) return fallback;
+
+    const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = JSON.parse(cleanedJson);
+
+    let reportDate = fallback.reportDate;
+    if (parsed.reportDate) {
+      const d = Date.parse(parsed.reportDate);
+      if (!isNaN(d)) reportDate = new Date(d);
+    }
+
+    return {
+      reportDate,
+      reporterName: parsed.reporterName || fallback.reporterName,
+      marketingBudget: typeof parsed.marketingBudget === 'number' ? parsed.marketingBudget : fallback.marketingBudget,
+      marketingChannel: parsed.marketingChannel || fallback.marketingChannel,
+      callsMade: typeof parsed.callsMade === 'number' ? Math.round(parsed.callsMade) : fallback.callsMade,
+      appointmentsMade: typeof parsed.appointmentsMade === 'number' ? Math.round(parsed.appointmentsMade) : fallback.appointmentsMade,
+      appointmentsKept: typeof parsed.appointmentsKept === 'number' ? Math.round(parsed.appointmentsKept) : fallback.appointmentsKept,
+      newLeads: typeof parsed.newLeads === 'number' ? Math.round(parsed.newLeads) : fallback.newLeads,
+      totalDemandCount: typeof parsed.totalDemandCount === 'number' ? Math.round(parsed.totalDemandCount) : fallback.totalDemandCount,
+      totalSalesAmount: typeof parsed.totalSalesAmount === 'number' ? parsed.totalSalesAmount : fallback.totalSalesAmount,
+      closedDeals: typeof parsed.closedDeals === 'number' ? Math.round(parsed.closedDeals) : fallback.closedDeals,
+      pendingDeals: typeof parsed.pendingDeals === 'number' ? Math.round(parsed.pendingDeals) : fallback.pendingDeals,
+      notes: parsed.notes || fallback.notes,
+    };
+  } catch (err) {
+    console.error('Gemini business report parse failed, using heuristic fallback:', err);
+    return fallback;
+  }
+}

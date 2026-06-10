@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useRef } from 'react';
+import { use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -8,7 +8,6 @@ import { formatDistanceToNow, format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -27,13 +26,10 @@ import {
   Mail,
   Building,
   FileText,
-  MessageSquare,
-  Calendar,
   User,
   Clock,
   CheckCircle,
   AlertCircle,
-  Send,
   Trash2,
 } from 'lucide-react';
 import { customersApi } from '@/lib/api';
@@ -90,17 +86,17 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
-        <Skeleton className="h-8 w-48" />
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <Skeleton className="h-8 w-48 bg-slate-800" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="bg-gray-900/50 border-gray-800">
-            <CardHeader><Skeleton className="h-4 w-24" /></CardHeader>
-            <CardContent><Skeleton className="h-24 w-full" /></CardContent>
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader><Skeleton className="h-4 w-24 bg-slate-800" /></CardHeader>
+            <CardContent><Skeleton className="h-24 w-full bg-slate-800" /></CardContent>
           </Card>
           <div className="lg:col-span-2 space-y-4">
             {Array.from({ length: 3 }).map((_, i) => (
-              <Card key={i} className="bg-gray-900/50 border-gray-800">
-                <CardContent className="pt-4"><Skeleton className="h-16 w-full" /></CardContent>
+              <Card key={i} className="bg-slate-900 border-slate-800">
+                <CardContent className="pt-4"><Skeleton className="h-16 w-full bg-slate-800" /></CardContent>
               </Card>
             ))}
           </div>
@@ -112,24 +108,24 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   if (!data?.customer) {
     // Briefly shown while the redirect to /customers is in flight.
     return (
-      <div className="p-6 text-center text-gray-400">Redirecting…</div>
+      <div className="text-center text-slate-400 py-12">Redirecting…</div>
     );
   }
 
   const { customer, timeline } = data;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center gap-4">
         <Link href="/customers">
-          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+          <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
             <ArrowLeft className="w-4 h-4 mr-1" />
             Back
           </Button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-white">{customer.name}</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <h1 className="text-3xl font-bold tracking-tight text-white">{customer.name}</h1>
+          <p className="text-sm text-slate-400 mt-1">
             Customer since {format(new Date(customer.createdAt), 'MMM d, yyyy')}
           </p>
         </div>
@@ -142,24 +138,24 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+                className="text-slate-400 hover:text-red-400 hover:bg-red-500/10"
               >
                 <Trash2 className="w-4 h-4 mr-1" />
                 Delete
               </Button>
             }
           />
-          <AlertDialogContent>
+          <AlertDialogContent className="bg-slate-900 border-slate-800 text-slate-200">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete {customer.name}?</AlertDialogTitle>
-              <AlertDialogDescription>
+              <AlertDialogDescription className="text-slate-400">
                 This will permanently delete the customer and all related activity history.
                 Associated demand records will keep their data but lose the customer link.
                 This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel className="border-slate-700 text-slate-300">Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => deleteCustomer.mutate()}
                 disabled={deleteCustomer.isPending}
@@ -173,54 +169,54 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="bg-gray-900/50 border-gray-800">
+        <Card className="bg-slate-900 border-slate-800">
           <CardHeader>
-            <CardTitle className="text-base">Customer Info</CardTitle>
+            <CardTitle className="text-base text-white">Customer Info</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {customer.phone && (
-              <div className="flex items-center gap-3 text-sm">
-                <Phone className="w-4 h-4 text-gray-400" />
+              <div className="flex items-center gap-3 text-sm text-slate-300">
+                <Phone className="w-4 h-4 text-slate-400" />
                 <span>{customer.phone}</span>
               </div>
             )}
             {customer.email && (
-              <div className="flex items-center gap-3 text-sm">
-                <Mail className="w-4 h-4 text-gray-400" />
+              <div className="flex items-center gap-3 text-sm text-slate-300">
+                <Mail className="w-4 h-4 text-slate-400" />
                 <span>{customer.email}</span>
               </div>
             )}
             {customer.company && (
-              <div className="flex items-center gap-3 text-sm">
-                <Building className="w-4 h-4 text-gray-400" />
+              <div className="flex items-center gap-3 text-sm text-slate-300">
+                <Building className="w-4 h-4 text-slate-400" />
                 <span>{customer.company}</span>
               </div>
             )}
             {customer.notes && (
-              <div className="pt-3 border-t border-gray-800">
-                <p className="text-xs text-gray-400">{customer.notes}</p>
+              <div className="pt-3 border-t border-slate-800">
+                <p className="text-xs text-slate-400">{customer.notes}</p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="bg-gray-900/50 border-gray-800 lg:col-span-2">
+        <Card className="bg-slate-900 border-slate-800 lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Clock className="w-4 h-4" />
+            <CardTitle className="text-base text-white flex items-center gap-2">
+              <Clock className="w-4 h-4 text-slate-400" />
               Timeline
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="relative">
-              <div className="absolute left-4 top-0 bottom-0 w-px bg-gray-800" />
+              <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-800" />
               <div className="space-y-4">
                 {timeline.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 text-sm">
+                  <div className="text-center py-8 text-slate-400 text-sm">
                     No activity yet. Telegram messages will appear here.
                   </div>
                 ) : (
-                  timeline.map((item, index) => {
+                  timeline.map((item) => {
                     const Icon = item.type === 'activity'
                       ? (actionIcons[item.action || 'update'] || User)
                       : FileText;
@@ -233,7 +229,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                             : 'bg-purple-500 border-purple-400'
                         }`} />
 
-                        <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-800">
+                        <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-800">
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <Icon className={`w-4 h-4 ${
@@ -246,7 +242,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                                 }
                               </span>
                             </div>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-slate-500">
                               {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
                             </span>
                           </div>
@@ -264,16 +260,16 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                             </div>
                           )}
 
-                          <p className="text-sm text-gray-300 mb-2">
+                          <p className="text-sm text-slate-350 mb-2">
                             {item.type === 'activity' ? item.description : item.note}
                           </p>
 
                           {item.sender && (
-                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                            <div className="flex items-center gap-1 text-xs text-slate-500">
                               <User className="w-3 h-3" />
                               {item.sender}
                               {item.senderId && (
-                                <span className="text-gray-600">• {item.senderId}</span>
+                                <span className="text-slate-600">• {item.senderId}</span>
                               )}
                             </div>
                           )}

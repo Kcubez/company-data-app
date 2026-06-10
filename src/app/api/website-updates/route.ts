@@ -84,3 +84,21 @@ export async function GET(req: NextRequest) {
     stats,
   });
 }
+
+// DELETE /api/website-updates
+// Admin: deletes all records.
+// Regular user: deletes only rows they uploaded + bot-uploaded rows (uploadedByUserId = null).
+export async function DELETE(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const isAdmin = session.user.role === "admin";
+  const where = isAdmin
+    ? {}
+    : { OR: [{ uploadedByUserId: session.user.id }, { uploadedByUserId: null }] };
+
+  const result = await prisma.websiteUpdate.deleteMany({ where });
+  return NextResponse.json({ success: true, deleted: result.count });
+}

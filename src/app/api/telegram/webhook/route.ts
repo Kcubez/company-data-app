@@ -10,8 +10,11 @@ import {
   parseProjectExpirySpreadsheet,
   isWebsiteUpdateHeaders,
   parseWebsiteUpdateSpreadsheet,
+  isBusinessReportHeaders,
+  parseBusinessReportSpreadsheet,
   parseProjectExpiryMessageWithGemini,
   parseWebsiteUpdateMessageWithGemini,
+  parseBusinessReportWithGemini,
 } from "@/lib/demand-parser";
 import { NextRequest, NextResponse, after } from "next/server";
 
@@ -267,6 +270,7 @@ const MAIN_MENU_BUTTONS = {
     [{ text: "📋 Demand Sheet", callback_data: "mode:demand_report" }],
     [{ text: "⏰ Project Expiries", callback_data: "mode:project_expiry" }],
     [{ text: "🔧 Website Updates", callback_data: "mode:website_update" }],
+    [{ text: "📊 Business Report", callback_data: "mode:business_report" }],
   ],
 };
 
@@ -348,6 +352,31 @@ function getWebsiteUpdateFormatPrompt(): string {
   ].join("\n");
 }
 
+function getBusinessReportFormatPrompt(): string {
+  return [
+    "📊 <b>လုပ်ငန်းလှုပ်ရှားမှုနေ့စဉ်/အပတ်စဉ် မှတ်တမ်း (Business Report) Mode</b>",
+    "",
+    "ဤကဏ္ဍတွင် Marketing, Appointments, Sales ဆိုင်ရာ အချက်အလက်များကို တင်သွင်းနိုင်ပါသည်။ စာသား သို့မဟုတ် Excel ဖိုင် ပေးပို့နိုင်ပါသည်။",
+    "",
+    "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း -</b>",
+    "<pre>",
+    "• Date: [YYYY-MM-DD]",
+    "• Marketing Budget: [ကြော်ငြာ ကုန်ကျစရိတ် Ks]",
+    "• Channel: [Facebook / Google / Referral / Walk-in / Telegram]",
+    "• Calls Made: [ဖုန်းခေါ်ဆိုမှုဦးရေ]",
+    "• Appointments Made: [ချိန်းဆိုမှုဦးရေ]",
+    "• Appointments Kept: [ဆုံတွေ့မှုဦးရေ]",
+    "• New Leads: [ဖောက်သည်သစ်ဦးရေ]",
+    "• Total Demand: [Demand မှတ်တမ်းဦးရေ]",
+    "• Total Sales: [ရောင်းရငွေ Ks]",
+    "• Closed Deals: [ပိတ်သိမ်းနိုင်သောကိစ္စရပ်]",
+    "• Pending Deals: [ဆိုင်းငံ့နေသောကိစ္စရပ်]",
+    "• Notes: [မှတ်ချက်]",
+    "</pre>",
+    "💡 <i>Excel ဖိုင် (Business Report format) တင်သွင်းပါကလည်း AI မှ အလိုအလျောက် ဆန်းစစ်ပေးပါမည်။</i>",
+  ].join("\n");
+}
+
 // Return the full format guide for whatever report mode the sender is in.
 function getFormatPromptForMode(mode: string | null | undefined): string {
   switch (mode) {
@@ -355,6 +384,8 @@ function getFormatPromptForMode(mode: string | null | undefined): string {
       return getProjectExpiryFormatPrompt();
     case 'website_update':
       return getWebsiteUpdateFormatPrompt();
+    case 'business_report':
+      return getBusinessReportFormatPrompt();
     case 'demand_report':
       return getFormatPrompt();
     default:
@@ -378,6 +409,8 @@ function getFormatHintFooter(mode: string): string {
     fields = "Project • URL • Package • Domain / Hosting Provider • Domain / Hosting Expiry • Remark";
   } else if (mode === 'website_update') {
     fields = "Name • URL • Business • Package • Status • Remark";
+  } else if (mode === 'business_report') {
+    fields = "Date • Budget • Channel • Calls • Appointments • Leads • Sales • Closed Deals • Notes";
   }
   return [
     "",
@@ -390,7 +423,7 @@ function getFormatHintFooter(mode: string): string {
 
 
 async function buildQAContext(): Promise<string> {
-  const [demandRecords, qaDocs, customers, projectExpiries, websiteUpdates] = await Promise.all([
+  const [demandRecords, qaDocs, customers, projectExpiries, websiteUpdates, businessReports] = await Promise.all([
     prisma.demandRecord.findMany({
       orderBy: { createdAt: 'desc' },
       take: 30,
@@ -412,6 +445,11 @@ async function buildQAContext(): Promise<string> {
       orderBy: { createdAt: 'desc' },
       take: 20,
     }),
+    prisma.businessReport.findMany({
+      orderBy: { reportDate: 'desc' },
+      take: 15,
+      include: { sender: true },
+    }),
   ]);
 
   const parts: string[] = [];
@@ -427,6 +465,27 @@ async function buildQAContext(): Promise<string> {
         r.followUpDate ? `Follow-up Date: ${r.followUpDate.toISOString().slice(0, 10)}` : 'Follow-up: —',
         `Note: ${r.note || '—'}`,
       ].join(', ');
+      parts.push(fields);
+    }
+  }
+
+  if (businessReports.length > 0) {
+    parts.push('\n=== BUSINESS ACTIVITY REPORTS ===');
+    for (const br of businessReports) {
+      const fields = [
+        `Date: ${br.reportDate.toISOString().slice(0, 10)}`,
+        br.reporterName ? `Reporter: ${br.reporterName}` : br.sender ? `Reporter: ${br.sender.displayName}` : '',
+        br.marketingChannel ? `Channel: ${br.marketingChannel}` : '',
+        br.marketingBudget != null ? `Budget: ${br.marketingBudget.toLocaleString()} Ks` : '',
+        br.callsMade != null ? `Calls: ${br.callsMade}` : '',
+        br.appointmentsMade != null ? `Appts Made: ${br.appointmentsMade}` : '',
+        br.appointmentsKept != null ? `Appts Kept: ${br.appointmentsKept}` : '',
+        br.newLeads != null ? `New Leads: ${br.newLeads}` : '',
+        br.totalSalesAmount != null ? `Sales: ${br.totalSalesAmount.toLocaleString()} Ks` : '',
+        br.closedDeals != null ? `Closed: ${br.closedDeals}` : '',
+        br.pendingDeals != null ? `Pending: ${br.pendingDeals}` : '',
+        br.notes ? `Notes: ${br.notes}` : '',
+      ].filter(Boolean).join(', ');
       parts.push(fields);
     }
   }
@@ -643,6 +702,8 @@ async function processFileInBackground({
     let parsedExpiryRecords: any[] = [];
     let isWebsiteUpdateFile = false;
     let parsedWebsiteUpdateRecords: any[] = [];
+    let isBusinessReportFile = false;
+    let parsedBusinessReportRecords: any[] = [];
 
     if (isSpreadsheet) {
       try {
@@ -658,6 +719,9 @@ async function processFileInBackground({
             } else if (isWebsiteUpdateHeaders(headers)) {
               isWebsiteUpdateFile = true;
               parsedWebsiteUpdateRecords = parseWebsiteUpdateSpreadsheet(downloadedBuffer);
+            } else if (isBusinessReportHeaders(headers)) {
+              isBusinessReportFile = true;
+              parsedBusinessReportRecords = parseBusinessReportSpreadsheet(downloadedBuffer);
             }
           }
         }
@@ -707,7 +771,9 @@ async function processFileInBackground({
         url: rec.url,
         businessType: rec.businessType,
         packageName: rec.packageName,
-        status: "up_to_date",
+        // Imported sites start as "pending_update" — a freshly uploaded list is a
+        // backlog of sites to work through. Team marks each "up_to_date" once done.
+        status: "pending_update",
       }));
 
       if (creates.length > 0) {
@@ -726,6 +792,44 @@ async function processFileInBackground({
             "━━━━━━━━━━━━━━━━━━━━",
             `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
             `📊 <b>အရေအတွက်:</b> <code>${creates.length}</code> ခုကို အောင်မြင်စွာ မှတ်တမ်းတင်ပြီးပါပြီ။`,
+          ].join("\n"),
+        });
+      }
+      return;
+    }
+
+    if (isBusinessReportFile) {
+      const creates = parsedBusinessReportRecords.map((rec: any) => ({
+        reportDate: rec.reportDate || new Date(),
+        reporterName: rec.reporterName || null,
+        senderId: senderId,
+        marketingBudget: rec.marketingBudget,
+        marketingChannel: rec.marketingChannel,
+        callsMade: rec.callsMade,
+        appointmentsMade: rec.appointmentsMade,
+        appointmentsKept: rec.appointmentsKept,
+        newLeads: rec.newLeads,
+        totalDemandCount: rec.totalDemandCount,
+        totalSalesAmount: rec.totalSalesAmount,
+        closedDeals: rec.closedDeals,
+        pendingDeals: rec.pendingDeals,
+        notes: rec.notes,
+      }));
+
+      if (creates.length > 0) {
+        await prisma.businessReport.createMany({ data: creates });
+      }
+
+      if (progressMsgId) {
+        await editTelegramMessage({
+          botToken: settings.botToken,
+          chatId,
+          messageId: progressMsgId,
+          text: [
+            "✅ <b>လုပ်ငန်းလှုပ်ရှားမှု မှတ်တမ်းများ တင်သွင်းပြီးပါပြီ</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+            `📊 <b>အရေအတွက်:</b> <code>${creates.length}</code> ရက်/မှတ်တမ်းများကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။`,
           ].join("\n"),
         });
       }
@@ -942,8 +1046,9 @@ export async function POST(req: NextRequest) {
               "စနစ်အတွင်းရှိ လုပ်ငန်းဆိုင်ရာ အချက်အလက်များ (Business Data) ကို အခြေခံ၍ <b>Gemini AI</b> မှ ဆန်းစစ်ဖြေကြားပေးမည် ဖြစ်ပါသည်။ သိရှိလိုသည်များကို မေးမြန်းနိုင်ပါသည်။",
               "",
               "💡 <i>ဥပမာမေးခွန်းများ -</i>",
-              "• <code>ယနေ့ အရောင်းရဆုံး ဝန်ဆောင်မှုက ဘာလဲ?</code>",
-              "• <code>ပြီးခဲ့တဲ့အပတ်က ဘယ်စီမံကိန်းတွေ ကြန့်ကြာနေသလဲ?</code>",
+              "• <code>ဘယ် domain / hosting တွေ ရက်အနီးကပ်ဆုံး သက်တမ်းကုန်တော့မလဲ?</code>",
+              "• <code>update လုပ်ဖို့ ကျန်နေသေးတဲ့ website ဘယ်နှစ်ခု ရှိလဲ?</code>",
+              "• <code>follow-up လုပ်ဖို့ ရှိနေတဲ့ customer တွေက ဘယ်သူတွေလဲ?</code>",
               "",
               "━━━━━━━━━━━━━━━━━━━━",
               "↩️ <b>အဓิက Menu သို့ ပြန်သွားရန်:</b> /start သို့မဟုတ် /menu ဟု ပေးပို့နိုင်ပါသည်။",
@@ -999,6 +1104,23 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: getWebsiteUpdateFormatPrompt(),
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      if (data === 'mode:business_report') {
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: { activeReportType: 'business_report' },
+        });
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Business Report mode selected');
+        if (chatId && messageId) {
+          await editTelegramMessage({
+            botToken: settings?.botToken,
+            chatId: BigInt(chatId),
+            messageId,
+            text: getBusinessReportFormatPrompt(),
           });
         }
         return NextResponse.json({ ok: true });
@@ -1356,8 +1478,74 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    // ─── Business Report Mode (text) ──────────────────────────────────
+    if (activeMode === 'business_report') {
+      const telegramMessage = await createTelegramMessageIfNew({
+        telegramMsgId: message.message_id,
+        text: message.text,
+        senderId: sender.id,
+        chatId,
+        chatTitle: message.chat.title || null,
+        receivedAt,
+      });
+      if (!telegramMessage) {
+        return NextResponse.json({ ok: true });
+      }
+
+      const parsed = await parseBusinessReportWithGemini({
+        text: message.text,
+        apiKey: settings?.geminiApiKey,
+        model: settings?.geminiModel,
+      });
+
+      await prisma.businessReport.create({
+        data: {
+          reportDate: parsed.reportDate,
+          reporterName: parsed.reporterName || sender.displayName,
+          senderId: sender.id,
+          marketingBudget: parsed.marketingBudget,
+          marketingChannel: parsed.marketingChannel,
+          callsMade: parsed.callsMade,
+          appointmentsMade: parsed.appointmentsMade,
+          appointmentsKept: parsed.appointmentsKept,
+          newLeads: parsed.newLeads,
+          totalDemandCount: parsed.totalDemandCount,
+          totalSalesAmount: parsed.totalSalesAmount,
+          closedDeals: parsed.closedDeals,
+          pendingDeals: parsed.pendingDeals,
+          notes: parsed.notes,
+        },
+      });
+
+      const confirmParts = [
+        "✅ <b>လုပ်ငန်းလှုပ်ရှားမှု မှတ်တမ်း တင်သွင်းခြင်း အောင်မြင်ပါသည်</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        `📅 <b>ရက်စွဲ:</b> <code>${parsed.reportDate.toISOString().slice(0, 10)}</code>`,
+      ];
+      if (parsed.marketingChannel) confirmParts.push(`📢 <b>Channel:</b> <code>${parsed.marketingChannel}</code>`);
+      if (parsed.marketingBudget != null) confirmParts.push(`💸 <b>Budget:</b> <code>${parsed.marketingBudget.toLocaleString()} Ks</code>`);
+      if (parsed.callsMade != null) confirmParts.push(`📞 <b>Calls:</b> <code>${parsed.callsMade}</code>`);
+      if (parsed.appointmentsMade != null) confirmParts.push(`🗓️ <b>Appts Made:</b> <code>${parsed.appointmentsMade}</code>`);
+      if (parsed.appointmentsKept != null) confirmParts.push(`✅ <b>Appts Kept:</b> <code>${parsed.appointmentsKept}</code>`);
+      if (parsed.newLeads != null) confirmParts.push(`👥 <b>New Leads:</b> <code>${parsed.newLeads}</code>`);
+      if (parsed.totalSalesAmount != null) confirmParts.push(`💰 <b>Total Sales:</b> <code>${parsed.totalSalesAmount.toLocaleString()} Ks</code>`);
+      if (parsed.closedDeals != null) confirmParts.push(`🎯 <b>Closed:</b> <code>${parsed.closedDeals}</code>`);
+      if (parsed.pendingDeals != null) confirmParts.push(`⏳ <b>Pending:</b> <code>${parsed.pendingDeals}</code>`);
+      if (parsed.notes) confirmParts.push(`📝 <b>Notes:</b> <i>${parsed.notes}</i>`);
+      confirmParts.push(getFormatHintFooter('business_report'));
+
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId,
+        text: confirmParts.join('\n'),
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
     // ─── Demand Report Mode ───────────────────────────────────────────
     const telegramMessage = await createTelegramMessageIfNew({
+
       telegramMsgId: message.message_id,
       text: message.text,
       senderId: sender.id,

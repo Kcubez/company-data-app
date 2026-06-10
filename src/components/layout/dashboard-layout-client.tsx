@@ -15,6 +15,7 @@ import {
   BarChart3,
   Clock,
   Wrench,
+  TrendingUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -101,6 +102,12 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       title: 'Website Updates',
       href: '/website-updates',
       icon: Wrench,
+      adminOnly: false,
+    },
+    {
+      title: 'Business Reports',
+      href: '/business-reports',
+      icon: TrendingUp,
       adminOnly: false,
     },
     {

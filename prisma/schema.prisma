@@ -28,6 +28,9 @@ model User {
   sessions    Session[]
   accounts    Account[]
   botSettings BotSettings?
+  projectExpirations ProjectExpiration[]
+  websiteUpdates     WebsiteUpdate[]
+  businessReports    BusinessReport[]
 
   @@map("user")
 }
@@ -130,6 +133,7 @@ model TelegramSender {
   messages        TelegramMessage[]
   demandRecords   DemandRecord[]
   activities      CustomerActivity[]
+  businessReports BusinessReport[]
 
   @@map("telegram_sender")
 }
@@ -232,6 +236,8 @@ model ProjectExpiration {
   domainExpireDate      DateTime?         @map("domain_expire_date")
   hostingExpireDate     DateTime?         @map("hosting_expire_date")
   remark                String?
+  uploadedByUserId      String?           @map("uploaded_by_user_id")
+  uploadedBy            User?             @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
 
@@ -246,9 +252,50 @@ model WebsiteUpdate {
   packageName     String?           @map("package_name")
   status          String            @default("up_to_date") // "up_to_date" | "pending_update" | "in_progress"
   remark          String?
+  uploadedByUserId String?          @map("uploaded_by_user_id")
+  uploadedBy      User?             @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
   @@map("website_update")
+}
+
+// ─── Business Reports ─────────────────────────────────────────────────────────
+
+model BusinessReport {
+  id                 String          @id @default(cuid())
+  reportDate         DateTime        @map("report_date")
+  senderId           String?         @map("sender_id")
+  sender             TelegramSender? @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  uploadedByUserId   String?         @map("uploaded_by_user_id")
+  uploadedBy         User?           @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+
+  // Marketing
+  marketingBudget    Float?          @map("marketing_budget")
+  marketingChannel   String?         @map("marketing_channel") // Facebook | Google | Referral | Walk-in | Telegram | Other
+
+  // Activity
+  callsMade          Int?            @map("calls_made")
+  appointmentsMade   Int?            @map("appointments_made")
+  appointmentsKept   Int?            @map("appointments_kept")
+  newLeads           Int?            @map("new_leads")
+
+  // Sales
+  totalDemandCount   Int?            @map("total_demand_count")
+  totalSalesAmount   Float?          @map("total_sales_amount")
+  closedDeals        Int?            @map("closed_deals")
+  pendingDeals       Int?            @map("pending_deals")
+
+  // Meta
+  notes              String?
+  reporterName       String?         @map("reporter_name") // display name snapshot
+
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  @@index([reportDate])
+  @@index([senderId])
+  @@index([marketingChannel])
+  @@map("business_report")
 }
 
