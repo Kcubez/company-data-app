@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
 import { formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -143,14 +144,51 @@ function WeeklyChart({ data }: { data?: WeeklyActivity[] }) {
   );
 }
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   const { data: session } = useSession();
   const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const month = Math.min(
+    12,
+    Math.max(1, Number(searchParams.get('month') || now.getMonth() + 1)),
+  );
+  const year = Number(searchParams.get('year') || now.getFullYear());
   const { data: stats, isLoading } = useDashboardStats(month, year);
   const user = session?.user;
   const isAdmin = stats?.isAdmin ?? false;
+  const years = Array.from({ length: 5 }).map((_, index) => now.getFullYear() - 2 + index);
+
+  const updatePeriod = (next: { month?: number; year?: number }) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('month', String(next.month ?? month));
+    params.set('year', String(next.year ?? year));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  useEffect(() => {
+    const hasMonth = searchParams.has('month');
+    const hasYear = searchParams.has('year');
+
+    if (!hasMonth || !hasYear) {
+      const storedMonth = localStorage.getItem('dashboard_filter_month');
+      const storedYear = localStorage.getItem('dashboard_filter_year');
+
+      if (storedMonth && storedYear) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('month', storedMonth);
+        params.set('year', storedYear);
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      } else {
+        localStorage.setItem('dashboard_filter_month', String(month));
+        localStorage.setItem('dashboard_filter_year', String(year));
+      }
+    } else {
+      localStorage.setItem('dashboard_filter_month', String(month));
+      localStorage.setItem('dashboard_filter_year', String(year));
+    }
+  }, [searchParams, pathname, router, month, year]);
 
   const heroCards = [
     {
@@ -231,7 +269,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Select value={String(month)} onValueChange={(value) => setMonth(Number(value))}>
+          <Select value={String(month)} onValueChange={(value) => updatePeriod({ month: Number(value) })}>
             <SelectTrigger className="h-9 w-32 rounded-lg border-border bg-card text-xs">
               {new Date(year, month - 1, 1).toLocaleString('en', { month: 'long' })}
             </SelectTrigger>
@@ -243,19 +281,16 @@ export default function DashboardPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={String(year)} onValueChange={(value) => setYear(Number(value))}>
+          <Select value={String(year)} onValueChange={(value) => updatePeriod({ year: Number(value) })}>
             <SelectTrigger className="h-9 w-24 rounded-lg border-border bg-card text-xs">
               {year}
             </SelectTrigger>
             <SelectContent>
-              {Array.from({ length: 5 }).map((_, index) => {
-                const itemYear = now.getFullYear() - 2 + index;
-                return (
-                  <SelectItem key={itemYear} value={String(itemYear)}>
-                    {itemYear}
-                  </SelectItem>
-                );
-              })}
+              {years.map((itemYear) => (
+                <SelectItem key={itemYear} value={String(itemYear)}>
+                  {itemYear}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -438,9 +473,6 @@ export default function DashboardPage() {
                         </span>
                         <div className="flex items-center gap-3 text-[11px] text-muted-foreground font-mono">
                           <span>{product.count} records</span>
-                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                            {product.totalQty.toLocaleString()} qty
-                          </span>
                         </div>
                       </div>
                       <div className="h-2 rounded-full bg-card/65 border border-border/60 overflow-hidden">
@@ -547,5 +579,13 @@ export default function DashboardPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="space-y-6"><Skeleton className="h-24 w-full" /><Skeleton className="h-48 w-full" /></div>}>
+      <DashboardPageContent />
+    </Suspense>
   );
 }

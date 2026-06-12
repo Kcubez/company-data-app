@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { DestructiveConfirmDialog } from '@/components/ui/destructive-confirm-dialog';
+import { ModalPortal } from '@/components/ui/modal-portal';
 import {
   Select,
   SelectContent,
@@ -41,7 +42,6 @@ import {
   AlertTriangle,
   Edit2,
   Loader2,
-  Flame,
   PhoneOff,
   Lightbulb,
 } from 'lucide-react';
@@ -300,37 +300,7 @@ export default function DemandSheetsPage() {
         </div>
       </div>
 
-      <Card className="border-border/70 bg-card/70 shadow-sm">
-        <CardContent className="grid gap-4 p-4 sm:grid-cols-3 sm:p-5">
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-blue-500/10 p-2 text-blue-600 dark:text-blue-400">
-              <FileSpreadsheet className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Flexible Columns</p>
-              <p className="mt-1 text-sm font-medium text-foreground">CSV/XLS/XLSX headers are mapped into MOT demand fields.</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-amber-500/10 p-2 text-amber-600 dark:text-amber-400">
-              <Flame className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Priority First</p>
-              <p className="mt-1 text-sm font-medium text-foreground">High, medium, and low potential are calculated per customer row.</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
-              <Lightbulb className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Business Insight</p>
-              <p className="mt-1 text-sm font-medium text-foreground">Dashboard shows missing info, follow-up pressure, and suggested action.</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+
 
       {/* Tab Switcher */}
       <div className="flex p-1 bg-card/60 border border-border/80 rounded-lg max-w-sm sm:max-w-md">
@@ -1104,7 +1074,7 @@ export default function DemandSheetsPage() {
 
       {/* Edit Record Dialog */}
       {editingRecord && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+        <ModalPortal className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200 p-4">
           <div className="bg-card border border-border w-full max-w-lg rounded-lg overflow-hidden shadow-lg animate-in zoom-in-95 duration-200 p-6 space-y-4 text-foreground backdrop-blur-xl">
             <div className="flex justify-between items-center border-b border-border pb-3">
               <div>
@@ -1169,7 +1139,7 @@ export default function DemandSheetsPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {/* Delete All Confirmation Modal */}

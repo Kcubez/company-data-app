@@ -92,13 +92,13 @@ export async function GET(req: NextRequest) {
       sorted.slice(0, 5).map((p) => {
         let insight = "";
         if (p.urgency === "expired") {
-          insight = `Domain or hosting has already expired — renew immediately to avoid website downtime.`;
+          insight = `Domain သို့မဟုတ် hosting သက်တမ်းကုန်ဆုံးသွားပါပြီ — ဝဘ်ဆိုက် ရပ်တန့်မသွားစေရန် ချက်ချင်းသက်တမ်းတိုးပါ။`;
         } else if (p.urgency === "critical") {
-          insight = `Expiring within ${p.minDays} day(s). Contact ${p.domainProvider || p.hostingProvider || "provider"} now to renew.`;
+          insight = `သက်တမ်းကုန်ဆုံးရန် ${p.minDays} ရက်သာ လိုပါတော့သည်။ သက်တမ်းတိုးရန် ${p.domainProvider || p.hostingProvider || "provider"} သို့ ချက်ချင်းဆက်သွယ်ပါ။`;
         } else if (p.urgency === "warning") {
-          insight = `Expiring in ${p.minDays} days. Schedule renewal soon to avoid disruption.`;
+          insight = `သက်တမ်းကုန်ဆုံးရန် ${p.minDays} ရက် လိုပါသေးသည်။ ဝဘ်ဆိုက် ပြတ်တောက်မှုမရှိစေရန် သက်တမ်းတိုးရန် စီစဉ်ပါ။`;
         } else {
-          insight = `No immediate action needed (${p.minDays !== null ? `${p.minDays} days remaining` : "no expiry date set"}).`;
+          insight = `ချက်ချင်းဆောင်ရွက်ရန် မလိုသေးပါ (${p.minDays !== null ? `${p.minDays} ရက် ကျန်ရှိနေသေးသည်` : "သက်တမ်းကုန်ရက် မသတ်မှတ်ရသေးပါ"})။`;
         }
         return { projectName: p.projectName, insight };
       });
@@ -123,6 +123,7 @@ export async function GET(req: NextRequest) {
     const prompt = `You are a smart website infrastructure advisor. Below is a list of client websites with their domain and hosting expiry dates.
 Compile a prioritised action list — most urgent first (expired or expiring very soon).
 For each project output a single, brief, 1-sentence actionable recommendation.
+CRITICAL: The "insight" field must be written in Burmese (Myanmar language) so it is easy for local staff to read.
 Output ONLY a JSON array of objects with fields "projectName" and "insight". No markdown, no extra text.
 
 Projects:
@@ -134,7 +135,7 @@ Example output:
 [
   {
     "projectName": "ClientSite.com",
-    "insight": "Domain expired 3 days ago — renew via Namecheap immediately to restore the website."
+    "insight": "Domain သက်တမ်းမှာ ၃ ရက်ခန့်ကျော်လွန်သွားပါပြီ — ဝဘ်ဆိုက်ပြန်လည်ပွင့်လာစေရန် Namecheap မှတစ်ဆင့် ချက်ချင်းသက်တမ်းတိုးပါ။"
   }
 ]`;
 
@@ -173,10 +174,10 @@ Example output:
         const days = p.domainExpireDate ? differenceInDays(p.domainExpireDate, today) : null;
         const insight =
           days !== null && days < 0
-            ? `Domain has expired — renew immediately.`
+            ? `သက်တမ်းကုန်ဆုံးသွားပါပြီ — ချက်ချင်းသက်တမ်းတိုးပါ။`
             : days !== null && days <= 30
-            ? `Domain expires in ${days} day(s) — schedule renewal.`
-            : `Check expiry dates for this project.`;
+            ? `သက်တမ်းကုန်ဆုံးရန် ${days} ရက်သာ လိုပါတော့သည် — သက်တမ်းတိုးရန် ပြင်ဆင်ပါ။`
+            : `ပရောဂျက်အတွက် သက်တမ်းကုန်ဆုံးမည့် ရက်စွဲများကို စစ်ဆေးပါ။`;
         return { projectName: p.projectName, insight };
       });
       return NextResponse.json({ recommendations: fallback });

@@ -81,11 +81,11 @@ export async function GET(req: NextRequest) {
       const insights = [];
       const convRate = totalLeads > 0 ? Math.round((totalClosed / totalLeads) * 100) : 0;
       const roi = totalBudget > 0 ? Math.round(((totalSales - totalBudget) / totalBudget) * 100) : 0;
-      insights.push({ title: "Overall Performance", insight: `Conversion rate: ${convRate}%. ROI: ${roi}%. Total sales: ${totalSales.toLocaleString()} Ks from ${reports.length} reports.` });
+      insights.push({ title: "လုပ်ဆောင်ချက် အጠቃmatrix", insight: `ရောင်းအားပြောင်းလဲမှုနှုန်း (Conversion rate)- ${convRate}%၊ ရင်းနှီးမြှုပ်နှံမှုအပေါ် အကျိုးအမြတ် (ROI)- ${roi}%။ အစီရင်ခံစာ ${reports.length} ခုအရ စုစုပေါင်းရောင်းရငွေ- ${totalSales.toLocaleString()} Ks ရှိပါသည်။` });
 
       const bestChannel = [...channelMap.entries()].sort((a, b) => b[1].sales - a[1].sales)[0];
       if (bestChannel) {
-        insights.push({ title: "Best Channel", insight: `${bestChannel[0]} generated ${bestChannel[1].sales.toLocaleString()} Ks in sales — highest among all channels.` });
+        insights.push({ title: "အကောင်းဆုံး ချန်နယ်", insight: `${bestChannel[0]} ချန်နယ်မှ စုစုပေါင်းရောင်းရငွေ ${bestChannel[1].sales.toLocaleString()} Ks ရရှိပြီး ရောင်းအားအကောင်းဆုံးဖြစ်ပါသည်။` });
       }
 
       const worstCPL = [...channelMap.entries()]
@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
         .map(([ch, v]) => ({ ch, cpl: v.budget / v.leads }))
         .sort((a, b) => b.cpl - a.cpl)[0];
       if (worstCPL) {
-        insights.push({ title: "Cost Efficiency", insight: `${worstCPL.ch} has the highest cost per lead at ${Math.round(worstCPL.cpl).toLocaleString()} Ks — consider optimizing or reallocating budget.` });
+        insights.push({ title: "ကုန်ကျစရိတ် ထိရောက်မှု", insight: `${worstCPL.ch} သည် lead တစ်ခုရရှိရန် ကုန်ကျစရိတ် ${Math.round(worstCPL.cpl).toLocaleString()} Ks ဖြင့် အမြင့်မားဆုံးဖြစ်နေသောကြောင့် ဘတ်ဂျက်ကို ပြန်လည်စိစစ်သင့်ပါသည်။` });
       }
       return insights;
     };
@@ -111,6 +111,7 @@ export async function GET(req: NextRequest) {
     ).join("\n");
 
     const prompt = `You are a business performance analyst. Analyze the following marketing and sales data and give 4-5 concise, actionable insights.
+CRITICAL: The "title" and "insight" fields must be written in Burmese (Myanmar language) so they are easy for local staff to read.
 
 === CHANNEL PERFORMANCE SUMMARY ===
 ${channelSummary}

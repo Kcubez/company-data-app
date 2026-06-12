@@ -129,16 +129,24 @@ export async function GET(req: NextRequest) {
     where: { createdAt: { gte: weekStart } },
     _count: { _all: true },
   });
+
+  const formatLocalDate = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dateVal = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dateVal}`;
+  };
+
   const countsByDay = new Map<string, number>();
   for (const row of groupedRecords) {
-    const key = row.createdAt.toISOString().slice(0, 10);
+    const key = formatLocalDate(row.createdAt);
     countsByDay.set(key, (countsByDay.get(key) ?? 0) + row._count._all);
   }
   const weeklyActivity: { date: string; count: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const dayStart = new Date(startOfToday);
     dayStart.setDate(dayStart.getDate() - i);
-    const key = dayStart.toISOString().slice(0, 10);
+    const key = formatLocalDate(dayStart);
     weeklyActivity.push({ date: key, count: countsByDay.get(key) ?? 0 });
   }
 

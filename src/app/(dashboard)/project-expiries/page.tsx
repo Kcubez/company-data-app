@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { DestructiveConfirmDialog } from '@/components/ui/destructive-confirm-dialog';
+import { ModalPortal } from '@/components/ui/modal-portal';
 import {
   Select,
   SelectContent,
@@ -652,7 +653,7 @@ export default function ProjectExpiriesPage() {
 
       {/* Edit Project Expiry Dialog */}
       {editingRecord && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+        <ModalPortal className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200 p-4">
           <div className="bg-card border border-border w-full max-w-lg rounded-lg overflow-hidden shadow-lg animate-in zoom-in-95 duration-200 p-6 space-y-4 text-foreground backdrop-blur-xl">
             <div className="flex justify-between items-center border-b border-border pb-3">
               <div>
@@ -716,7 +717,7 @@ export default function ProjectExpiriesPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {/* Delete All Confirmation Modal */}

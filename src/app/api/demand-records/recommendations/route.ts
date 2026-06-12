@@ -65,13 +65,13 @@ export async function GET(req: NextRequest) {
     // Heuristic Fallback in case no Gemini key is active or it fails
     const buildHeuristicRecommendations = () => {
       return pendingRecords.slice(0, 5).map(r => {
-        const serviceText = r.serviceName ? `Interested in ${r.serviceName}` : 'Inquired about services';
+        const serviceText = r.serviceName ? `${r.serviceName} ကို စိတ်ဝင်စားနေပါသည်။` : 'ဝန်ဆောင်မှုများအကြောင်း စုံစမ်းမေးမြန်းထားပါသည်။';
         const dateText = r.followUpDate 
-          ? `due for follow-up on ${r.followUpDate.toISOString().slice(0, 10)}` 
-          : 'no follow-up date scheduled';
+          ? `ဖုန်းပြန်ဆက်ရမည့်ရက်- ${r.followUpDate.toISOString().slice(0, 10)}` 
+          : 'ဆက်သွယ်ရန်ရက် မသတ်မှတ်ရသေးပါ';
         return {
-          customerName: r.customerName || 'Unknown Customer',
-          insight: `${serviceText}. Action: Follow up to discuss packages (${dateText}).`,
+          customerName: r.customerName || 'အမည်မသိ သုံးစွဲသူ',
+          insight: `${serviceText} လုပ်ဆောင်ရန်- အသေးစိတ် ဆွေးနွေးရန် ဆက်သွယ်ပါ။ (${dateText})`,
         };
       });
     };
@@ -87,6 +87,7 @@ export async function GET(req: NextRequest) {
 
     const prompt = `You are a smart sales pipeline analyzer. Below is a list of recent pending customer inquiries/demands. Compile a "Smart Hotlist" of actionable follow-up priorities.
 Group by customer name. Highlight what they want and recommend a single, brief, 1-sentence action. 
+CRITICAL: The "insight" field must be written in Burmese (Myanmar language) so it is easy for local staff to read.
 Output exactly a JSON array of objects with fields "customerName" and "insight". Do not output markdown, explainers, or any text other than the JSON block.
 
 Pending Inquiries:
@@ -98,7 +99,7 @@ Example Output:
 [
   {
     "customerName": "Thura",
-    "insight": "Interested in Telegram Sale Bot. Action: Send pricing brochure and schedule demo."
+    "insight": "Telegram Sale Bot ကို စိတ်ဝင်စားနေသည်။ လုပ်ဆောင်ရန်- ဈေးနှုန်းအသေးစိတ် ပေးပို့ပြီး demo စမ်းသပ်ရန် ရက်ချိန်းယူပါ။"
   }
 ]`;
 
@@ -139,13 +140,13 @@ Example Output:
         take: 5,
       });
       const fallbackRecs = pendingRecords.map(r => {
-        const serviceText = r.serviceName ? `Interested in ${r.serviceName}` : 'Inquired about services';
+        const serviceText = r.serviceName ? `${r.serviceName} ကို စိတ်ဝင်စားနေပါသည်။` : 'ဝန်ဆောင်မှုများအကြောင်း စုံစမ်းမေးမြန်းထားပါသည်။';
         const dateText = r.followUpDate 
-          ? `due on ${r.followUpDate.toISOString().slice(0, 10)}` 
-          : 'no date';
+          ? `ရက်စွဲ- ${r.followUpDate.toISOString().slice(0, 10)}` 
+          : 'ရက်စွဲ မသတ်မှတ်ရသေးပါ';
         return {
-          customerName: r.customerName || 'Unknown Customer',
-          insight: `${serviceText}. Action: Follow up to check requirements (${dateText}).`,
+          customerName: r.customerName || 'အမည်မသိ သုံးစွဲသူ',
+          insight: `${serviceText} လုပ်ဆောင်ရန်- လိုအပ်ချက်များ ဆွေးနွေးရန် ဆက်သွယ်ပါ။ (${dateText})`,
         };
       });
       return NextResponse.json({ recommendations: fallbackRecs });

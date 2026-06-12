@@ -63,9 +63,9 @@ export async function GET(req: NextRequest) {
       websites.slice(0, 5).map((w) => {
         let insight = "";
         if (w.status === "pending_update") {
-          insight = `${w.packageName ? `${w.packageName} package` : "Website"} update is pending — assign a developer and begin the update process.`;
+          insight = `${w.packageName ? `${w.packageName} package` : "ဝဘ်ဆိုက်"} အပ်ဒိတ်လုပ်ရန် ကျန်ရှိနေပါသည် — developer ခန့်အပ်ပြီး အပ်ဒိတ်လုပ်ငန်းစဉ်ကို စတင်ပါ။`;
         } else {
-          insight = `Update is in progress — follow up with the developer to confirm the timeline and completion.`;
+          insight = `အပ်ဒိတ်လုပ်ငန်းစဉ် လုပ်ဆောင်နေဆဲဖြစ်သည် — ပြီးစီးမည့်အချိန်ဇယားကို အတည်ပြုရန် developer နှင့် ဆက်သွယ်ပါ။`;
         }
         return { websiteName: w.name, insight };
       });
@@ -86,6 +86,7 @@ export async function GET(req: NextRequest) {
     const prompt = `You are a smart website maintenance advisor. Below is a list of client websites that have pending or in-progress updates.
 Compile prioritised action recommendations — most neglected/urgent first.
 For each website output a single, brief, 1-sentence actionable recommendation for the team.
+CRITICAL: The "insight" field must be written in Burmese (Myanmar language) so it is easy for local staff to read.
 Output ONLY a JSON array of objects with fields "websiteName" and "insight". No markdown, no extra text.
 
 Websites needing attention:
@@ -97,7 +98,7 @@ Example output:
 [
   {
     "websiteName": "Restaurant ABC",
-    "insight": "Update has been pending for 14 days — escalate to developer and set a completion deadline."
+    "insight": "အပ်ဒိတ်လုပ်ရန် ကျန်ရှိနေသည်မှာ ၁၄ ရက်ရှိပြီဖြစ်သည် — developer သို့ တာဝန်ပေးအပ်ပြီး ပြီးစီးရမည့်ရက် အတိအကျ သတ်မှတ်ပါ။"
   }
 ]`;
 
@@ -134,8 +135,8 @@ Example output:
         websiteName: w.name,
         insight:
           w.status === "pending_update"
-            ? "Update is pending — start the update process."
-            : "Update in progress — check status with developer.",
+            ? "အပ်ဒိတ်လုပ်ရန် ကျန်ရှိနေပါသည် — အပ်ဒိတ်လုပ်ငန်းစဉ်ကို စတင်ပါ။"
+            : "အပ်ဒိတ်လုပ်ငန်းစဉ် လုပ်ဆောင်နေဆဲဖြစ်သည် — developer နှင့် ဆက်သွယ်ပါ။",
       }));
       return NextResponse.json({ recommendations: fallback });
     } catch {

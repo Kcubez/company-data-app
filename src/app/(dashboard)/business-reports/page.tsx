@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DestructiveConfirmDialog } from '@/components/ui/destructive-confirm-dialog';
+import { ModalPortal } from '@/components/ui/modal-portal';
 import {
   Select,
   SelectContent,
@@ -694,7 +695,7 @@ export default function BusinessReportsPage() {
 
       {/* ─── Edit Dialog ────────────────────────────────────────────── */}
       {editingRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <ModalPortal className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-lg space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-foreground">Edit Business Report</h3>
@@ -774,7 +775,7 @@ export default function BusinessReportsPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
     </div>
   );
