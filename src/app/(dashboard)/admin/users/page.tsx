@@ -160,18 +160,18 @@ export default function AdminUsersPage() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white mb-2">User Management</h1>
-          <p className="text-slate-400">Manage your system users, roles, and access.</p>
+          <h1 className="text-3xl font-bold  text-foreground mb-2">User Management</h1>
+          <p className="text-muted-foreground">Manage your system users, roles, and access.</p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger render={<Button className="bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20" />}>
+          <DialogTrigger render={<Button className="bg-blue-600 hover:bg-blue-500 text-white shadow-sm" />}>
             <Plus className="w-4 h-4 mr-2" />
             Add User
           </DialogTrigger>
-          <DialogContent className="bg-slate-900 border-slate-800 text-slate-200">
+          <DialogContent className="bg-card border-border text-foreground">
             <DialogHeader>
-              <DialogTitle className="text-white">Create New User</DialogTitle>
-              <DialogDescription className="text-slate-400">
+              <DialogTitle className="text-foreground">Create New User</DialogTitle>
+              <DialogDescription className="text-muted-foreground">
                 Add a new user manually to the system.
               </DialogDescription>
             </DialogHeader>
@@ -182,15 +182,15 @@ export default function AdminUsersPage() {
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200">Name</FormLabel>
+                      <FormLabel className="text-foreground">Name</FormLabel>
                       <FormControl>
                         <Input
-                          className="bg-slate-800 border-slate-700 text-white"
+                          className="bg-muted border-border text-foreground"
                           placeholder="John Doe"
                           {...field}
                         />
                       </FormControl>
-                      <FormMessage className="text-red-400" />
+                      <FormMessage className="text-red-600 dark:text-red-400" />
                     </FormItem>
                   )}
                 />
@@ -199,16 +199,16 @@ export default function AdminUsersPage() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200">Email</FormLabel>
+                      <FormLabel className="text-foreground">Email</FormLabel>
                       <FormControl>
                         <Input
                           type="email"
-                          className="bg-slate-800 border-slate-700 text-white"
+                          className="bg-muted border-border text-foreground"
                           placeholder="john@example.com"
                           {...field}
                         />
                       </FormControl>
-                      <FormMessage className="text-red-400" />
+                      <FormMessage className="text-red-600 dark:text-red-400" />
                     </FormItem>
                   )}
                 />
@@ -217,25 +217,25 @@ export default function AdminUsersPage() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200">Password</FormLabel>
+                      <FormLabel className="text-foreground">Password</FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Input
                             type={showCreatePassword ? "text" : "password"}
-                            className="bg-slate-800 border-slate-700 text-white pr-10"
+                            className="bg-muted border-border text-foreground pr-10"
                             placeholder="••••••••"
                             {...field}
                           />
                           <button
                             type="button"
                             onClick={() => setShowCreatePassword((p) => !p)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-foreground"
                           >
                             {showCreatePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                         </div>
                       </FormControl>
-                      <FormMessage className="text-red-400" />
+                      <FormMessage className="text-red-600 dark:text-red-400" />
                     </FormItem>
                   )}
                 />
@@ -244,19 +244,19 @@ export default function AdminUsersPage() {
                   name="role"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-slate-200">Role</FormLabel>
+                      <FormLabel className="text-foreground">Role</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                          <SelectTrigger className="bg-muted border-border text-foreground">
                             <SelectValue placeholder="Select a role" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                        <SelectContent className="bg-muted border-border text-foreground">
                           <SelectItem value="user">User</SelectItem>
                           <SelectItem value="admin">Admin</SelectItem>
                         </SelectContent>
                       </Select>
-                      <FormMessage className="text-red-400" />
+                      <FormMessage className="text-red-600 dark:text-red-400" />
                     </FormItem>
                   )}
                 />
@@ -264,7 +264,7 @@ export default function AdminUsersPage() {
                   <Button
                     type="submit"
                     disabled={createForm.formState.isSubmitting}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                    className="bg-blue-600 hover:bg-blue-500 text-white"
                   >
                     {createForm.formState.isSubmitting && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -279,10 +279,10 @@ export default function AdminUsersPage() {
       </div>
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-slate-200">
+        <DialogContent className="bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="text-white">Edit User</DialogTitle>
-            <DialogDescription className="text-slate-400">
+            <DialogTitle className="text-foreground">Edit User</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
               Update details for {editingUser?.email}.
             </DialogDescription>
           </DialogHeader>
@@ -293,15 +293,15 @@ export default function AdminUsersPage() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-slate-200">Name</FormLabel>
+                    <FormLabel className="text-foreground">Name</FormLabel>
                     <FormControl>
                       <Input
-                        className="bg-slate-800 border-slate-700 text-white"
+                        className="bg-muted border-border text-foreground"
                         placeholder="John Doe"
                         {...field}
                       />
                     </FormControl>
-                    <FormMessage className="text-red-400" />
+                    <FormMessage className="text-red-600 dark:text-red-400" />
                   </FormItem>
                 )}
               />
@@ -310,16 +310,16 @@ export default function AdminUsersPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-slate-200">Email</FormLabel>
+                    <FormLabel className="text-foreground">Email</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
-                        className="bg-slate-800 border-slate-700 text-white"
+                        className="bg-muted border-border text-foreground"
                         placeholder="john@example.com"
                         {...field}
                       />
                     </FormControl>
-                    <FormMessage className="text-red-400" />
+                    <FormMessage className="text-red-600 dark:text-red-400" />
                   </FormItem>
                 )}
               />
@@ -328,19 +328,19 @@ export default function AdminUsersPage() {
                 name="role"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-slate-200">Role</FormLabel>
+                    <FormLabel className="text-foreground">Role</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                        <SelectTrigger className="bg-muted border-border text-foreground">
                           <SelectValue placeholder="Select a role" />
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                      <SelectContent className="bg-muted border-border text-foreground">
                         <SelectItem value="user">User</SelectItem>
                         <SelectItem value="admin">Admin</SelectItem>
                       </SelectContent>
                     </Select>
-                    <FormMessage className="text-red-400" />
+                    <FormMessage className="text-red-600 dark:text-red-400" />
                   </FormItem>
                 )}
               />
@@ -348,7 +348,7 @@ export default function AdminUsersPage() {
                 <Button
                   type="submit"
                   disabled={editForm.formState.isSubmitting}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                  className="bg-blue-600 hover:bg-blue-500 text-white"
                 >
                   {editForm.formState.isSubmitting && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -361,58 +361,58 @@ export default function AdminUsersPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-        <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center gap-4">
+      <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-border bg-muted/50 flex items-center gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <Input
               placeholder="Search users..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="pl-9 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500"
+              className="pl-9 bg-muted/50 border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-blue-500"
             />
           </div>
         </div>
 
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader className="bg-slate-800/50 hover:bg-slate-800/50">
-              <TableRow className="border-slate-800">
-                <TableHead className="text-slate-400 font-medium">User</TableHead>
-                <TableHead className="text-slate-400 font-medium">Role</TableHead>
-                <TableHead className="text-slate-400 font-medium">Status</TableHead>
-                <TableHead className="text-slate-400 font-medium whitespace-nowrap">
+            <TableHeader className="bg-muted/50 hover:bg-muted/50">
+              <TableRow className="border-border">
+                <TableHead className="text-muted-foreground font-medium">User</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Role</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Status</TableHead>
+                <TableHead className="text-muted-foreground font-medium whitespace-nowrap">
                   Joined Date
                 </TableHead>
-                <TableHead className="text-right text-slate-400 font-medium">Actions</TableHead>
+                <TableHead className="text-right text-muted-foreground font-medium">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i} className="border-slate-800 transition-colors">
+                  <TableRow key={i} className="border-border transition-colors">
                     <TableCell>
-                      <Skeleton className="h-10 w-48 bg-slate-800" />
+                      <Skeleton className="h-10 w-48 bg-muted" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-6 w-16 bg-slate-800 rounded-full" />
+                      <Skeleton className="h-6 w-16 bg-muted rounded-full" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-6 w-20 bg-slate-800 rounded-full" />
+                      <Skeleton className="h-6 w-20 bg-muted rounded-full" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-5 w-24 bg-slate-800" />
+                      <Skeleton className="h-5 w-24 bg-muted" />
                     </TableCell>
                     <TableCell className="text-right">
-                      <Skeleton className="h-8 w-8 ml-auto bg-slate-800" />
+                      <Skeleton className="h-8 w-8 ml-auto bg-muted" />
                     </TableCell>
                   </TableRow>
                 ))
               ) : filteredUsers.length === 0 ? (
-                <TableRow className="border-slate-800 hover:bg-slate-800/20">
-                  <TableCell colSpan={5} className="text-center py-12 text-slate-400">
+                <TableRow className="border-border hover:bg-muted/30">
+                  <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center justify-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
                         <Users className="w-6 h-6 text-slate-500" />
                       </div>
                       <p>No users found matching your search.</p>
@@ -423,18 +423,18 @@ export default function AdminUsersPage() {
                 filteredUsers.map(user => (
                   <TableRow
                     key={user.id}
-                    className="border-slate-800 hover:bg-slate-800/30 transition-colors"
+                    className="border-border hover:bg-muted/60 transition-colors"
                   >
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9 border border-slate-700 bg-slate-800">
-                          <AvatarFallback className="bg-indigo-500/20 text-indigo-400 text-sm">
+                        <Avatar className="h-9 w-9 border border-border bg-muted">
+                          <AvatarFallback className="bg-blue-500/20 text-blue-600 dark:text-blue-400 text-sm">
                             {user.name?.[0]?.toUpperCase() ?? 'U'}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col">
-                          <span className="font-medium text-slate-200">{user.name}</span>
-                          <span className="text-xs text-slate-500">{user.email}</span>
+                          <span className="font-medium text-foreground/85">{user.name}</span>
+                          <span className="text-xs text-muted-foreground">{user.email}</span>
                         </div>
                       </div>
                     </TableCell>
@@ -443,8 +443,8 @@ export default function AdminUsersPage() {
                         variant={user.role === 'admin' ? 'default' : 'secondary'}
                         className={
                           user.role === 'admin'
-                            ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30'
-                            : 'bg-slate-800 text-slate-300'
+                            ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                            : 'bg-muted text-muted-foreground'
                         }
                       >
                         {user.role === 'admin' ? <Shield className="w-3 h-3 mr-1" /> : null}
@@ -456,7 +456,7 @@ export default function AdminUsersPage() {
                         <div className="flex flex-col">
                           <Badge
                             variant="destructive"
-                            className="bg-red-500/20 text-red-400 border-red-500/30 w-fit"
+                            className="bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/30 w-fit"
                           >
                             Banned
                           </Badge>
@@ -470,13 +470,13 @@ export default function AdminUsersPage() {
                       ) : (
                         <Badge
                           variant="outline"
-                          className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
                         >
                           Active
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-slate-400 text-sm">
+                    <TableCell className="text-muted-foreground text-sm">
                       {format(new Date(user.createdAt), 'MMM d, yyyy')}
                     </TableCell>
                     <TableCell className="text-right">
@@ -484,18 +484,18 @@ export default function AdminUsersPage() {
                         <DropdownMenuTrigger render={<Button
                             variant="ghost"
                             size="icon"
-                            className="text-slate-400 hover:text-white hover:bg-slate-800"
+                            className="text-muted-foreground hover:text-foreground hover:bg-muted"
                           />}>
                             <MoreVertical className="w-4 h-4" />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
-                          className="bg-slate-900 border-slate-800 text-slate-200"
+                          className="bg-card border-border text-foreground"
                         >
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuSeparator className="bg-slate-800" />
+                          <DropdownMenuSeparator className="bg-muted" />
                           <DropdownMenuItem
-                            className="hover:bg-slate-800 cursor-pointer text-slate-300"
+                            className="hover:bg-muted cursor-pointer text-foreground"
                             onClick={() => openEditModal(user)}
                           >
                             <Edit className="w-4 h-4 mr-2" /> Edit Details
@@ -503,14 +503,14 @@ export default function AdminUsersPage() {
 
                           {user.banned ? (
                             <DropdownMenuItem
-                              className="hover:bg-slate-800 cursor-pointer text-emerald-400 focus:text-emerald-300 focus:bg-emerald-500/10"
+                              className="hover:bg-muted cursor-pointer text-emerald-600 dark:text-emerald-400 focus:text-emerald-700 dark:text-emerald-300 focus:bg-emerald-500/10"
                               onClick={() => unbanUser.mutate(user.id)}
                             >
                               <Unlock className="w-4 h-4 mr-2" /> Unban User
                             </DropdownMenuItem>
                           ) : (
                             <DropdownMenuItem
-                              className="hover:bg-slate-800 cursor-pointer text-amber-500 focus:text-amber-400 focus:bg-amber-500/10"
+                              className="hover:bg-muted cursor-pointer text-amber-600 dark:text-amber-500 focus:text-amber-600 dark:text-amber-400 focus:bg-amber-500/10"
                               onClick={() => {
                                 const reason = window.prompt(
                                   'Reason for banning:',
@@ -523,9 +523,9 @@ export default function AdminUsersPage() {
                             </DropdownMenuItem>
                           )}
 
-                          <DropdownMenuSeparator className="bg-slate-800" />
+                          <DropdownMenuSeparator className="bg-muted" />
                           <DropdownMenuItem
-                            className="text-red-400 focus:text-red-300 hover:bg-red-500/10 cursor-pointer"
+                            className="text-red-600 dark:text-red-400 focus:text-red-700 dark:text-red-300 hover:bg-red-500/10 cursor-pointer"
                             onClick={() => {
                               if (
                                 confirm(

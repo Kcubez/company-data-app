@@ -16,6 +16,7 @@ import {
   Clock,
   Wrench,
   TrendingUp,
+  Database,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,7 +28,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
+import { Separator } from '@/components/ui/separator';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { useState } from 'react';
 
 type NavItem = {
@@ -47,22 +50,39 @@ function NavigationLinks({
   onNavigate: () => void;
 }) {
   return (
-    <nav className="flex flex-col gap-2 p-4">
-      {items.map(item => (
-        <Link
-          key={item.href}
-          href={item.href}
-          onClick={onNavigate}
-          className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-            pathname === item.href
-              ? 'bg-indigo-500/10 text-indigo-400 font-medium'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-          }`}
-        >
-          <item.icon className="w-5 h-5" />
-          {item.title}
-        </Link>
-      ))}
+    <nav className="flex flex-col gap-0.5 p-3" aria-label="Primary">
+      {items.map(item => {
+        const isActive =
+          pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            aria-current={isActive ? 'page' : undefined}
+            className={`group/nav relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 ${
+              isActive
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold'
+                : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+            }`}
+          >
+            {isActive && (
+              <span
+                aria-hidden
+                className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r-full bg-primary"
+              />
+            )}
+            <Icon
+              className={`h-4 w-4 shrink-0 transition-colors ${
+                isActive ? 'text-primary' : 'text-muted-foreground group-hover/nav:text-foreground'
+              }`}
+              aria-hidden
+            />
+            <span className="truncate">{item.title}</span>
+          </Link>
+        );
+      })}
     </nav>
   );
 }
@@ -80,109 +100,86 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
   };
 
   const navItems: NavItem[] = [
-    {
-      title: 'Dashboard',
-      href: '/dashboard',
-      icon: LayoutDashboard,
-      adminOnly: false,
-    },
-    {
-      title: 'Demand Sheets',
-      href: '/demand-sheets',
-      icon: BarChart3,
-      adminOnly: false,
-    },
-    {
-      title: 'Project Expiries',
-      href: '/project-expiries',
-      icon: Clock,
-      adminOnly: false,
-    },
-    {
-      title: 'Website Updates',
-      href: '/website-updates',
-      icon: Wrench,
-      adminOnly: false,
-    },
-    {
-      title: 'Business Reports',
-      href: '/business-reports',
-      icon: TrendingUp,
-      adminOnly: false,
-    },
-    {
-      title: 'Customers',
-      href: '/customers',
-      icon: UserCircle,
-      adminOnly: false,
-    },
-    {
-      title: 'Messages',
-      href: '/messages',
-      icon: MessageSquare,
-      adminOnly: false,
-    },
-    {
-      title: 'Settings',
-      href: '/settings',
-      icon: Settings,
-      adminOnly: false,
-    },
-    {
-      title: 'User Management',
-      href: '/admin/users',
-      icon: Users,
-      adminOnly: true,
-    },
+    { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, adminOnly: false },
+    { title: 'Demand Sheets', href: '/demand-sheets', icon: BarChart3, adminOnly: false },
+    { title: 'Project Expiries', href: '/project-expiries', icon: Clock, adminOnly: false },
+    { title: 'Website Updates', href: '/website-updates', icon: Wrench, adminOnly: false },
+    { title: 'Business Reports', href: '/business-reports', icon: TrendingUp, adminOnly: false },
+    { title: 'Customers', href: '/customers', icon: UserCircle, adminOnly: false },
+    { title: 'Messages', href: '/messages', icon: MessageSquare, adminOnly: false },
+    { title: 'Settings', href: '/settings', icon: Settings, adminOnly: false },
+    { title: 'User Management', href: '/admin/users', icon: Users, adminOnly: true },
   ];
 
   const filteredNavItems = navItems.filter(
-    item => !item.adminOnly || session?.user?.role === 'admin'
+    item => !item.adminOnly || session?.user?.role === 'admin',
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
       {/* Mobile Header */}
-      <header className="md:hidden flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
-            <LayoutDashboard className="w-4 h-4 text-white" />
+      <header className="md:hidden flex items-center justify-between gap-2 px-4 h-14 border-b border-border bg-sidebar/80 backdrop-blur-xl sticky top-0 z-40">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shadow-sm">
+            <Database className="w-4 h-4" aria-hidden />
           </div>
-          <span className="font-bold text-white tracking-wide">Company</span>
+          <span className="font-heading font-bold text-base truncate">
+            {process.env.NEXT_PUBLIC_APP_NAME ?? 'Company Data'}
+          </span>
         </div>
-        <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-          <SheetTrigger
-            render={
-              <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white" />
-            }
-          >
-            <Menu className="w-6 h-6" />
-          </SheetTrigger>
-          <SheetContent side="left" className="bg-slate-900 border-none p-0 w-72">
-            <div className="flex items-center gap-3 p-6 border-b border-slate-800">
-              <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
-                <LayoutDashboard className="w-4 h-4 text-white" />
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+            <SheetTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Open navigation"
+                  className="cursor-pointer"
+                />
+              }
+            >
+              <Menu className="w-5 h-5" aria-hidden />
+            </SheetTrigger>
+            <SheetContent
+              side="left"
+              className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border p-0 w-72"
+            >
+              <SheetTitle className="sr-only">Primary navigation</SheetTitle>
+              <div className="flex items-center gap-2.5 px-5 h-14 border-b border-sidebar-border">
+                <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center">
+                  <Database className="w-4 h-4" aria-hidden />
+                </div>
+                <span className="font-heading font-bold truncate">
+                  {process.env.NEXT_PUBLIC_APP_NAME ?? 'Company Data'}
+                </span>
               </div>
-              <span className="font-bold text-white tracking-wide text-lg">Company</span>
-            </div>
-            <NavigationLinks
-              items={filteredNavItems}
-              pathname={pathname}
-              onNavigate={() => setIsMobileMenuOpen(false)}
-            />
-          </SheetContent>
-        </Sheet>
+              <NavigationLinks
+                items={filteredNavItems}
+                pathname={pathname}
+                onNavigate={() => setIsMobileMenuOpen(false)}
+              />
+            </SheetContent>
+          </Sheet>
+        </div>
       </header>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-72 bg-slate-900 border-r border-slate-800 min-h-screen sticky top-0">
-        <div className="flex items-center gap-3 p-6 border-b border-slate-800">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <LayoutDashboard className="w-5 h-5 text-white" />
+      <aside
+        className="hidden md:flex flex-col w-64 bg-sidebar text-sidebar-foreground border-r border-sidebar-border min-h-screen sticky top-0"
+        aria-label="Primary"
+      >
+        <div className="flex items-center gap-2.5 px-5 h-16 border-b border-sidebar-border">
+          <div className="w-9 h-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shadow-sm">
+            <Database className="w-5 h-5" aria-hidden />
           </div>
-          <span className="font-bold text-white tracking-wide text-xl">Company</span>
+          <span className="font-heading font-bold text-base  truncate">
+            {process.env.NEXT_PUBLIC_APP_NAME ?? 'Company Data'}
+          </span>
         </div>
-        <div className="flex-1 overflow-y-auto mt-4 px-2">
+
+        <div className="flex-1 overflow-y-auto py-2">
           <NavigationLinks
             items={filteredNavItems}
             pathname={pathname}
@@ -190,75 +187,93 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
           />
         </div>
 
-        {/* User Profile Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900/50">
+        <div className="p-3 border-t border-sidebar-border">
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
                 <Button
                   variant="ghost"
-                  className="w-full justify-start gap-3 h-auto p-3 hover:bg-slate-800 rounded-xl transition-all"
+                  className="w-full justify-start gap-3 h-auto p-2.5 hover:bg-sidebar-accent rounded-lg cursor-pointer"
                 />
               }
             >
-              <Avatar className="w-10 h-10 border border-slate-700 bg-slate-800">
-                <AvatarImage src={session?.user?.image ?? ''} />
-                <AvatarFallback className="bg-indigo-500/20 text-indigo-400 text-lg">
+              <Avatar className="h-9 w-9 bg-muted text-muted-foreground">
+                <AvatarImage src={session?.user?.image ?? ''} alt={session?.user?.name ?? ''} />
+                <AvatarFallback className="bg-primary/15 text-primary text-sm font-semibold">
                   {session?.user?.name?.[0]?.toUpperCase() ?? 'U'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col items-start truncate text-left flex-1 min-w-0">
-                <span className="font-medium text-slate-200 truncate w-full">
+                <span className="font-medium text-sm text-foreground truncate w-full">
                   {session?.user?.name}
                 </span>
-                <span className="text-xs text-slate-500 truncate w-full flex items-center gap-1">
-                  {session?.user?.role === 'admin' && (
-                    <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
-                  )}
+                <span className="text-[11px] text-muted-foreground truncate w-full">
                   {session?.user?.email}
                 </span>
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-64 bg-slate-900 border-slate-800 text-slate-200 pb-2 shadow-xl shadow-black/50 rounded-xl"
+              side="top"
+              className="w-60 mb-1"
             >
-              <DropdownMenuLabel className="p-4 bg-slate-800/50 rounded-t-xl mb-2">
-                <p className="font-medium text-white">{session?.user?.name}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{session?.user?.email}</p>
-                <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+              <DropdownMenuLabel className="font-normal">
+                <p className="text-sm font-semibold text-foreground">{session?.user?.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                  {session?.user?.email}
+                </p>
+                <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border">
                   Role:{' '}
                   <span
                     className={
                       session?.user?.role === 'admin'
-                        ? 'text-indigo-400 ml-1 font-semibold'
-                        : 'ml-1'
+                        ? 'text-primary font-semibold'
+                        : 'text-foreground'
                     }
                   >
                     {session?.user?.role}
                   </span>
                 </div>
               </DropdownMenuLabel>
-              <DropdownMenuItem className="px-4 py-2.5 mx-2 rounded-lg hover:bg-slate-800 cursor-pointer text-slate-300 transition-colors">
-                <UserIcon className="w-4 h-4 mr-2" />
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer">
+                <UserIcon className="w-4 h-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-slate-800 my-2 mx-2" />
+              <DropdownMenuItem className="cursor-pointer">
+                <Settings className="w-4 h-4" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem
-                className="text-red-400 focus:text-red-300 px-4 py-2.5 mx-2 rounded-lg hover:bg-red-500/10 cursor-pointer transition-colors"
+                variant="destructive"
                 onClick={handleSignOut}
+                className="cursor-pointer"
               >
-                <LogOut className="w-4 h-4 mr-2" />
+                <LogOut className="w-4 h-4" />
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Separator className="my-2" />
+
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[10px] uppercase  text-muted-foreground font-semibold">
+              Theme
+            </span>
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-x-hidden p-6 md:p-8">
-        <div className="max-w-6xl mx-auto">{children}</div>
+      <main
+        id="main-content"
+        className="flex-1 min-w-0 overflow-x-hidden p-4 sm:p-6 md:p-8 bg-background"
+        tabIndex={-1}
+      >
+        <div className="max-w-6xl mx-auto page-transition">{children}</div>
       </main>
     </div>
   );

@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { analyzeDemandRecord } from "@/lib/demand-analysis";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -14,12 +15,23 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
 
-  const allowedFields = ["status", "note", "followUpDate"] as const;
+  const allowedFields = ["status", "note", "followUpDate", "recommendedAction", "priority"] as const;
   const data: Record<string, unknown> = {};
   for (const field of allowedFields) {
     if (field in body) {
       if (field === "followUpDate") {
         data[field] = body[field] ? new Date(body[field]) : null;
+        data.followUpStatus = analyzeDemandRecord({
+          customerName: null,
+          customerPhone: null,
+          customerCompany: null,
+          serviceName: null,
+          serviceAmount: null,
+          serviceQty: null,
+          followUpDate: data[field] as Date | null,
+          status: typeof body.status === "string" ? body.status : "new",
+          note: typeof body.note === "string" ? body.note : "",
+        }).followUpStatus;
       } else {
         data[field] = body[field];
       }

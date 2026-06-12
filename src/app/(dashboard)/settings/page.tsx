@@ -107,39 +107,39 @@ export default function SettingsPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-3xl font-bold tracking-tight text-white">Settings</h1>
+          <h1 className="text-3xl font-bold  text-foreground font-heading">Settings</h1>
           {settings?.isActive && (
-            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+            <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
               <CheckCircle2 className="w-3 h-3 mr-1" />
               Bot Connected
             </Badge>
           )}
           {settings && !settings.isActive && !isLoading && (
-            <Badge className="bg-slate-800 text-slate-400 border-slate-700">
+            <Badge className="bg-muted text-muted-foreground border-border">
               <AlertCircle className="w-3 h-3 mr-1" />
               Not Configured
             </Badge>
           )}
         </div>
-        <p className="text-slate-400">Configure Telegram intake and Gemini AI parsing</p>
+        <p className="text-muted-foreground">Configure Telegram intake and Gemini AI parsing</p>
       </div>
 
       {/* Bot Token Card */}
-      <Card className="bg-slate-900 border-slate-800 shadow-lg">
+      <Card className="glass-card glass-card-hover border-border/70 shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-blue-500/10">
-              <Bot className="w-5 h-5 text-blue-400" />
+            <div className="p-2.5 rounded-lg bg-blue-500/10">
+              <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <CardTitle className="text-white text-lg">Telegram Bot Token</CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardTitle className="text-foreground text-lg">Telegram Bot Token</CardTitle>
+              <CardDescription className="text-muted-foreground">
                 Get your bot token from{' '}
                 <a
                   href="https://t.me/BotFather"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-indigo-400 hover:text-indigo-300 inline-flex items-center gap-1"
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 dark:text-blue-700 inline-flex items-center gap-1"
                 >
                   @BotFather
                   <ExternalLink className="w-3 h-3" />
@@ -150,11 +150,11 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-slate-300 mb-2 block">Bot Token</label>
+            <label className="text-sm font-medium text-foreground/85 mb-2 block">Bot Token</label>
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               {isLoading ? (
-                <div className="h-10 bg-slate-800 rounded-md animate-pulse" />
+                <div className="h-10 bg-muted rounded-md animate-pulse" />
               ) : (
                 <Input
                   type={showToken ? 'text' : 'password'}
@@ -163,14 +163,14 @@ export default function SettingsPage() {
                     setBotTokenDraft(e.target.value);
                   }}
                   placeholder="123456789:ABCdefGHIjklMNO..."
-                  className="pl-9 pr-20 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-600 focus-visible:ring-indigo-500 font-mono text-sm"
+                  className="pl-9 pr-20 bg-card/50 border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-ring font-mono text-sm"
                 />
               )}
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setShowToken(!showToken)}
-                  className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors"
+                  className="p-1.5 rounded-md text-slate-500 hover:text-foreground hover:bg-muted/50 transition-colors"
                 >
                   {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -178,29 +178,29 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     onClick={() => copyToClipboard(botToken, 'Bot token')}
-                    className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors"
+                    className="p-1.5 rounded-md text-slate-500 hover:text-foreground hover:bg-muted/50 transition-colors"
                   >
                     <Copy className="w-4 h-4" />
                   </button>
                 )}
               </div>
             </div>
-            <p className="text-xs text-slate-500 mt-1.5">
+            <p className="text-xs text-muted-foreground mt-1.5">
               Your bot token is stored securely and never exposed in the frontend
             </p>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="bg-slate-900 border-slate-800 shadow-lg">
+      <Card className="glass-card glass-card-hover border-border/70 shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-violet-500/10">
-              <Sparkles className="w-5 h-5 text-violet-400" />
+            <div className="p-2.5 rounded-lg bg-violet-500/10">
+              <Sparkles className="w-5 h-5 text-violet-600 dark:text-violet-400" />
             </div>
             <div>
-              <CardTitle className="text-white text-lg">Gemini AI Parser</CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardTitle className="text-foreground text-lg">Gemini AI Parser</CardTitle>
+              <CardDescription className="text-muted-foreground">
                 Used to extract demand-sheet records with {settings?.geminiModel || 'gemini-3.1-flash-lite-preview'}
               </CardDescription>
             </div>
@@ -208,13 +208,13 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-slate-300 mb-2 block">
+            <label className="text-sm font-medium text-foreground/85 mb-2 block">
               Gemini API Key
             </label>
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               {isLoading ? (
-                <div className="h-10 bg-slate-800 rounded-md animate-pulse" />
+                <div className="h-10 bg-muted rounded-md animate-pulse" />
               ) : (
                 <Input
                   type={showGeminiKey ? 'text' : 'password'}
@@ -223,14 +223,14 @@ export default function SettingsPage() {
                     setGeminiApiKeyDraft(e.target.value);
                   }}
                   placeholder="AIza..."
-                  className="pl-9 pr-20 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-600 focus-visible:ring-indigo-500 font-mono text-sm"
+                  className="pl-9 pr-20 bg-card/50 border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-ring font-mono text-sm"
                 />
               )}
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setShowGeminiKey(!showGeminiKey)}
-                  className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors"
+                  className="p-1.5 rounded-md text-slate-500 hover:text-foreground hover:bg-muted/50 transition-colors"
                 >
                   {showGeminiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -238,14 +238,14 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     onClick={() => copyToClipboard(geminiApiKey, 'Gemini API key')}
-                    className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 transition-colors"
+                    className="p-1.5 rounded-md text-slate-500 hover:text-foreground hover:bg-muted/50 transition-colors"
                   >
                     <Copy className="w-4 h-4" />
                   </button>
                 )}
               </div>
             </div>
-            <p className="text-xs text-slate-500 mt-1.5">
+            <p className="text-xs text-muted-foreground mt-1.5">
               Telegram reports use Gemini first; if the API fails, the app falls back to local parsing.
             </p>
           </div>
@@ -256,7 +256,7 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between pt-2 pb-8">
         <div>
           {hasChanges && (
-            <p className="text-sm text-amber-400 flex items-center gap-1.5 animate-in fade-in duration-200">
+            <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-in fade-in duration-200">
               <AlertCircle className="w-3.5 h-3.5" />
               You have unsaved changes
             </p>
@@ -265,7 +265,7 @@ export default function SettingsPage() {
         <Button
           onClick={handleSave}
           disabled={!hasChanges || saveMutation.isPending}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 px-6 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-blue-600 hover:bg-blue-500 text-white shadow-sm px-6 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saveMutation.isPending ? (
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />

@@ -36,11 +36,11 @@ import { customersApi } from '@/lib/api';
 import { toast } from 'sonner';
 
 const statusColors: Record<string, string> = {
-  new: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  contacted: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  quoted: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-  pending: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-  closed: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  new: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+  contacted: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+  quoted: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
+  pending: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
+  closed: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
 };
 
 const actionIcons: Record<string, typeof CheckCircle> = {
@@ -87,16 +87,16 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   if (isLoading) {
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <Skeleton className="h-8 w-48 bg-slate-800" />
+        <Skeleton className="h-8 w-48 bg-muted" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="bg-slate-900 border-slate-800">
-            <CardHeader><Skeleton className="h-4 w-24 bg-slate-800" /></CardHeader>
-            <CardContent><Skeleton className="h-24 w-full bg-slate-800" /></CardContent>
+          <Card className="bg-card border-border">
+            <CardHeader><Skeleton className="h-4 w-24 bg-muted" /></CardHeader>
+            <CardContent><Skeleton className="h-24 w-full bg-muted" /></CardContent>
           </Card>
           <div className="lg:col-span-2 space-y-4">
             {Array.from({ length: 3 }).map((_, i) => (
-              <Card key={i} className="bg-slate-900 border-slate-800">
-                <CardContent className="pt-4"><Skeleton className="h-16 w-full bg-slate-800" /></CardContent>
+              <Card key={i} className="bg-card border-border">
+                <CardContent className="pt-4"><Skeleton className="h-16 w-full bg-muted" /></CardContent>
               </Card>
             ))}
           </div>
@@ -108,7 +108,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   if (!data?.customer) {
     // Briefly shown while the redirect to /customers is in flight.
     return (
-      <div className="text-center text-slate-400 py-12">Redirecting…</div>
+      <div className="text-center text-muted-foreground py-12">Redirecting…</div>
     );
   }
 
@@ -118,14 +118,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center gap-4">
         <Link href="/customers">
-          <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-4 h-4 mr-1" />
             Back
           </Button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight text-white">{customer.name}</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <h1 className="text-3xl font-bold  text-foreground">{customer.name}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Customer since {format(new Date(customer.createdAt), 'MMM d, yyyy')}
           </p>
         </div>
@@ -138,24 +138,24 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-slate-400 hover:text-red-400 hover:bg-red-500/10"
+                className="text-muted-foreground hover:text-red-600 dark:hover:text-red-400 dark:text-red-600 hover:bg-red-500/10"
               >
                 <Trash2 className="w-4 h-4 mr-1" />
                 Delete
               </Button>
             }
           />
-          <AlertDialogContent className="bg-slate-900 border-slate-800 text-slate-200">
+          <AlertDialogContent className="bg-card border-border text-foreground">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete {customer.name}?</AlertDialogTitle>
-              <AlertDialogDescription className="text-slate-400">
+              <AlertDialogDescription className="text-muted-foreground">
                 This will permanently delete the customer and all related activity history.
                 Associated demand records will keep their data but lose the customer link.
                 This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="border-slate-700 text-slate-300">Cancel</AlertDialogCancel>
+              <AlertDialogCancel className="border-border text-foreground">Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => deleteCustomer.mutate()}
                 disabled={deleteCustomer.isPending}
@@ -169,50 +169,50 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="bg-slate-900 border-slate-800">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-base text-white">Customer Info</CardTitle>
+            <CardTitle className="text-base text-foreground">Customer Info</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {customer.phone && (
-              <div className="flex items-center gap-3 text-sm text-slate-300">
-                <Phone className="w-4 h-4 text-slate-400" />
+              <div className="flex items-center gap-3 text-sm text-foreground/85">
+                <Phone className="w-4 h-4 text-muted-foreground" />
                 <span>{customer.phone}</span>
               </div>
             )}
             {customer.email && (
-              <div className="flex items-center gap-3 text-sm text-slate-300">
-                <Mail className="w-4 h-4 text-slate-400" />
+              <div className="flex items-center gap-3 text-sm text-foreground/85">
+                <Mail className="w-4 h-4 text-muted-foreground" />
                 <span>{customer.email}</span>
               </div>
             )}
             {customer.company && (
-              <div className="flex items-center gap-3 text-sm text-slate-300">
-                <Building className="w-4 h-4 text-slate-400" />
+              <div className="flex items-center gap-3 text-sm text-foreground/85">
+                <Building className="w-4 h-4 text-muted-foreground" />
                 <span>{customer.company}</span>
               </div>
             )}
             {customer.notes && (
-              <div className="pt-3 border-t border-slate-800">
-                <p className="text-xs text-slate-400">{customer.notes}</p>
+              <div className="pt-3 border-t border-border">
+                <p className="text-xs text-muted-foreground">{customer.notes}</p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="bg-slate-900 border-slate-800 lg:col-span-2">
+        <Card className="bg-card border-border lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base text-white flex items-center gap-2">
-              <Clock className="w-4 h-4 text-slate-400" />
+            <CardTitle className="text-base text-foreground flex items-center gap-2">
+              <Clock className="w-4 h-4 text-muted-foreground" />
               Timeline
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="relative">
-              <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-800" />
+              <div className="absolute left-4 top-0 bottom-0 w-px bg-muted" />
               <div className="space-y-4">
                 {timeline.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 text-sm">
+                  <div className="text-center py-8 text-muted-foreground text-sm">
                     No activity yet. Telegram messages will appear here.
                   </div>
                 ) : (
@@ -229,20 +229,20 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                             : 'bg-purple-500 border-purple-400'
                         }`} />
 
-                        <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-800">
+                        <div className="bg-muted/50 rounded-lg p-4 border border-border">
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <Icon className={`w-4 h-4 ${
-                                item.type === 'activity' ? 'text-blue-400' : 'text-purple-400'
+                                item.type === 'activity' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'
                               }`} />
-                              <span className="text-sm font-medium text-white">
+                              <span className="text-sm font-medium text-foreground">
                                 {item.type === 'activity'
                                   ? item.action?.replace('_', ' ').toUpperCase()
                                   : item.reportType?.replace('_', ' ').toUpperCase()
                                 }
                               </span>
                             </div>
-                            <span className="text-xs text-slate-500">
+                            <span className="text-xs text-muted-foreground">
                               {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
                             </span>
                           </div>
@@ -250,7 +250,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                           {item.type === 'demand' && (
                             <div className="mb-2">
                               {item.customerName && (
-                                <p className="text-sm text-blue-400 mb-1">
+                                <p className="text-sm text-blue-600 dark:text-blue-400 mb-1">
                                   Customer: {item.customerName}
                                 </p>
                               )}
@@ -260,16 +260,16 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                             </div>
                           )}
 
-                          <p className="text-sm text-slate-350 mb-2">
+                          <p className="text-sm text-foreground/85 mb-2">
                             {item.type === 'activity' ? item.description : item.note}
                           </p>
 
                           {item.sender && (
-                            <div className="flex items-center gap-1 text-xs text-slate-500">
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
                               <User className="w-3 h-3" />
                               {item.sender}
                               {item.senderId && (
-                                <span className="text-slate-600">• {item.senderId}</span>
+                                <span className="text-muted-foreground">• {item.senderId}</span>
                               )}
                             </div>
                           )}

@@ -10,6 +10,13 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date();
+  const { searchParams } = req.nextUrl;
+  const monthParam = Number(searchParams.get("month") || now.getMonth() + 1);
+  const yearParam = Number(searchParams.get("year") || now.getFullYear());
+  const month = Math.min(12, Math.max(1, Number.isFinite(monthParam) ? monthParam : now.getMonth() + 1));
+  const year = Number.isFinite(yearParam) ? yearParam : now.getFullYear();
+  const periodStart = new Date(year, month - 1, 1);
+  const periodEnd = new Date(year, month, 1);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -79,16 +86,40 @@ export async function GET(req: NextRequest) {
   }
 
   // Quantity and Amount Aggregations
-  const [qtyAgg, amountAgg] = await Promise.all([
+  const [qtyAgg, amountAgg, businessAgg, highPriorityLeads, missingPhoneLeads] = await Promise.all([
     prisma.demandRecord.aggregate({
       _sum: { serviceQty: true },
+      where: { createdAt: { gte: periodStart, lt: periodEnd } },
     }),
     prisma.demandRecord.aggregate({
       _sum: { serviceAmount: true },
+      where: { createdAt: { gte: periodStart, lt: periodEnd } },
+    }),
+    prisma.businessReport.aggregate({
+      _sum: { marketingBudget: true, totalSalesAmount: true },
+      where: { reportDate: { gte: periodStart, lt: periodEnd } },
+    }),
+    prisma.demandRecord.count({
+      where: {
+        priority: "high",
+        status: { notIn: ["closed", "completed"] },
+        createdAt: { gte: periodStart, lt: periodEnd },
+      },
+    }),
+    prisma.demandRecord.count({
+      where: {
+        missingFields: { has: "phone" },
+        status: { notIn: ["closed", "completed"] },
+        createdAt: { gte: periodStart, lt: periodEnd },
+      },
     }),
   ]);
   const totalQuantitySold = qtyAgg._sum.serviceQty || 0;
-  const totalAmountSold = amountAgg._sum.serviceAmount || 0;
+  const demandRevenue = amountAgg._sum.serviceAmount || 0;
+  const reportRevenue = businessAgg._sum.totalSalesAmount || 0;
+  const totalAmountSold = Math.max(demandRevenue, reportRevenue);
+  const totalCost = businessAgg._sum.marketingBudget || 0;
+  const profitLoss = totalAmountSold - totalCost;
 
   // Weekly Activity
   const weekStart = new Date(startOfToday);
@@ -111,7 +142,7 @@ export async function GET(req: NextRequest) {
     weeklyActivity.push({ date: key, count: countsByDay.get(key) ?? 0 });
   }
 
-  // Top Products
+  // Top Services
   const serviceGroups = await prisma.demandRecord.groupBy({
     by: ['serviceName'],
     where: { serviceName: { not: null } },
@@ -193,6 +224,12 @@ export async function GET(req: NextRequest) {
     pipeline,
     totalQuantitySold,
     totalAmountSold,
+    totalCost,
+    profitLoss,
+    selectedMonth: month,
+    selectedYear: year,
+    highPriorityLeads,
+    missingPhoneLeads,
     weeklyActivity,
     topProducts,
     dueTodayRecords,

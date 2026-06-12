@@ -26,7 +26,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 
-export function LoginForm({ requiredRole }: { requiredRole?: "admin" | "user" }) {
+export function LoginForm({ requiredRole }: { requiredRole?: 'admin' | 'user' }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') ?? '/dashboard';
@@ -50,7 +50,7 @@ export function LoginForm({ requiredRole }: { requiredRole?: "admin" | "user" })
       return;
     }
 
-    // Role Enforcement
+    // Role enforcement
     if (requiredRole && data?.user?.role && data.user.role !== requiredRole) {
       const { signOut } = await import('@/lib/auth-client');
       await signOut();
@@ -65,20 +65,25 @@ export function LoginForm({ requiredRole }: { requiredRole?: "admin" | "user" })
   const isLoading = form.formState.isSubmitting;
 
   return (
-    <Card className="border-slate-800/80 bg-slate-900/40 backdrop-blur-xl shadow-2xl shadow-black/45 rounded-2xl ring-1 ring-white/5 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <CardHeader className="space-y-1.5 pb-6 pt-8 px-6 border-b border-slate-800/50 bg-slate-950/20 text-center">
-        <CardTitle className="text-2xl font-extrabold text-white tracking-tight">Welcome back</CardTitle>
-        <CardDescription className="text-slate-400 text-sm">
+    <Card className="border-border bg-card/70 backdrop-blur-xl shadow-sm rounded-lg ring-1 ring-border overflow-hidden">
+      <CardHeader className="space-y-1.5 pb-6 pt-8 px-6 border-b border-border bg-muted/30 text-center">
+        <CardTitle className="text-2xl font-heading font-extrabold  text-foreground">
+          Welcome back
+        </CardTitle>
+        <CardDescription className="text-muted-foreground text-sm">
           Sign in to your account to continue
         </CardDescription>
       </CardHeader>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
+        <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
           <CardContent className="space-y-5 p-6">
             {serverError && (
-              <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3.5 text-xs font-medium text-red-400 flex items-center gap-2 animate-in fade-in duration-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+              <div
+                role="alert"
+                className="rounded-lg bg-destructive/10 border border-destructive/30 px-4 py-3 text-xs font-medium text-destructive flex items-center gap-2"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" aria-hidden />
                 {serverError}
               </div>
             )}
@@ -88,21 +93,26 @@ export function LoginForm({ requiredRole }: { requiredRole?: "admin" | "user" })
               name="email"
               render={({ field }) => (
                 <FormItem className="space-y-1.5">
-                  <FormLabel className="text-slate-300 text-xs font-semibold uppercase tracking-wider">Email Address</FormLabel>
+                  <FormLabel className="text-muted-foreground text-xs font-semibold uppercase ">
+                    Email Address
+                  </FormLabel>
                   <FormControl>
                     <div className="relative group">
-                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-indigo-400 transition-colors duration-200" />
+                      <Mail
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors"
+                        aria-hidden
+                      />
                       <Input
                         id="email"
                         type="email"
                         placeholder="you@example.com"
                         autoComplete="email"
-                        className="pl-10 h-11 bg-slate-950/40 border-slate-800 text-white placeholder:text-slate-600 focus-visible:ring-indigo-500/40 focus-visible:border-indigo-500/40 rounded-xl transition-all duration-200 text-sm font-sans"
+                        className="pl-10 h-11 bg-background border-input text-foreground placeholder:text-muted-foreground/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 focus-visible:border-ring rounded-lg"
                         {...field}
                       />
                     </div>
                   </FormControl>
-                  <FormMessage className="text-red-400 text-xs mt-1" />
+                  <FormMessage className="text-destructive text-xs mt-1" />
                 </FormItem>
               )}
             />
@@ -112,48 +122,54 @@ export function LoginForm({ requiredRole }: { requiredRole?: "admin" | "user" })
               name="password"
               render={({ field }) => (
                 <FormItem className="space-y-1.5">
-                  <FormLabel className="text-slate-300 text-xs font-semibold uppercase tracking-wider">Password</FormLabel>
+                  <FormLabel className="text-muted-foreground text-xs font-semibold uppercase ">
+                    Password
+                  </FormLabel>
                   <FormControl>
                     <div className="relative group">
-                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-indigo-400 transition-colors duration-200" />
+                      <Lock
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors"
+                        aria-hidden
+                      />
                       <Input
                         id="password"
                         type={showPassword ? 'text' : 'password'}
                         placeholder="••••••••"
                         autoComplete="current-password"
-                        className="pl-10 pr-10 h-11 bg-slate-950/40 border-slate-800 text-white placeholder:text-slate-600 focus-visible:ring-indigo-500/40 focus-visible:border-indigo-500/40 rounded-xl transition-all duration-200 text-sm font-sans"
+                        className="pl-10 pr-10 h-11 bg-background border-input text-foreground placeholder:text-muted-foreground/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 focus-visible:border-ring rounded-lg"
                         {...field}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(p => !p)}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-0.5 rounded"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded cursor-pointer focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
                       >
                         {showPassword ? (
-                          <EyeOff className="w-4 h-4" />
+                          <EyeOff className="w-4 h-4" aria-hidden />
                         ) : (
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-4 h-4" aria-hidden />
                         )}
                       </button>
                     </div>
                   </FormControl>
-                  <FormMessage className="text-red-400 text-xs mt-1" />
+                  <FormMessage className="text-destructive text-xs mt-1" />
                 </FormItem>
               )}
             />
           </CardContent>
 
-          <CardFooter className="flex flex-col gap-4 p-6 pt-2 border-t border-slate-800/50 bg-slate-950/10">
+          <CardFooter className="flex flex-col gap-4 p-6 pt-2 border-t border-border bg-muted/20">
             <Button
               id="login-submit"
               type="submit"
-              className="w-full h-11 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/20 transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg  hover:bg-primary/90 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               disabled={isLoading}
             >
               {isLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
               ) : (
-                <LogIn className="w-4 h-4" />
+                <LogIn className="w-4 h-4" aria-hidden />
               )}
               {isLoading ? 'Signing in...' : 'Sign in'}
             </Button>

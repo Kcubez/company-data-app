@@ -16,19 +16,17 @@ export default async function SetupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      {/* Background decorations */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-150 h-150 bg-indigo-500/20 rounded-full blur-[120px] pointer-events-none"></div>
-
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden">
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-linear-to-br from-indigo-500 to-purple-600 rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-xl shadow-indigo-500/20">
+          <div className="w-16 h-16 bg-primary text-primary-foreground rounded-lg mx-auto flex items-center justify-center mb-6 shadow-sm shadow-primary/20">
             <svg
-              className="w-8 h-8 text-white"
+              className="w-8 h-8"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
               xmlns="http://www.w3.org/2000/svg"
+              aria-hidden
             >
               <path
                 strokeLinecap="round"
@@ -38,10 +36,10 @@ export default async function SetupPage() {
               />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">
+          <h1 className="text-3xl font-heading font-bold text-foreground mb-2 ">
             System Initialization
           </h1>
-          <p className="text-slate-400">
+          <p className="text-muted-foreground">
             Welcome to the Company Data App. Create the first super-admin account to unlock the
             system.
           </p>

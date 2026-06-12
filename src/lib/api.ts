@@ -151,10 +151,21 @@ export type DemandRecord = {
   category: string;
   status: string;
   note: string;
+  sourceType: string;
+  sourceFileName: string | null;
+  rawData?: Record<string, unknown> | null;
+  normalizedData?: Record<string, unknown> | null;
+  importBatchId: string | null;
   serviceName: string | null;
   serviceAmount: number | null;
   serviceQty: number | null;
   followUpDate: string | null;
+  followUpStatus: string;
+  priority: "high" | "medium" | "low";
+  potentialScore: number;
+  priorityReason: string | null;
+  recommendedAction: string | null;
+  missingFields: string[];
   confidence: number;
   aiProvider: string;
   aiModel: string | null;
@@ -180,6 +191,18 @@ export type DemandRecordStats = {
   totalRecords: number;
   todayRecords: number;
   services: ServiceStat[];
+  priority: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  insights: {
+    type: string;
+    severity: "info" | "warning" | "urgent";
+    title: string;
+    message: string;
+    recommendedAction: string;
+  }[];
 };
 
 export type DemandRecordsParams = {
@@ -189,6 +212,7 @@ export type DemandRecordsParams = {
   status?: string;
   category?: string;
   senderId?: string;
+  priority?: string;
 };
 
 export type AIRecommendation = {
@@ -204,6 +228,18 @@ export type UpdateDemandRecordPayload = {
   status?: string;
   note?: string;
   followUpDate?: string | null;
+  recommendedAction?: string;
+  priority?: "high" | "medium" | "low";
+};
+
+export type DemandImportResponse = {
+  batchId: string;
+  importedCount: number;
+  highPriority: number;
+  missingPhone: number;
+  detectedColumns: string[];
+  columnMapping: Record<string, string>;
+  records: DemandRecord[];
 };
 
 export const demandRecordsApi = {
@@ -215,6 +251,7 @@ export const demandRecordsApi = {
     if (params.status) searchParams.set("status", params.status);
     if (params.category) searchParams.set("category", params.category);
     if (params.senderId) searchParams.set("senderId", params.senderId);
+    if (params.priority) searchParams.set("priority", params.priority);
     const qs = searchParams.toString();
     return request<DemandRecordsResponse>(`/api/demand-records${qs ? `?${qs}` : ""}`);
   },
@@ -224,6 +261,19 @@ export const demandRecordsApi = {
   recommendations: () => request<AIRecommendationsResponse>("/api/demand-records/recommendations"),
   deleteAll: () =>
     request<{ success: boolean; count: number }>("/api/demand-records", { method: "DELETE" }),
+  importFile: async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/demand-records/import", {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ message: "Import failed" }));
+      throw new Error(error.message || "Import failed");
+    }
+    return res.json() as Promise<DemandImportResponse>;
+  },
 };
 
 // ─── Project Expiration API ─────────────────────────────────────────────────

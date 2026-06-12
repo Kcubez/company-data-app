@@ -43,3 +43,9 @@ next-env.d.ts
 /src/generated/prisma
 
 *.xlsx
+
+.claude
+.agent
+.codex
+.playwright-mcp
+/design-system

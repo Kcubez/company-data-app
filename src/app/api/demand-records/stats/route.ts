@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { buildBusinessInsights } from "@/lib/demand-analysis";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -32,6 +33,8 @@ export async function GET(req: NextRequest) {
     totalRecords,
     todayRecords,
     serviceGroups,
+    priorityGroups,
+    analysisRecords,
   ] = await Promise.all([
     prisma.demandRecord.count(),
     prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday } } }),
@@ -42,6 +45,32 @@ export async function GET(req: NextRequest) {
       _sum: {
         serviceQty: true,
         serviceAmount: true,
+      },
+    }),
+    prisma.demandRecord.groupBy({
+      by: ['priority'],
+      where: { status: { notIn: ['closed', 'completed'] } },
+      _count: { _all: true },
+    }),
+    prisma.demandRecord.findMany({
+      where: { status: { notIn: ['closed', 'completed'] } },
+      orderBy: [{ priority: 'asc' }, { potentialScore: 'desc' }],
+      take: 200,
+      select: {
+        customerName: true,
+        serviceName: true,
+        serviceAmount: true,
+        serviceQty: true,
+        followUpDate: true,
+        followUpStatus: true,
+        status: true,
+        note: true,
+        priority: true,
+        potentialScore: true,
+        priorityReason: true,
+        recommendedAction: true,
+        missingFields: true,
+        customer: { select: { phone: true, company: true } },
       },
     }),
   ]);
@@ -78,9 +107,37 @@ export async function GET(req: NextRequest) {
     return allowedServices.indexOf(a.serviceName) - allowedServices.indexOf(b.serviceName);
   });
 
+  const priority = { high: 0, medium: 0, low: 0 };
+  for (const group of priorityGroups) {
+    if (group.priority in priority) {
+      priority[group.priority as keyof typeof priority] = group._count._all;
+    }
+  }
+
+  const insightRecords = analysisRecords.map((record) => ({
+    customerName: record.customerName,
+    customerPhone: record.customer?.phone ?? null,
+    customerCompany: record.customer?.company ?? null,
+    serviceName: record.serviceName,
+    serviceAmount: record.serviceAmount,
+    serviceQty: record.serviceQty,
+    followUpDate: record.followUpDate,
+    status: record.status,
+    note: record.note,
+    createdAt: null,
+    priority: record.priority as "high" | "medium" | "low",
+    potentialScore: record.potentialScore,
+    priorityReason: record.priorityReason || "",
+    recommendedAction: record.recommendedAction || "",
+    missingFields: record.missingFields,
+    followUpStatus: record.followUpStatus as "due" | "scheduled" | "overdue" | "not_scheduled",
+  }));
+
   return NextResponse.json({
     totalRecords,
     todayRecords,
     services: servicesStats,
+    priority,
+    insights: buildBusinessInsights(insightRecords),
   });
 }

@@ -42,12 +42,14 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status") || "";
   const category = searchParams.get("category") || "";
   const senderId = searchParams.get("senderId") || "";
+  const priority = searchParams.get("priority") || "";
 
   const where: Record<string, unknown> = {};
 
   if (status) where.status = status;
   if (category) where.category = category;
   if (senderId) where.senderId = senderId;
+  if (priority) where.priority = priority;
 
   if (search) {
     where.OR = [

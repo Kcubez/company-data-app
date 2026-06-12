@@ -31,6 +31,7 @@ model User {
   projectExpirations ProjectExpiration[]
   websiteUpdates     WebsiteUpdate[]
   businessReports    BusinessReport[]
+  demandImportBatches DemandImportBatch[]
 
   @@map("user")
 }
@@ -134,6 +135,7 @@ model TelegramSender {
   demandRecords   DemandRecord[]
   activities      CustomerActivity[]
   businessReports BusinessReport[]
+  pendingDemandImports PendingDemandImport[]
 
   @@map("telegram_sender")
 }
@@ -149,10 +151,59 @@ model TelegramMessage {
   receivedAt      DateTime        @default(now())
   createdAt       DateTime        @default(now())
   demandRecords   DemandRecord[]
+  pendingDemandImports PendingDemandImport[]
 
   @@map("telegram_message")
   @@index([senderId])
   @@index([receivedAt])
+}
+
+model PendingDemandImport {
+  id              String           @id @default(cuid())
+  senderId        String
+  sender          TelegramSender   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  messageId       String
+  message         TelegramMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  chatId          BigInt           @map("chat_id")
+  previewMessageId Int?            @map("preview_message_id")
+  fileName        String           @map("file_name")
+  fileType        String?          @map("file_type")
+  extractedText   String           @map("extracted_text")
+  parsedRows      Json             @map("parsed_rows")
+  summary         Json?
+  errors          String[]         @default([])
+  status          String           @default("pending")
+  expiresAt       DateTime         @map("expires_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  @@map("pending_demand_import")
+  @@index([senderId])
+  @@index([messageId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model DemandImportBatch {
+  id                String         @id @default(cuid())
+  fileName          String         @map("file_name")
+  fileType          String?        @map("file_type")
+  status            String         @default("imported")
+  source            String         @default("dashboard_upload")
+  detectedColumns   Json?          @map("detected_columns")
+  columnMapping     Json?          @map("column_mapping")
+  rowCount          Int            @default(0) @map("row_count")
+  importedCount     Int            @default(0) @map("imported_count")
+  uploadedByUserId  String?        @map("uploaded_by_user_id")
+  uploadedBy        User?          @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  records           DemandRecord[]
+
+  @@map("demand_import_batch")
+  @@index([createdAt])
+  @@index([status])
 }
 
 model DemandRecord {
@@ -167,12 +218,26 @@ model DemandRecord {
   category        String           @default("general")
   status          String           @default("new")
   note            String
+  sourceType      String           @default("telegram") @map("source_type")
+  sourceFileName  String?          @map("source_file_name")
+  rawData         Json?            @map("raw_data")
+  normalizedData  Json?            @map("normalized_data")
+  importBatchId   String?          @map("import_batch_id")
+  importBatch     DemandImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
 
   // Demand Sheet fields
   serviceName     String?
   serviceAmount   Float?
   serviceQty      Int?
   followUpDate    DateTime?
+  followUpStatus  String           @default("not_scheduled") @map("follow_up_status")
+
+  // Priority analysis
+  priority          String          @default("medium")
+  potentialScore    Int             @default(50) @map("potential_score")
+  priorityReason    String?         @map("priority_reason")
+  recommendedAction String?         @map("recommended_action")
+  missingFields     String[]        @default([]) @map("missing_fields")
 
   confidence      Float            @default(0.35)
   aiProvider      String           @default("heuristic")
@@ -190,6 +255,10 @@ model DemandRecord {
   @@index([createdAt])
   @@index([customerId])
   @@index([serviceName])
+  @@index([priority])
+  @@index([potentialScore])
+  @@index([importBatchId])
+  @@index([sourceType])
 }
 
 // ─── Q&A Knowledge Base ──────────────────────────────────────────────────────
@@ -298,4 +367,3 @@ model BusinessReport {
   @@index([marketingChannel])
   @@map("business_report")
 }
-

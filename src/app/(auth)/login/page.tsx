@@ -10,7 +10,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="h-100 flex justify-center items-center text-slate-400">Loading form...</div>
+        <div className="h-100 flex justify-center items-center text-muted-foreground">Loading form...</div>
       }
     >
       <LoginForm requiredRole="user" />

@@ -15,7 +15,9 @@ import {
   parseProjectExpiryMessageWithGemini,
   parseWebsiteUpdateMessageWithGemini,
   parseBusinessReportWithGemini,
+  type ParsedDemandRecord,
 } from "@/lib/demand-parser";
+import { analyzeDemandRecord } from "@/lib/demand-analysis";
 import { NextRequest, NextResponse, after } from "next/server";
 
 function displayNameFromTelegramUser(from: { first_name?: string; last_name?: string }) {
@@ -671,6 +673,196 @@ async function resolveCustomersBatch(
   return rawNameToId;
 }
 
+function escapeHtml(value: string | null | undefined): string {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function serializeParsedDemand(record: ParsedDemandRecord) {
+  return {
+    ...record,
+    followUpDate: record.followUpDate ? record.followUpDate.toISOString() : null,
+    createdAt: record.createdAt ? record.createdAt.toISOString() : null,
+  };
+}
+
+function hydrateParsedDemand(record: Record<string, unknown>): ParsedDemandRecord {
+  const parseDate = (value: unknown) => {
+    if (!value) return null;
+    const parsed = Date.parse(String(value));
+    return Number.isNaN(parsed) ? null : new Date(parsed);
+  };
+
+  return {
+    customerName: typeof record.customerName === 'string' ? record.customerName : null,
+    customerPhone: typeof record.customerPhone === 'string' ? record.customerPhone : null,
+    customerCompany: typeof record.customerCompany === 'string' ? record.customerCompany : null,
+    category: typeof record.category === 'string' ? record.category : 'demand',
+    status: typeof record.status === 'string' ? record.status : 'new',
+    note: typeof record.note === 'string' ? record.note : '',
+    confidence: typeof record.confidence === 'number' ? record.confidence : 0.35,
+    aiProvider: typeof record.aiProvider === 'string' ? record.aiProvider : 'heuristic',
+    aiModel: typeof record.aiModel === 'string' ? record.aiModel : null,
+    followUpDate: parseDate(record.followUpDate),
+    serviceName: typeof record.serviceName === 'string' ? record.serviceName : null,
+    serviceAmount: typeof record.serviceAmount === 'number' ? record.serviceAmount : null,
+    serviceQty: typeof record.serviceQty === 'number' ? record.serviceQty : null,
+    createdAt: parseDate(record.createdAt),
+  };
+}
+
+function summarizeParsedDemands(parsedDemands: ParsedDemandRecord[]) {
+  const summary = {
+    total: parsedDemands.length,
+    high: 0,
+    medium: 0,
+    low: 0,
+    missingPhone: 0,
+    missingCustomer: 0,
+    missingService: 0,
+    dueOrOverdue: 0,
+  };
+
+  parsedDemands.forEach((record) => {
+    const analysis = analyzeDemandRecord(record);
+    summary[analysis.priority] += 1;
+    if (analysis.missingFields.includes('phone')) summary.missingPhone += 1;
+    if (analysis.missingFields.includes('customerName')) summary.missingCustomer += 1;
+    if (analysis.missingFields.includes('service')) summary.missingService += 1;
+    if (analysis.followUpStatus === 'due' || analysis.followUpStatus === 'overdue') {
+      summary.dueOrOverdue += 1;
+    }
+  });
+
+  return summary;
+}
+
+function buildDemandImportPreviewText({
+  fileName,
+  parsedDemands,
+  errors,
+}: {
+  fileName: string;
+  parsedDemands: ParsedDemandRecord[];
+  errors: string[];
+}) {
+  const summary = summarizeParsedDemands(parsedDemands);
+  const parts = [
+    "📄 <b>Demand file preview</b>",
+    "━━━━━━━━━━━━━━━━━━━━",
+    `📎 <b>File:</b> <code>${escapeHtml(fileName)}</code>`,
+    `📊 <b>Rows detected:</b> <code>${summary.total}</code>`,
+    "",
+    "🎯 <b>Priority summary</b>",
+    `• High: <b>${summary.high}</b>`,
+    `• Medium: <b>${summary.medium}</b>`,
+    `• Low: <b>${summary.low}</b>`,
+    "",
+    "⚠️ <b>Data quality</b>",
+    `• Missing phone: <b>${summary.missingPhone}</b>`,
+    `• Missing customer: <b>${summary.missingCustomer}</b>`,
+    `• Missing service: <b>${summary.missingService}</b>`,
+    `• Due/overdue follow-up: <b>${summary.dueOrOverdue}</b>`,
+  ];
+
+  if (errors.length > 0) {
+    parts.push("", "⚠️ <b>Parsing warnings</b>");
+    errors.slice(0, 4).forEach((error) => {
+      parts.push(`• <code>${escapeHtml(error)}</code>`);
+    });
+    if (errors.length > 4) parts.push(`• ...and ${errors.length - 4} more warning(s)`);
+  }
+
+  if (parsedDemands.length > 0) {
+    parts.push("", "📋 <b>Sample rows (first 5)</b>", "━━━━━━━━━━━━━━━━━━━━");
+    parsedDemands.slice(0, 5).forEach((record, idx) => {
+      const analysis = analyzeDemandRecord(record);
+      parts.push(
+        [
+          `<b>#${idx + 1} ${escapeHtml(record.customerName || 'Unknown customer')}</b>`,
+          `  • Priority: <b>${analysis.priority.toUpperCase()}</b> (${analysis.potentialScore}/100)`,
+          `  • Service: ${escapeHtml(record.serviceName || 'Unknown')}`,
+          `  • Action: ${escapeHtml(analysis.recommendedAction)}`,
+        ].join("\n"),
+      );
+    });
+  }
+
+  parts.push(
+    "",
+    "ဒီ preview မှန်တယ်ဆိုရင် <b>Confirm Import</b> ကိုနှိပ်ပါ။ မမှန်ရင် <b>Cancel</b> နှိပ်ပြီး file/header ကိုပြန်စစ်ပါ။",
+  );
+
+  return parts.join("\n");
+}
+
+async function createDemandRecordsFromParsedDemands({
+  parsedDemands,
+  senderId,
+  telegramMessageId,
+  fileName,
+  sourceType = 'telegram',
+  importBatchId,
+}: {
+  parsedDemands: ParsedDemandRecord[];
+  senderId: string;
+  telegramMessageId: string;
+  fileName?: string | null;
+  sourceType?: string;
+  importBatchId?: string | null;
+}) {
+  const customerIdByName = await resolveCustomersBatch(
+    parsedDemands,
+    senderId,
+    fileName || 'Telegram demand import',
+  );
+
+  const demandRecordCreates: Prisma.DemandRecordUncheckedCreateInput[] = [];
+  for (const parsedDemand of parsedDemands) {
+    const analysis = analyzeDemandRecord(parsedDemand);
+    const customerId = parsedDemand.customerName
+      ? customerIdByName.get(parsedDemand.customerName) ?? null
+      : null;
+
+    demandRecordCreates.push({
+      messageId: telegramMessageId,
+      senderId,
+      customerId,
+      customerName: parsedDemand.customerName,
+      category: parsedDemand.category,
+      status: parsedDemand.status,
+      note: parsedDemand.note,
+      sourceType,
+      sourceFileName: fileName || null,
+      normalizedData: serializeParsedDemand(parsedDemand),
+      importBatchId: importBatchId || null,
+      serviceName: parsedDemand.serviceName,
+      serviceAmount: parsedDemand.serviceAmount,
+      serviceQty: parsedDemand.serviceQty,
+      followUpDate: parsedDemand.followUpDate,
+      followUpStatus: analysis.followUpStatus,
+      priority: analysis.priority,
+      potentialScore: analysis.potentialScore,
+      priorityReason: analysis.priorityReason,
+      recommendedAction: analysis.recommendedAction,
+      missingFields: analysis.missingFields,
+      confidence: parsedDemand.confidence,
+      aiProvider: parsedDemand.aiProvider,
+      aiModel: parsedDemand.aiModel,
+      createdAt: parsedDemand.createdAt || undefined,
+    });
+  }
+
+  if (demandRecordCreates.length > 0) {
+    await prisma.demandRecord.createMany({ data: demandRecordCreates });
+  }
+
+  return demandRecordCreates.length;
+}
+
 async function processFileInBackground({
   downloadedBuffer,
   fileInfo,
@@ -873,113 +1065,59 @@ async function processFileInBackground({
       }
     });
 
-    await prisma.qADocument.create({
+    const summary = summarizeParsedDemands(parsedDemands);
+    const pendingImport = await prisma.pendingDemandImport.create({
       data: {
-        title: `📎 ${fileInfo.fileName}`,
-        content: extractedText.slice(0, 10000),
-        source: 'telegram_file',
-        fileType: fileInfo.mimeType,
+        senderId,
+        messageId: telegramMessageId,
+        chatId,
+        previewMessageId: progressMsgId,
         fileName: fileInfo.fileName,
-        senderId: senderId,
+        fileType: fileInfo.mimeType,
+        extractedText: extractedText.slice(0, 10000),
+        parsedRows: parsedDemands.map(serializeParsedDemand),
+        summary,
+        errors,
+        status: 'pending',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
     });
 
-    const customerIdByName = await resolveCustomersBatch(
+    const previewText = buildDemandImportPreviewText({
+      fileName: fileInfo.fileName,
       parsedDemands,
-      senderId,
-      fileInfo.fileName,
-    );
-
-    const demandRecordCreates: Prisma.DemandRecordUncheckedCreateInput[] = [];
-    for (const parsedDemand of parsedDemands) {
-      const customerId = parsedDemand.customerName
-        ? customerIdByName.get(parsedDemand.customerName) ?? null
-        : null;
-
-      demandRecordCreates.push({
-        messageId: telegramMessageId,
-        senderId: senderId,
-        customerId,
-        customerName: parsedDemand.customerName,
-        category: parsedDemand.category,
-        status: parsedDemand.status,
-        note: parsedDemand.note,
-        serviceName: parsedDemand.serviceName,
-        serviceAmount: parsedDemand.serviceAmount,
-        serviceQty: parsedDemand.serviceQty,
-        followUpDate: parsedDemand.followUpDate,
-        confidence: parsedDemand.confidence,
-        aiProvider: parsedDemand.aiProvider,
-        aiModel: parsedDemand.aiModel,
-        createdAt: parsedDemand.createdAt || undefined,
-      });
-    }
-
-    if (demandRecordCreates.length > 0) {
-      await prisma.demandRecord.createMany({
-        data: demandRecordCreates,
-      });
-    }
-
-    const confirmParts = [];
-    if (errors.length > 0) {
-      confirmParts.push([
-        "⚠️ <b>ဖိုင်အချက်အလက် တင်သွင်းမှု သတိပေးချက်</b>",
-        "━━━━━━━━━━━━━━━━━━━━",
-        `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
-        `⚠️ <b>အခြေအနေ:</b> အချက်အလက်များအား အပြည့်အစုံ ဖတ်ယူနိုင်ခြင်း မရှိပါ။ (မှတ်တမ်း <b>${parsedDemands.length}</b> ခုအား သွင်းယူပြီး)`,
-        "",
-        "❌ <b>ချို့ယွင်းချက်ရှိခဲ့သော အပိုင်းများ (Chunks):</b>",
-      ].join("\n"));
-      errors.forEach((errLine) => {
-        confirmParts.push(`• <code>${errLine}</code>`);
-      });
-      confirmParts.push("");
-    } else {
-      confirmParts.push([
-        "✅ <b>ဖိုင်အချက်အလက် တင်သွင်းမှု အောင်မြင်ပါသည်</b>",
-        "━━━━━━━━━━━━━━━━━━━━",
-        `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
-        `📊 <b>စုစုပေါင်း မှတ်တမ်း:</b> <b>${parsedDemands.length}</b> records`,
-        "",
-      ].join("\n"));
-    }
-
-    if (parsedDemands.length > 0) {
-      confirmParts.push([
-        "📋 <b>နမူနာ တင်သွင်းခဲ့သည့် အချက်အလက်များ (ပထမဆုံး ၁၀ ခု)</b>",
-        "━━━━━━━━━━━━━━━━━━━━",
-      ].join("\n"));
-    }
-
-    parsedDemands.slice(0, 10).forEach((parsedDemand, idx) => {
-      const recordHeader = `<b>#${idx + 1} 👤 ${parsedDemand.customerName || 'အမည်မဖော်ပြထားသူ'}</b>`;
-      const lines: string[] = [recordHeader];
-      if (parsedDemand.serviceName) lines.push(`  ▫️ <b>Service:</b> 🛠️ ${parsedDemand.serviceName}`);
-      if (parsedDemand.serviceAmount) lines.push(`  ▫️ <b>Amount:</b> 💰 ${parsedDemand.serviceAmount.toLocaleString()} Ks`);
-      if (parsedDemand.serviceQty) lines.push(`  ▫️ <b>Qty:</b> 📦 ${parsedDemand.serviceQty}`);
-      if (parsedDemand.followUpDate) lines.push(`  ▫️ <b>Follow-up:</b> 📅 ${parsedDemand.followUpDate.toISOString().slice(0, 10)}`);
-      if (parsedDemand.note) lines.push(`  ▫️ <b>Note:</b> 📋 <i>${parsedDemand.note}</i>`);
-      confirmParts.push(lines.join('\n'));
+      errors,
     });
-
-    if (parsedDemands.length > 10) {
-      confirmParts.push(`\n... <i>နှင့် ကျန်ရှိသော ${parsedDemands.length - 10} records ကိုလည်း အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။</i>`);
-    }
+    const replyMarkup = {
+      inline_keyboard: [
+        [
+          { text: "✅ Confirm Import", callback_data: `demand_import_confirm:${pendingImport.id}` },
+          { text: "❌ Cancel", callback_data: `demand_import_cancel:${pendingImport.id}` },
+        ],
+      ],
+    };
 
     if (progressMsgId) {
       await editTelegramMessage({
         botToken: settings.botToken,
         chatId,
         messageId: progressMsgId,
-        text: confirmParts.join('\n'),
+        text: previewText,
+        replyMarkup,
       });
     } else {
-      await sendTelegramMessage({
+      const previewMessage = await sendTelegramMessage({
         botToken: settings.botToken,
         chatId,
-        text: confirmParts.join('\n'),
+        text: previewText,
+        replyMarkup,
       });
+      if (previewMessage) {
+        await prisma.pendingDemandImport.update({
+          where: { id: pendingImport.id },
+          data: { previewMessageId: previewMessage.message_id },
+        });
+      }
     }
   } catch (err) {
     console.error('Background file processing error:', err);
@@ -1028,6 +1166,159 @@ export async function POST(req: NextRequest) {
       const chatId = callbackQuery.message?.chat?.id;
       const messageId = callbackQuery.message?.message_id;
       const data = callbackQuery.data;
+
+      if (data.startsWith('demand_import_confirm:')) {
+        const pendingId = data.replace('demand_import_confirm:', '');
+        const pending = await prisma.pendingDemandImport.findUnique({
+          where: { id: pendingId },
+        });
+
+        if (!pending) {
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Preview not found');
+          return NextResponse.json({ ok: true });
+        }
+
+        if (pending.status !== 'pending') {
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, `Already ${pending.status}`);
+          return NextResponse.json({ ok: true });
+        }
+
+        if (pending.expiresAt < new Date()) {
+          await prisma.pendingDemandImport.update({
+            where: { id: pending.id },
+            data: { status: 'expired' },
+          });
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Preview expired');
+          if (chatId && messageId) {
+            await editTelegramMessage({
+              botToken: settings?.botToken,
+              chatId: BigInt(chatId),
+              messageId,
+              text: [
+                "⌛ <b>Demand file preview expired</b>",
+                "━━━━━━━━━━━━━━━━━━━━",
+                `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+                "ကျေးဇူးပြု၍ file ကိုပြန်ပို့ပြီး preview အသစ်လုပ်ပါ။",
+              ].join("\n"),
+            });
+          }
+          return NextResponse.json({ ok: true });
+        }
+
+        const rows = Array.isArray(pending.parsedRows)
+          ? pending.parsedRows.map((row) => hydrateParsedDemand(row as Record<string, unknown>))
+          : [];
+
+        if (rows.length === 0) {
+          await prisma.pendingDemandImport.update({
+            where: { id: pending.id },
+            data: { status: 'cancelled' },
+          });
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'No rows to import');
+          return NextResponse.json({ ok: true });
+        }
+
+        const importBatch = await prisma.demandImportBatch.create({
+          data: {
+            fileName: pending.fileName,
+            fileType: pending.fileType,
+            status: 'imported',
+            source: 'telegram_file',
+            detectedColumns: Prisma.JsonNull,
+            columnMapping: Prisma.JsonNull,
+            rowCount: rows.length,
+            importedCount: 0,
+          },
+        });
+
+        await prisma.qADocument.create({
+          data: {
+            title: `📎 ${pending.fileName}`,
+            content: pending.extractedText.slice(0, 10000),
+            source: 'telegram_file',
+            fileType: pending.fileType,
+            fileName: pending.fileName,
+            senderId: pending.senderId,
+          },
+        });
+
+        const importedCount = await createDemandRecordsFromParsedDemands({
+          parsedDemands: rows,
+          senderId: pending.senderId,
+          telegramMessageId: pending.messageId,
+          fileName: pending.fileName,
+          sourceType: 'telegram_file',
+          importBatchId: importBatch.id,
+        });
+
+        await Promise.all([
+          prisma.demandImportBatch.update({
+            where: { id: importBatch.id },
+            data: { importedCount },
+          }),
+          prisma.pendingDemandImport.update({
+            where: { id: pending.id },
+            data: { status: 'confirmed' },
+          }),
+        ]);
+
+        const summary = summarizeParsedDemands(rows);
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, `Imported ${importedCount} records`);
+        if (chatId && messageId) {
+          await editTelegramMessage({
+            botToken: settings?.botToken,
+            chatId: BigInt(chatId),
+            messageId,
+            text: [
+              "✅ <b>Demand file imported</b>",
+              "━━━━━━━━━━━━━━━━━━━━",
+              `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+              `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
+              "",
+              "🎯 <b>Priority summary</b>",
+              `• High: <b>${summary.high}</b>`,
+              `• Medium: <b>${summary.medium}</b>`,
+              `• Low: <b>${summary.low}</b>`,
+              "",
+              "Dashboard မှာ Demand Sheets ကိုကြည့်ပြီး priority/action တွေကို ဆက်လုပ်နိုင်ပါပြီ။",
+            ].join("\n"),
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      if (data.startsWith('demand_import_cancel:')) {
+        const pendingId = data.replace('demand_import_cancel:', '');
+        const pending = await prisma.pendingDemandImport.findUnique({
+          where: { id: pendingId },
+        });
+
+        if (!pending) {
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Preview not found');
+          return NextResponse.json({ ok: true });
+        }
+
+        await prisma.pendingDemandImport.update({
+          where: { id: pending.id },
+          data: { status: 'cancelled' },
+        });
+
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Import cancelled');
+        if (chatId && messageId) {
+          await editTelegramMessage({
+            botToken: settings?.botToken,
+            chatId: BigInt(chatId),
+            messageId,
+            text: [
+              "❌ <b>Demand file import cancelled</b>",
+              "━━━━━━━━━━━━━━━━━━━━",
+              `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+              "Dashboard ထဲသို့ data မသွင်းထားပါ။ File ကိုပြင်ပြီးပြန်ပို့နိုင်ပါသည်။",
+            ].join("\n"),
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
 
       if (data === 'mode:qa') {
         await prisma.telegramSender.update({
@@ -1607,6 +1898,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const analysis = analyzeDemandRecord(parsedDemand);
+
     await prisma.demandRecord.create({
       data: {
         messageId: telegramMessage.id,
@@ -1620,6 +1913,12 @@ export async function POST(req: NextRequest) {
         serviceAmount: parsedDemand.serviceAmount,
         serviceQty: parsedDemand.serviceQty,
         followUpDate: parsedDemand.followUpDate,
+        followUpStatus: analysis.followUpStatus,
+        priority: analysis.priority,
+        potentialScore: analysis.potentialScore,
+        priorityReason: analysis.priorityReason,
+        recommendedAction: analysis.recommendedAction,
+        missingFields: analysis.missingFields,
         confidence: parsedDemand.confidence,
         aiProvider: parsedDemand.aiProvider,
         aiModel: parsedDemand.aiModel,
