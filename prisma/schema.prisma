@@ -355,6 +355,11 @@ model BusinessReport {
   closedDeals        Int?            @map("closed_deals")
   pendingDeals       Int?            @map("pending_deals")
 
+  // Target metrics
+  targetDemandCount  Int?            @map("target_demand_count")
+  targetAppointments Int?            @map("target_appointments")
+  targetSalesAmount  Float?          @map("target_sales_amount")
+
   // Meta
   notes              String?
   reporterName       String?         @map("reporter_name") // display name snapshot

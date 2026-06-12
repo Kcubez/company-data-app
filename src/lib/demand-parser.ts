@@ -1164,6 +1164,9 @@ export type ParsedBusinessReport = {
   closedDeals: number | null;
   pendingDeals: number | null;
   notes: string | null;
+  targetDemandCount: number | null;
+  targetAppointments: number | null;
+  targetSalesAmount: number | null;
 };
 
 const BUSINESS_REPORT_HEADERS = [
@@ -1231,6 +1234,9 @@ export function parseBusinessReportSpreadsheet(buffer: Buffer): ParsedBusinessRe
         closedDeals: getInt(['closed deals', 'closed', 'deals closed']),
         pendingDeals: getInt(['pending deals', 'pending', 'pipeline']),
         notes: getStr(['notes', 'note', 'remarks', 'remark', 'comment']),
+        targetDemandCount: null,
+        targetAppointments: null,
+        targetSalesAmount: null,
       });
     }
   }
@@ -1241,7 +1247,7 @@ export function parseBusinessReportSpreadsheet(buffer: Buffer): ParsedBusinessRe
 export function parseBusinessReportMessage(text: string): ParsedBusinessReport {
   const getVal = (keys: string[]) => {
     for (const k of keys) {
-      const p = new RegExp(`(?:${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s*[:=-]?\\s*([^\n,]+)`, 'i');
+      const p = new RegExp(`(?:${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s*[:=-]?\\s*((?:[^\n,]|,(?=\\d))+)`, 'i');
       const m = convertBurmeseDigits(text).match(p);
       if (m) return m[1].trim();
     }
@@ -1263,6 +1269,27 @@ export function parseBusinessReportMessage(text: string): ParsedBusinessReport {
   if (dateStr) {
     const parsed = Date.parse(dateStr);
     if (!isNaN(parsed)) reportDate = new Date(parsed);
+  } else {
+    // Standalone date pattern search fallback, e.g. "11.June.2026" or "11-June-2026"
+    const datePattern = /(\d{1,2})[\s./-](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s./-](\d{4})/i;
+    const match = text.match(datePattern);
+    if (match) {
+      const day = match[1];
+      const month = match[2];
+      const year = match[3];
+      const parsed = Date.parse(`${day} ${month} ${year}`);
+      if (!isNaN(parsed)) reportDate = new Date(parsed);
+    } else {
+      const digitDatePattern = /(\d{1,2})[\s./-](\d{1,2})[\s./-](\d{4})/;
+      const matchDigits = text.match(digitDatePattern);
+      if (matchDigits) {
+        const day = parseInt(matchDigits[1]);
+        const month = parseInt(matchDigits[2]);
+        const year = parseInt(matchDigits[3]);
+        const d = new Date(year, month - 1, day);
+        if (!isNaN(d.getTime())) reportDate = d;
+      }
+    }
   }
 
   return {
@@ -1270,15 +1297,18 @@ export function parseBusinessReportMessage(text: string): ParsedBusinessReport {
     reporterName: getVal(['reporter', 'reported by', 'staff', 'name']) || null,
     marketingBudget: getNum(['marketing budget', 'budget', 'ad spend', 'ad cost', 'ကြော်ငြာ']),
     marketingChannel: getVal(['channel', 'marketing channel', 'platform', 'source']),
-    callsMade: getInt(['calls made', 'calls', 'call', 'ဖုန်းခေါ်']),
-    appointmentsMade: getInt(['appointments made', 'appt made', 'appointments', 'appointment', 'ချိန်းဆိုမှု']),
+    callsMade: getInt(['calls made', 'ph call', 'calls', 'call', 'ဖုန်းခေါ်']),
+    appointmentsMade: getInt(['appointments made', 'appointment', 'appt made', 'appointments', 'ချိန်းဆိုမှု']),
     appointmentsKept: getInt(['appointments kept', 'appt kept', 'kept', 'ဆုံတွေ့']),
-    newLeads: getInt(['new leads', 'leads', 'lead', 'lead count', 'customer count', 'ဖောက်သည်']),
-    totalDemandCount: getInt(['total demand', 'demand count', 'demand', 'total demand count']),
-    totalSalesAmount: getNum(['total sales amount', 'total sales', 'sales amount', 'sales', 'revenue', 'ရောင်းရငွေ']),
+    newLeads: getInt(['new leads', 'potential', 'leads', 'lead', 'lead count', 'customer count', 'ဖောက်သည်']),
+    totalDemandCount: getInt(['total demand', 'messages', 'demand count', 'demand', 'total demand count']),
+    totalSalesAmount: getNum(['total income', 'total sales amount', 'total sales', 'sales amount', 'sales', 'revenue', 'ရောင်းရငွေ']),
     closedDeals: getInt(['closed deals', 'closed', 'deals closed', 'deal closed']),
-    pendingDeals: getInt(['pending deals', 'pending', 'pipeline']),
+    pendingDeals: getInt(['pending deals', 'need to follow up', 'pending', 'pipeline']),
     notes: getVal(['notes', 'note', 'remarks', 'remark', 'မှတ်ချက်']) || text.trim() || null,
+    targetDemandCount: getInt(['target demand messages', 'target demand', 'target messages']),
+    targetAppointments: getInt(['target appointment', 'target appointments', 'appointment target']),
+    targetSalesAmount: getNum(['sale target', 'sales target', 'target sales', 'target income', 'target revenue']),
   };
 }
 
@@ -1318,7 +1348,10 @@ Extract and return a JSON object with these fields:
   "totalSalesAmount": number | null (total revenue / sales amount in Ks),
   "closedDeals": number | null (deals confirmed / closed),
   "pendingDeals": number | null (deals still pending),
-  "notes": string | null (any other remarks or observations)
+  "notes": string | null (any other remarks or observations),
+  "targetDemandCount": number | null (target demand messages count),
+  "targetAppointments": number | null (target appointments count),
+  "targetSalesAmount": number | null (target sales/revenue amount in Ks)
 }
 
 Rules:
@@ -1353,6 +1386,9 @@ Rules:
       closedDeals: typeof parsed.closedDeals === 'number' ? Math.round(parsed.closedDeals) : fallback.closedDeals,
       pendingDeals: typeof parsed.pendingDeals === 'number' ? Math.round(parsed.pendingDeals) : fallback.pendingDeals,
       notes: parsed.notes || fallback.notes,
+      targetDemandCount: typeof parsed.targetDemandCount === 'number' ? Math.round(parsed.targetDemandCount) : fallback.targetDemandCount,
+      targetAppointments: typeof parsed.targetAppointments === 'number' ? Math.round(parsed.targetAppointments) : fallback.targetAppointments,
+      targetSalesAmount: typeof parsed.targetSalesAmount === 'number' ? parsed.targetSalesAmount : fallback.targetSalesAmount,
     };
   } catch (err) {
     console.error('Gemini business report parse failed, using heuristic fallback:', err);

@@ -1148,6 +1148,32 @@ async function processFileInBackground({
   }
 }
 
+function isBusinessReportText(text: string): boolean {
+  const lowercaseText = text.toLowerCase();
+  if (lowercaseText.includes('sale of')) return true;
+  
+  // Check for presence of at least 3 indicators
+  const indicators = [
+    'messages-',
+    'potential-',
+    'appointment-',
+    'ph call-',
+    'need to follow up-',
+    'total income',
+    'total sale',
+    'sale target',
+    'target demand messages',
+    'target appointment'
+  ];
+  let count = 0;
+  for (const ind of indicators) {
+    if (lowercaseText.includes(ind)) {
+      count++;
+    }
+  }
+  return count >= 3;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const secret = req.headers.get('x-telegram-bot-api-secret-token');
@@ -1614,7 +1640,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const activeMode = updatedSender.activeReportType;
+    const isBusinessReport = message.text ? isBusinessReportText(message.text) : false;
+    const activeMode = isBusinessReport ? 'business_report' : updatedSender.activeReportType;
 
     // ─── No mode selected yet — prompt the user to pick one first ──────
     if (activeMode === 'none') {
@@ -1805,6 +1832,9 @@ export async function POST(req: NextRequest) {
           closedDeals: parsed.closedDeals,
           pendingDeals: parsed.pendingDeals,
           notes: parsed.notes,
+          targetDemandCount: parsed.targetDemandCount,
+          targetAppointments: parsed.targetAppointments,
+          targetSalesAmount: parsed.targetSalesAmount,
         },
       });
 
@@ -1822,6 +1852,15 @@ export async function POST(req: NextRequest) {
       if (parsed.totalSalesAmount != null) confirmParts.push(`💰 <b>Total Sales:</b> <code>${parsed.totalSalesAmount.toLocaleString()} Ks</code>`);
       if (parsed.closedDeals != null) confirmParts.push(`🎯 <b>Closed:</b> <code>${parsed.closedDeals}</code>`);
       if (parsed.pendingDeals != null) confirmParts.push(`⏳ <b>Pending:</b> <code>${parsed.pendingDeals}</code>`);
+      
+      if (parsed.targetDemandCount != null || parsed.targetAppointments != null || parsed.targetSalesAmount != null) {
+        confirmParts.push("");
+        confirmParts.push("🎯 <b>Monthly Targets</b>");
+        if (parsed.targetDemandCount != null) confirmParts.push(`• Messages: <b>${parsed.targetDemandCount}</b>`);
+        if (parsed.targetAppointments != null) confirmParts.push(`• Appts: <b>${parsed.targetAppointments}</b>`);
+        if (parsed.targetSalesAmount != null) confirmParts.push(`• Sales: <b>${parsed.targetSalesAmount.toLocaleString()} Ks</b>`);
+      }
+
       if (parsed.notes) confirmParts.push(`📝 <b>Notes:</b> <i>${parsed.notes}</i>`);
       confirmParts.push(getFormatHintFooter('business_report'));
 

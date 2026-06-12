@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Quantity and Amount Aggregations
-  const [qtyAgg, amountAgg, businessAgg, highPriorityLeads, missingPhoneLeads] = await Promise.all([
+  const [qtyAgg, amountAgg, businessAgg, highPriorityLeads, missingPhoneLeads, demandCountPeriod] = await Promise.all([
     prisma.demandRecord.aggregate({
       _sum: { serviceQty: true },
       where: { createdAt: { gte: periodStart, lt: periodEnd } },
@@ -96,7 +96,13 @@ export async function GET(req: NextRequest) {
       where: { createdAt: { gte: periodStart, lt: periodEnd } },
     }),
     prisma.businessReport.aggregate({
-      _sum: { marketingBudget: true, totalSalesAmount: true },
+      _sum: { 
+        marketingBudget: true, 
+        totalSalesAmount: true,
+        callsMade: true,
+        appointmentsMade: true,
+        totalDemandCount: true
+      },
       where: { reportDate: { gte: periodStart, lt: periodEnd } },
     }),
     prisma.demandRecord.count({
@@ -113,6 +119,9 @@ export async function GET(req: NextRequest) {
         createdAt: { gte: periodStart, lt: periodEnd },
       },
     }),
+    prisma.demandRecord.count({
+      where: { createdAt: { gte: periodStart, lt: periodEnd } },
+    }),
   ]);
   const totalQuantitySold = qtyAgg._sum.serviceQty || 0;
   const demandRevenue = amountAgg._sum.serviceAmount || 0;
@@ -120,6 +129,85 @@ export async function GET(req: NextRequest) {
   const totalAmountSold = Math.max(demandRevenue, reportRevenue);
   const totalCost = businessAgg._sum.marketingBudget || 0;
   const profitLoss = totalAmountSold - totalCost;
+
+  // Retrieve latest targets set in this period
+  const latestReportWithTargets = await prisma.businessReport.findFirst({
+    where: {
+      reportDate: { gte: periodStart, lt: periodEnd },
+      OR: [
+        { targetDemandCount: { not: null } },
+        { targetAppointments: { not: null } },
+        { targetSalesAmount: { not: null } }
+      ]
+    },
+    orderBy: { reportDate: 'desc' }
+  });
+
+  const targetDemandCount = latestReportWithTargets?.targetDemandCount || null;
+  const targetAppointments = latestReportWithTargets?.targetAppointments || null;
+  const targetSalesAmount = latestReportWithTargets?.targetSalesAmount || null;
+
+  // Pacing calculations
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const currentDay = now.getDate();
+
+  let elapsedRatio = 1.0;
+  if (year === currentYear && month === currentMonth) {
+    const totalDaysInMonth = new Date(year, month, 0).getDate();
+    elapsedRatio = currentDay / totalDaysInMonth;
+  } else if (year > currentYear || (year === currentYear && month > currentMonth)) {
+    elapsedRatio = 0.0;
+  }
+
+  const actualDemandCount = Math.max(demandCountPeriod, businessAgg._sum.totalDemandCount || 0);
+  const actualAppointments = businessAgg._sum.appointmentsMade || 0;
+
+  const expectedRevenue = targetSalesAmount !== null ? targetSalesAmount * elapsedRatio : null;
+  const expectedDemandCount = targetDemandCount !== null ? targetDemandCount * elapsedRatio : null;
+  const expectedAppointments = targetAppointments !== null ? targetAppointments * elapsedRatio : null;
+
+  const alerts: {
+    type: 'revenue_target' | 'demand_target' | 'appointments_target';
+    status: 'warning' | 'info';
+    message: string;
+    actual: number;
+    expected: number;
+    target: number;
+  }[] = [];
+
+  if (targetSalesAmount && totalAmountSold < expectedRevenue!) {
+    alerts.push({
+      type: 'revenue_target',
+      status: 'warning',
+      message: `Sales Revenue is behind pacing target (${Math.round(elapsedRatio * 100)}% of month elapsed).`,
+      actual: totalAmountSold,
+      expected: expectedRevenue!,
+      target: targetSalesAmount,
+    });
+  }
+
+  if (targetDemandCount && actualDemandCount < expectedDemandCount!) {
+    alerts.push({
+      type: 'demand_target',
+      status: 'warning',
+      message: `Demand messages (leads) count is behind pacing target (${Math.round(elapsedRatio * 100)}% of month elapsed).`,
+      actual: actualDemandCount,
+      expected: expectedDemandCount!,
+      target: targetDemandCount,
+    });
+  }
+
+  if (targetAppointments && actualAppointments < expectedAppointments!) {
+    alerts.push({
+      type: 'appointments_target',
+      status: 'warning',
+      message: `Appointments count is behind pacing target (${Math.round(elapsedRatio * 100)}% of month elapsed).`,
+      actual: actualAppointments,
+      expected: expectedAppointments!,
+      target: targetAppointments,
+    });
+  }
 
   // Weekly Activity
   const weekStart = new Date(startOfToday);
@@ -242,5 +330,16 @@ export async function GET(req: NextRequest) {
     topProducts,
     dueTodayRecords,
     upcomingRecords,
+    targetDemandCount,
+    targetAppointments,
+    targetSalesAmount,
+    actualRevenue: totalAmountSold,
+    actualDemandCount,
+    actualAppointments,
+    expectedRevenue,
+    expectedDemandCount,
+    expectedAppointments,
+    elapsedRatio,
+    alerts,
   });
 }

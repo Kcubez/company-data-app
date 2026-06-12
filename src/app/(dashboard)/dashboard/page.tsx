@@ -84,6 +84,24 @@ type DashboardStats = {
   weeklyActivity: WeeklyActivity[];
   topProducts: TopProduct[];
   dueTodayRecords: DueTodayRecord[];
+  targetDemandCount: number | null;
+  targetAppointments: number | null;
+  targetSalesAmount: number | null;
+  actualRevenue: number;
+  actualDemandCount: number;
+  actualAppointments: number;
+  expectedRevenue: number | null;
+  expectedDemandCount: number | null;
+  expectedAppointments: number | null;
+  elapsedRatio: number;
+  alerts: {
+    type: 'revenue_target' | 'demand_target' | 'appointments_target';
+    status: 'warning' | 'info';
+    message: string;
+    actual: number;
+    expected: number;
+    target: number;
+  }[];
 };
 
 function useDashboardStats(month: number, year: number) {
@@ -296,6 +314,83 @@ function DashboardPageContent() {
         </div>
       </div>
 
+      {/* Target Tracking & Deficit Alerts Banner */}
+      {!isLoading && stats?.alerts && stats.alerts.length > 0 && (
+        <Card className="border-red-500/30 bg-red-500/5 backdrop-blur-md shadow-lg rounded-xl overflow-hidden animate-in fade-in duration-300">
+          <CardHeader className="pb-3 border-b border-red-500/10">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-red-500/10 text-red-500">
+                <Bot className="h-5 w-5 animate-pulse" />
+              </div>
+              <div>
+                <CardTitle className="text-sm font-bold text-red-600 dark:text-red-400 font-heading">
+                  AI Sales Operations Warning
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground">
+                  Pacing warning: {Math.round(stats.elapsedRatio * 100)}% of month elapsed. Actual metrics are lagging behind expected pace.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              {stats.alerts.map((alert) => {
+                const actualVal = alert.actual;
+                const expectedVal = Math.round(alert.expected);
+                const targetVal = alert.target;
+                
+                // Calculate percentage towards expected pace and monthly target
+                const paceProgress = expectedVal > 0 ? Math.min(100, (actualVal / expectedVal) * 100) : 0;
+                const targetProgress = targetVal > 0 ? Math.min(100, (actualVal / targetVal) * 100) : 0;
+                const expectedProgressOfMonth = targetVal > 0 ? Math.min(100, (expectedVal / targetVal) * 100) : 0;
+
+                const formatVal = (val: number) => {
+                  if (alert.type === 'revenue_target') return `${val.toLocaleString()} Ks`;
+                  return val.toLocaleString();
+                };
+
+                return (
+                  <div key={alert.type} className="p-3 rounded-lg bg-card/40 border border-border/50 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground font-heading">
+                        {alert.type === 'revenue_target' && 'Sales Revenue'}
+                        {alert.type === 'demand_target' && 'Demand Messages'}
+                        {alert.type === 'appointments_target' && 'Appointments'}
+                      </span>
+                      <Badge className="bg-red-500/10 hover:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 text-[10px] font-bold">
+                        -{Math.round(100 - paceProgress)}% Behind Pace
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs font-mono font-bold">
+                        <span className="text-red-500">{formatVal(actualVal)}</span>
+                        <span className="text-muted-foreground">/ {formatVal(expectedVal)} (exp)</span>
+                      </div>
+                      <div className="relative h-2 w-full bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="absolute top-0 bottom-0 w-0.5 bg-yellow-500 z-10" 
+                          style={{ left: `${expectedProgressOfMonth}%` }}
+                          title={`Pace line: ${formatVal(expectedVal)}`}
+                        />
+                        <div 
+                          className="h-full bg-linear-to-r from-red-600 to-red-400 rounded-full transition-all duration-500" 
+                          style={{ width: `${targetProgress}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-muted-foreground font-semibold">
+                        <span>Actual</span>
+                        <span>Target: {formatVal(targetVal)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Hero Stat Cards */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         {heroCards.slice(0, 4).map((stat, i) => (
@@ -309,14 +404,30 @@ function DashboardPageContent() {
                 <stat.icon className={`h-4.5 w-4.5 ${stat.color}`} />
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-2">
               {isLoading ? (
                 <Skeleton className="h-8 w-20 bg-muted" />
               ) : (
-                <div className="text-2xl font-bold text-foreground font-mono ">
-                  {stat.value.toLocaleString()}
-                  {stat.suffix && <span className="text-xs font-sans text-muted-foreground ml-0.5">{stat.suffix}</span>}
-                </div>
+                <>
+                  <div className="text-2xl font-bold text-foreground font-mono ">
+                    {stat.value.toLocaleString()}
+                    {stat.suffix && <span className="text-xs font-sans text-muted-foreground ml-0.5">{stat.suffix}</span>}
+                  </div>
+                  {stat.title === 'Total Revenue' && stats?.targetSalesAmount ? (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-muted-foreground font-semibold font-mono">
+                        <span>Pace: {Math.round(stats.elapsedRatio * 100)}%</span>
+                        <span>Goal: {Math.round((stats.totalAmountSold / stats.targetSalesAmount) * 100)}%</span>
+                      </div>
+                      <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-emerald-500 rounded-full" 
+                          style={{ width: `${Math.min(100, (stats.totalAmountSold / stats.targetSalesAmount) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               )}
             </CardContent>
           </Card>
