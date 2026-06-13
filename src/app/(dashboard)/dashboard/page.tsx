@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
@@ -174,6 +174,14 @@ function DashboardPageContent() {
   );
   const year = Number(searchParams.get('year') || now.getFullYear());
   const { data: stats, isLoading } = useDashboardStats(month, year);
+  const [localMonth, setLocalMonth] = useState(String(month));
+  const [localYear, setLocalYear] = useState(String(year));
+
+  useEffect(() => {
+    setLocalMonth(String(month));
+    setLocalYear(String(year));
+  }, [month, year]);
+
   const user = session?.user;
   const isAdmin = stats?.isAdmin ?? false;
   const years = Array.from({ length: 5 }).map((_, index) => now.getFullYear() - 2 + index);
@@ -287,21 +295,31 @@ function DashboardPageContent() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Select value={String(month)} onValueChange={(value) => updatePeriod({ month: Number(value) })}>
+          <Select value={localMonth} onValueChange={(value) => {
+            if (value) {
+              setLocalMonth(value);
+              updatePeriod({ month: Number(value) });
+            }
+          }}>
             <SelectTrigger className="h-9 w-32 rounded-lg border-border bg-card text-xs">
-              {new Date(year, month - 1, 1).toLocaleString('en', { month: 'long' })}
+              {new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long' })}
             </SelectTrigger>
             <SelectContent>
               {Array.from({ length: 12 }).map((_, index) => (
                 <SelectItem key={index + 1} value={String(index + 1)}>
-                  {new Date(year, index, 1).toLocaleString('en', { month: 'long' })}
+                  {new Date(Number(localYear), index, 1).toLocaleString('en', { month: 'long' })}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Select value={String(year)} onValueChange={(value) => updatePeriod({ year: Number(value) })}>
+          <Select value={localYear} onValueChange={(value) => {
+            if (value) {
+              setLocalYear(value);
+              updatePeriod({ year: Number(value) });
+            }
+          }}>
             <SelectTrigger className="h-9 w-24 rounded-lg border-border bg-card text-xs">
-              {year}
+              {localYear}
             </SelectTrigger>
             <SelectContent>
               {years.map((itemYear) => (
