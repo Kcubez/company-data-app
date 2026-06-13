@@ -9,6 +9,7 @@ const firaSans = Fira_Sans({
   weight: ["300", "400", "500", "600", "700"],
   variable: "--font-fira-sans",
   display: "swap",
+  preload: false,
 });
 
 const firaCode = Fira_Code({
@@ -16,6 +17,7 @@ const firaCode = Fira_Code({
   weight: ["400", "500", "600", "700"],
   variable: "--font-fira-code",
   display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {
