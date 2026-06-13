@@ -27,6 +27,11 @@ import {
   ArrowRight,
   Wallet,
   PhoneOff,
+  Lightbulb,
+  Megaphone,
+  UserCheck,
+  CalendarCheck,
+  Zap,
 } from 'lucide-react';
 
 type WeeklyActivity = {
@@ -116,6 +121,29 @@ function useDashboardStats(month: number, year: number) {
   });
 }
 
+type ActionRecommendation = {
+  area: 'marketing' | 'sales' | 'appointments' | 'general';
+  severity: 'urgent' | 'warning' | 'info';
+  title: string;
+  insight: string;
+  action: string;
+};
+
+function useActionRecommendations(month: number, year: number) {
+  return useQuery({
+    queryKey: ['action-recommendations', month, year],
+    queryFn: async (): Promise<{ recommendations: ActionRecommendation[] }> => {
+      const res = await fetch(`/api/dashboard/action-recommendations?month=${month}&year=${year}`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      return res.json();
+    },
+    // Refresh every 2 minutes so newly imported demand records / business reports
+    // are reflected quickly without hammering Gemini on every 10s poll.
+    staleTime: 2 * 60 * 1000,
+    refetchInterval: 2 * 60 * 1000,
+  });
+}
+
 function WeeklyChart({ data }: { data?: WeeklyActivity[] }) {
   if (!data || data.length === 0) return null;
   const maxCount = Math.max(...data.map(d => d.count), 1);
@@ -174,6 +202,7 @@ function DashboardPageContent() {
   );
   const year = Number(searchParams.get('year') || now.getFullYear());
   const { data: stats, isLoading } = useDashboardStats(month, year);
+  const { data: recsData, isLoading: recsLoading } = useActionRecommendations(month, year);
   const [localMonth, setLocalMonth] = useState(String(month));
   const [localYear, setLocalYear] = useState(String(year));
 
@@ -332,74 +361,108 @@ function DashboardPageContent() {
         </div>
       </div>
 
-      {/* Target Tracking & Deficit Alerts Banner */}
+      {/* Target Tracking — Executive Summary (simple, action-oriented) */}
       {!isLoading && stats?.alerts && stats.alerts.length > 0 && (
-        <Card className="border-red-500/30 bg-red-500/5 backdrop-blur-md shadow-lg rounded-xl overflow-hidden animate-in fade-in duration-300">
+        <Card className="border-red-500/30 bg-red-500/5 shadow-lg rounded-xl overflow-hidden animate-in fade-in duration-300">
           <CardHeader className="pb-3 border-b border-red-500/10">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-md bg-red-500/10 text-red-500">
-                <Bot className="h-5 w-5 animate-pulse" />
-              </div>
-              <div>
-                <CardTitle className="text-sm font-bold text-red-600 dark:text-red-400 font-heading">
-                  AI Sales Operations Warning
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground">
-                  Pacing warning: {Math.round(stats.elapsedRatio * 100)}% of month elapsed. Actual metrics are lagging behind expected pace.
-                </CardDescription>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-md bg-red-500/10 text-red-500">
+                  <Bot className="h-5 w-5 animate-pulse" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm font-bold text-red-600 dark:text-red-400 font-heading">
+                    ဒီလ ပစ်မှတ် အနေအထား
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground">
+                    ဒီလ {Math.round(stats.elapsedRatio * 100)}% ကုန်ဆုံးပြီ — အောက်ပါ ကဏ္ဍများ နောက်ကျနေသည်
+                  </CardDescription>
+                </div>
               </div>
             </div>
           </CardHeader>
           <CardContent className="pt-4">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-3">
               {stats.alerts.map((alert) => {
                 const actualVal = alert.actual;
-                const expectedVal = Math.round(alert.expected);
                 const targetVal = alert.target;
-                
-                // Calculate percentage towards expected pace and monthly target
-                const paceProgress = expectedVal > 0 ? Math.min(100, (actualVal / expectedVal) * 100) : 0;
-                const targetProgress = targetVal > 0 ? Math.min(100, (actualVal / targetVal) * 100) : 0;
-                const expectedProgressOfMonth = targetVal > 0 ? Math.min(100, (expectedVal / targetVal) * 100) : 0;
+                const expectedVal = alert.expected; // what we should have by today
+                const remaining = targetVal - actualVal;
+                const achievedPct = targetVal > 0 ? Math.round((actualVal / targetVal) * 100) : 0;
+                const expectedPct = targetVal > 0 ? Math.round((expectedVal / targetVal) * 100) : 0;
 
-                const formatVal = (val: number) => {
-                  if (alert.type === 'revenue_target') return `${val.toLocaleString()} Ks`;
-                  return val.toLocaleString();
+                const isRevenue = alert.type === 'revenue_target';
+
+                const metricLabel = {
+                  revenue_target: '💰 ဝင်ငွေ',
+                  demand_target: '👥 Lead / Messages',
+                  appointments_target: '📅 Appointment',
+                }[alert.type];
+
+                const actionLabel = {
+                  revenue_target: 'High-potential lead တွေကို အရင်ဦးစားပေး ဆက်သွယ်ပါ',
+                  demand_target: 'Marketing ကို တိုးမြှင့်ပြီး Lead ပိုရှာပါ',
+                  appointments_target: 'Pending lead တွေကို ဖုန်းဆက်ပြီး Appointment ချိန်းပါ',
+                }[alert.type];
+
+                // Format helpers — revenue uses Ks shorthand to avoid overflow
+                const formatShort = (val: number) => {
+                  if (!isRevenue) return val.toLocaleString();
+                  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M Ks`;
+                  if (val >= 1_000) return `${(val / 1_000).toFixed(0)}K Ks`;
+                  return `${val.toLocaleString()} Ks`;
                 };
+                const formatFull = (val: number) =>
+                  isRevenue ? `${val.toLocaleString()} Ks` : val.toLocaleString();
 
                 return (
-                  <div key={alert.type} className="p-3 rounded-lg bg-card/40 border border-border/50 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground font-heading">
-                        {alert.type === 'revenue_target' && 'Sales Revenue'}
-                        {alert.type === 'demand_target' && 'Demand Messages'}
-                        {alert.type === 'appointments_target' && 'Appointments'}
+                  <div key={alert.type} className="p-4 rounded-xl bg-card/50 border border-red-500/15 space-y-3">
+                    {/* Metric label */}
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide font-heading">
+                      {metricLabel}
+                    </p>
+
+                    {/* Actual — compact, no overflow */}
+                    <div>
+                      <span className="text-2xl font-bold font-mono text-red-500 leading-none">
+                        {formatShort(actualVal)}
                       </span>
-                      <Badge className="bg-red-500/10 hover:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 text-[10px] font-bold">
-                        -{Math.round(100 - paceProgress)}% Behind Pace
-                      </Badge>
+                      <span className="text-xs text-muted-foreground font-mono ml-1.5">
+                        / {formatShort(targetVal)} ပစ်မှတ်
+                      </span>
                     </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-mono font-bold">
-                        <span className="text-red-500">{formatVal(actualVal)}</span>
-                        <span className="text-muted-foreground">/ {formatVal(expectedVal)} (exp)</span>
-                      </div>
-                      <div className="relative h-2 w-full bg-muted rounded-full overflow-hidden">
-                        <div 
-                          className="absolute top-0 bottom-0 w-0.5 bg-yellow-500 z-10" 
-                          style={{ left: `${expectedProgressOfMonth}%` }}
-                          title={`Pace line: ${formatVal(expectedVal)}`}
+                    {/* Progress bar with today's expected marker */}
+                    <div className="space-y-1.5">
+                      <div className="relative h-2.5 w-full bg-muted rounded-full overflow-hidden">
+                        {/* Today's expected pace marker */}
+                        <div
+                          className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10 rounded-full"
+                          style={{ left: `${Math.min(expectedPct, 99)}%` }}
                         />
-                        <div 
-                          className="h-full bg-linear-to-r from-red-600 to-red-400 rounded-full transition-all duration-500" 
-                          style={{ width: `${targetProgress}%` }}
+                        {/* Actual progress */}
+                        <div
+                          className="h-full bg-linear-to-r from-red-600 to-red-400 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(achievedPct, 100)}%` }}
                         />
                       </div>
-                      <div className="flex justify-between text-[10px] text-muted-foreground font-semibold">
-                        <span>Actual</span>
-                        <span>Target: {formatVal(targetVal)}</span>
+                      {/* Legend row */}
+                      <div className="flex items-center justify-between text-[10px] font-semibold">
+                        <span className="text-red-500">{achievedPct}% ရပြီး</span>
+                        <span className="flex items-center gap-1 text-amber-500">
+                          <span className="inline-block w-2 h-0.5 bg-amber-400 rounded" />
+                          ဒီနေ့ {formatShort(Math.round(expectedVal))} ရောက်သင့်
+                        </span>
+                        <span className="text-muted-foreground">{formatShort(Math.round(remaining))} လိုသေး</span>
                       </div>
+                    </div>
+
+                    {/* Action hint */}
+                    <div className="flex items-start gap-1.5 pt-1 border-t border-red-500/10">
+                      <ArrowRight className="w-3 h-3 shrink-0 mt-0.5 text-red-500" />
+                      <p className="text-[11px] text-red-600 dark:text-red-400 leading-relaxed font-medium">
+                        {actionLabel}
+                      </p>
                     </div>
                   </div>
                 );
@@ -407,6 +470,92 @@ function DashboardPageContent() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* AI Action Recommendations — only shown when there are active alerts */}
+      {!isLoading && stats?.alerts && stats.alerts.length > 0 && (
+      <Card className="glass-card border-border/70 shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-violet-500/10">
+              <Lightbulb className="h-4.5 w-4.5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-bold text-foreground font-heading">
+                AI အကြံပြုချက်များ
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">
+                Marketing · Sales · Appointment — ဘယ်နေရာကို ဦးစားပေးရမည်
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {recsLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full bg-muted rounded-lg" />
+              ))}
+            </div>
+          ) : (recsData?.recommendations?.length ?? 0) === 0 ? (
+            <div className="flex items-center justify-center py-6 text-muted-foreground text-xs gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              အရေးပေါ် ဆောင်ရွက်ရန် မရှိပါ — လုပ်ငန်းလည်ပတ်မှု ကောင်းနေသည်။
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {recsData!.recommendations.map((rec, i) => {
+                const areaConfig = {
+                  marketing: { icon: Megaphone, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', label: 'Marketing' },
+                  sales: { icon: Zap, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', label: 'Sales' },
+                  appointments: { icon: CalendarCheck, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', label: 'Appointments' },
+                  general: { icon: UserCheck, color: 'text-slate-600 dark:text-slate-400', bg: 'bg-slate-500/10', border: 'border-slate-500/20', label: 'General' },
+                };
+                const severityBadge = {
+                  urgent: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
+                  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+                  info: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+                };
+                const severityLabel = {
+                  urgent: 'အရေးပေါ်',
+                  warning: 'သတိပြု',
+                  info: 'သတင်းအချက်',
+                };
+                const cfg = areaConfig[rec.area] ?? areaConfig.general;
+                const Icon = cfg.icon;
+                return (
+                  <div
+                    key={i}
+                    className={`p-3.5 rounded-lg border ${cfg.border} bg-card/40 space-y-2.5 hover:bg-card/60 transition-colors duration-200`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-md ${cfg.bg}`}>
+                          <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
+                        </div>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${cfg.color} font-heading`}>
+                          {cfg.label}
+                        </span>
+                      </div>
+                      <Badge className={`text-[9px] font-bold border px-1.5 py-0 ${severityBadge[rec.severity]}`}>
+                        {severityLabel[rec.severity]}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-foreground leading-snug mb-1">{rec.title}</p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">{rec.insight}</p>
+                    </div>
+                    <div className={`text-[11px] font-medium ${cfg.color} flex items-start gap-1.5 pt-1 border-t ${cfg.border}`}>
+                      <ArrowRight className="w-3 h-3 shrink-0 mt-0.5" />
+                      <span>{rec.action}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
       )}
 
       {/* Hero Stat Cards */}

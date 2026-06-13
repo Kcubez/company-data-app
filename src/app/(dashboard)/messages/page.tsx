@@ -377,20 +377,32 @@ export default function MessagesPage() {
                           </button>
                         }
                       />
-                      <AlertDialogContent>
+                      <AlertDialogContent className="bg-card border-border text-foreground">
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Delete message?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to permanently delete this message? This action cannot be undone.
+                          <AlertDialogTitle>Message ဖျက်မည်လား?</AlertDialogTitle>
+                          <AlertDialogDescription asChild>
+                            <div className="space-y-2 text-muted-foreground text-sm">
+                              <p>ဤ message ကို ဖျက်လိုက်ပါက အောက်ပါ data တွေ အားလုံး တပြိုင်နက် ဖျက်သွားမည်:</p>
+                              <ul className="list-disc list-inside space-y-1 text-xs pl-1">
+                                <li>Telegram message မှတ်တမ်း</li>
+                                <li>ဤ message မှ ထုတ်ယူထားသော Demand Records</li>
+                                <li>ဤ message မှ ထုတ်ယူထားသော Business Reports</li>
+                                <li>Pending import (confirm မလုပ်ရသေးသော) တွေ</li>
+                                <li>File မှ extract လုပ်ထားသော QA Documents</li>
+                              </ul>
+                              <p className="font-medium text-red-600 dark:text-red-400 text-xs pt-1">
+                                ဒီလုပ်ဆောင်ချက်ကို ပြန်မဖြည့်နိုင်ပါ။
+                              </p>
+                            </div>
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel className="border-border text-foreground">မဖျက်ဘူး</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => deleteMessage.mutate(message.id)}
                             className="bg-red-600 hover:bg-red-700 text-white"
                           >
-                            Delete
+                            ဖျက်မည်
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>

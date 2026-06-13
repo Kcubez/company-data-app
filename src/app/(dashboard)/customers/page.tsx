@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -28,9 +29,13 @@ import {
   ChevronRight,
   Calendar,
   Trash2,
+  ChevronLeft,
+  Users,
 } from 'lucide-react';
 import { customersApi, type Customer } from '@/lib/api';
 import { toast } from 'sonner';
+
+const PAGE_SIZE = 18;
 
 const statusColors: Record<string, string> = {
   active: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
@@ -42,6 +47,7 @@ function useCustomers(params: { search?: string; page?: number; limit?: number; 
   return useQuery({
     queryKey: ['customers', params],
     queryFn: () => customersApi.list(params),
+    placeholderData: (prev) => prev,
     refetchInterval: 10000,
   });
 }
@@ -50,17 +56,21 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1); // reset to page 1 on new search
+    }, 300);
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading } = useCustomers({
+  const { data, isLoading, isFetching } = useCustomers({
     search: debouncedSearch,
-    page: 1,
-    limit: 50,
+    page,
+    limit: PAGE_SIZE,
   });
 
   const deleteCustomer = useMutation({
@@ -86,12 +96,21 @@ export default function CustomersPage() {
     },
   });
 
+  const totalPages = data?.totalPages ?? 1;
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold  text-foreground font-heading">Customers</h1>
-          <p className="text-sm text-muted-foreground mt-1">Track customer follow-ups and history</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Track customer follow-ups and history
+            {data?.total ? (
+              <span className="ml-2 text-xs font-mono text-blue-600 dark:text-blue-400">
+                ({data.total} total)
+              </span>
+            ) : null}
+          </p>
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -154,11 +173,7 @@ export default function CustomersPage() {
               </CardContent>
             </Card>
           ))
-        ) : data?.customers?.length === 0 ? (
-          <div className="col-span-full text-center py-12 text-muted-foreground">
-            No customers found. Telegram messages will create customer records automatically.
-          </div>
-        ) : (
+        ) : data?.customers?.length === 0 ? null : (
           data?.customers?.map((customer: Customer) => (
             <Card key={customer.id} className="glass-card glass-card-hover border-border/70 transition-colors relative group">
               <Link href={`/customers/${customer.id}`} className="block">
@@ -259,6 +274,84 @@ export default function CustomersPage() {
           ))
         )}
       </div>
+
+      {/* Pagination */}
+      {!isLoading && totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-xs text-muted-foreground font-mono">
+            Page <span className="font-bold text-foreground">{page}</span> of{' '}
+            <span className="font-bold text-foreground">{totalPages}</span>
+            {isFetching && !isLoading && (
+              <span className="ml-2 text-blue-500 animate-pulse">Refreshing…</span>
+            )}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="h-8 px-3 text-xs border-border"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+              Prev
+            </Button>
+
+            {/* Page number buttons — show up to 5 around current page */}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(totalPages, 5) }).map((_, i) => {
+                let pageNum: number;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (page <= 3) {
+                  pageNum = i + 1;
+                } else if (page >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = page - 2 + i;
+                }
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={pageNum === page ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setPage(pageNum)}
+                    className={`h-8 w-8 p-0 text-xs ${
+                      pageNum === page
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600'
+                        : 'border-border text-muted-foreground'
+                    }`}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="h-8 px-3 text-xs border-border"
+            >
+              Next
+              <ChevronRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* No results when total is 0 */}
+      {!isLoading && data?.total === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+          <Users className="w-10 h-10 opacity-30" />
+          <p className="text-sm font-medium">
+            {debouncedSearch ? `No customers match "${debouncedSearch}"` : 'No customers yet'}
+          </p>
+          <p className="text-xs opacity-70">Telegram demand messages will create customer records automatically.</p>
+        </div>
+      )}
     </div>
   );
 }

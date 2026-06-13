@@ -152,6 +152,7 @@ model TelegramMessage {
   createdAt       DateTime        @default(now())
   demandRecords   DemandRecord[]
   pendingDemandImports PendingDemandImport[]
+  businessReports BusinessReport[]
 
   @@map("telegram_message")
   @@index([senderId])
@@ -334,6 +335,8 @@ model WebsiteUpdate {
 model BusinessReport {
   id                 String          @id @default(cuid())
   reportDate         DateTime        @map("report_date")
+  messageId          String?         @map("message_id")
+  message            TelegramMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
   senderId           String?         @map("sender_id")
   sender             TelegramSender? @relation(fields: [senderId], references: [id], onDelete: SetNull)
   uploadedByUserId   String?         @map("uploaded_by_user_id")
@@ -369,6 +372,7 @@ model BusinessReport {
 
   @@index([reportDate])
   @@index([senderId])
+  @@index([messageId])
   @@index([marketingChannel])
   @@map("business_report")
 }
