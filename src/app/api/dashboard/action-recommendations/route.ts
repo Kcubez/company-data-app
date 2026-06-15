@@ -164,12 +164,13 @@ export async function GET(req: NextRequest) {
 
   const now = new Date();
   const { searchParams } = req.nextUrl;
+  const period = searchParams.get("period") === "year" ? "year" : "month";
   const monthParam = Number(searchParams.get("month") || now.getMonth() + 1);
   const yearParam = Number(searchParams.get("year") || now.getFullYear());
   const month = Math.min(12, Math.max(1, Number.isFinite(monthParam) ? monthParam : now.getMonth() + 1));
   const year = Number.isFinite(yearParam) ? yearParam : now.getFullYear();
-  const periodStart = new Date(year, month - 1, 1);
-  const periodEnd = new Date(year, month, 1);
+  const periodStart = period === "year" ? new Date(year, 0, 1) : new Date(year, month - 1, 1);
+  const periodEnd = period === "year" ? new Date(year + 1, 0, 1) : new Date(year, month, 1);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   try {
@@ -239,9 +240,17 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    const totalDaysInMonth = new Date(year, month, 0).getDate();
-    const currentDay = year === now.getFullYear() && month === now.getMonth() + 1 ? now.getDate() : totalDaysInMonth;
-    const elapsedRatio = currentDay / totalDaysInMonth;
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const totalDaysInPeriod = Math.round((periodEnd.getTime() - periodStart.getTime()) / msPerDay);
+    let elapsedDays = totalDaysInPeriod;
+    if (now >= periodStart && now < periodEnd) {
+      elapsedDays = Math.floor((startOfToday.getTime() - periodStart.getTime()) / msPerDay) + 1;
+    } else if (periodStart > now) {
+      elapsedDays = 0;
+    }
+    const elapsedRatio = totalDaysInPeriod > 0 ? elapsedDays / totalDaysInPeriod : 0;
+    const periodLabel = period === "year" ? `${year}` : `${month}/${year}`;
+    const targetLabel = period === "year" ? "ကာလပစ်မှတ်" : "လစဉ် အရောင်းပစ်မှတ်";
 
     const totalSalesAmount = Math.max(
       businessAgg._sum.totalSalesAmount ?? 0,
@@ -271,13 +280,13 @@ export async function GET(req: NextRequest) {
     // Build Gemini prompt
     const prompt = `သင်သည် မြန်မာနိုင်ငံ လုပ်ငန်းတစ်ခုအတွက် အတွေ့အကြုံရင့် Sales Operations Analyst တစ်ဦးဖြစ်သည်။ အောက်ဖော်ပြပါ real-time လုပ်ငန်းမက်ထရစ်တွေကို ခွဲခြမ်းစိတ်ဖြာပြီး ဆောင်ရွက်ရမည့်အကြံဉာဏ် ၂-၄ ခု ပေးပါ။
 
-လက်ရှိကာလ မက်ထရစ်များ (လ: ${month}/${year}၊ လ၏ ${Math.round(elapsedRatio * 100)}% ကုန်ဆုံးပြီ):
+လက်ရှိကာလ မက်ထရစ်များ (${period === "year" ? "နှစ်" : "လ"}: ${periodLabel}၊ ${elapsedDays}/${totalDaysInPeriod} ရက် ကုန်ဆုံးပြီ):
 - ဦးစားပေး Open Lead အရေအတွက်: ${inputData.highPriority}
 - ဖုန်းနံပါတ် မပါသော Open Lead: ${inputData.missingPhone}
 - သက်တမ်းကျော် Follow-up: ${inputData.overdue}
 - ယနေ့ Follow-up လုပ်ရမည့်အရေအတွက်: ${inputData.dueToday}
 - ဤကာလ ရောင်းရငွေ: ${inputData.totalSalesAmount.toLocaleString()} Ks
-- လစဉ် အရောင်းပစ်မှတ်: ${inputData.targetSalesAmount ? inputData.targetSalesAmount.toLocaleString() + ' Ks' : 'မသတ်မှတ်ရသေးပါ'}
+- ${targetLabel}: ${inputData.targetSalesAmount ? inputData.targetSalesAmount.toLocaleString() + ' Ks' : 'မသတ်မှတ်ရသေးပါ'}
 - ဖုန်းဆက်မှုအရေအတွက်: ${inputData.callsMade}
 - Appointment ချိန်းဆိုမှု: ${inputData.appointmentsMade}
 - Appointment တကယ်လာရောက်မှု: ${inputData.appointmentsKept}

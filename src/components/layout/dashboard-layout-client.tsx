@@ -40,49 +40,63 @@ type NavItem = {
   adminOnly: boolean;
 };
 
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
 function NavigationLinks({
-  items,
+  groups,
   pathname,
   onNavigate,
 }: {
-  items: NavItem[];
+  groups: NavGroup[];
   pathname: string;
   onNavigate: () => void;
 }) {
   return (
-    <nav className="flex flex-col gap-0.5 p-3" aria-label="Primary">
-      {items.map(item => {
-        const isActive =
-          pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onNavigate}
-            aria-current={isActive ? 'page' : undefined}
-            className={`group/nav relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 ${
-              isActive
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold'
-                : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-            }`}
-          >
-            {isActive && (
-              <span
-                aria-hidden
-                className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r-full bg-primary"
-              />
-            )}
-            <Icon
-              className={`h-4 w-4 shrink-0 transition-colors ${
-                isActive ? 'text-primary' : 'text-muted-foreground group-hover/nav:text-foreground'
-              }`}
-              aria-hidden
-            />
-            <span className="truncate">{item.title}</span>
-          </Link>
-        );
-      })}
+    <nav className="flex flex-col gap-4 p-3" aria-label="Primary">
+      {groups.map(group => (
+        <div key={group.label} className="space-y-1">
+          <p className="px-3 text-[10px] font-bold uppercase tracking-wide text-muted-foreground/80">
+            {group.label}
+          </p>
+          <div className="space-y-0.5">
+            {group.items.map(item => {
+              const isActive =
+                pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onNavigate}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`group/nav relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 ${
+                    isActive
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  }`}
+                >
+                  {isActive && (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r-full bg-primary"
+                    />
+                  )}
+                  <Icon
+                    className={`h-4 w-4 shrink-0 transition-colors ${
+                      isActive ? 'text-primary' : 'text-muted-foreground group-hover/nav:text-foreground'
+                    }`}
+                    aria-hidden
+                  />
+                  <span className="truncate">{item.title}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </nav>
   );
 }
@@ -99,21 +113,49 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
     router.refresh();
   };
 
-  const navItems: NavItem[] = [
-    { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, adminOnly: false },
-    { title: 'Demand Sheets', href: '/demand-sheets', icon: BarChart3, adminOnly: false },
-    { title: 'Project Expiries', href: '/project-expiries', icon: Clock, adminOnly: false },
-    { title: 'Website Updates', href: '/website-updates', icon: Wrench, adminOnly: false },
-    { title: 'Business Reports', href: '/business-reports', icon: TrendingUp, adminOnly: false },
-    { title: 'Customers', href: '/customers', icon: UserCircle, adminOnly: false },
-    { title: 'Messages', href: '/messages', icon: MessageSquare, adminOnly: false },
-    { title: 'Settings', href: '/settings', icon: Settings, adminOnly: false },
-    { title: 'User Management', href: '/admin/users', icon: Users, adminOnly: true },
+  const navGroups: NavGroup[] = [
+    {
+      label: 'Overview',
+      items: [
+        { title: 'Founder Dashboard', href: '/dashboard', icon: LayoutDashboard, adminOnly: false },
+      ],
+    },
+    {
+      label: 'Revenue',
+      items: [
+        { title: 'Demand Sheets', href: '/demand-sheets', icon: BarChart3, adminOnly: false },
+        { title: 'Business Reports', href: '/business-reports', icon: TrendingUp, adminOnly: false },
+        { title: 'Customers / CRM', href: '/customers', icon: UserCircle, adminOnly: false },
+      ],
+    },
+    {
+      label: 'Operations',
+      items: [
+        { title: 'Project Expiries', href: '/project-expiries', icon: Clock, adminOnly: false },
+        { title: 'Website Updates', href: '/website-updates', icon: Wrench, adminOnly: false },
+      ],
+    },
+    {
+      label: 'Data',
+      items: [
+        { title: 'Messages', href: '/messages', icon: MessageSquare, adminOnly: false },
+      ],
+    },
+    {
+      label: 'Admin',
+      items: [
+        { title: 'Settings', href: '/settings', icon: Settings, adminOnly: false },
+        { title: 'User Management', href: '/admin/users', icon: Users, adminOnly: true },
+      ],
+    },
   ];
 
-  const filteredNavItems = navItems.filter(
-    item => !item.adminOnly || session?.user?.role === 'admin',
-  );
+  const filteredNavGroups = navGroups
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => !item.adminOnly || session?.user?.role === 'admin'),
+    }))
+    .filter(group => group.items.length > 0);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
@@ -156,7 +198,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
                 </span>
               </div>
               <NavigationLinks
-                items={filteredNavItems}
+                groups={filteredNavGroups}
                 pathname={pathname}
                 onNavigate={() => setIsMobileMenuOpen(false)}
               />
@@ -181,7 +223,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
 
         <div className="flex-1 overflow-y-auto py-2">
           <NavigationLinks
-            items={filteredNavItems}
+            groups={filteredNavGroups}
             pathname={pathname}
             onNavigate={() => setIsMobileMenuOpen(false)}
           />

@@ -11,12 +11,13 @@ export async function GET(req: NextRequest) {
 
   const now = new Date();
   const { searchParams } = req.nextUrl;
+  const period = searchParams.get("period") === "year" ? "year" : "month";
   const monthParam = Number(searchParams.get("month") || now.getMonth() + 1);
   const yearParam = Number(searchParams.get("year") || now.getFullYear());
   const month = Math.min(12, Math.max(1, Number.isFinite(monthParam) ? monthParam : now.getMonth() + 1));
   const year = Number.isFinite(yearParam) ? yearParam : now.getFullYear();
-  const periodStart = new Date(year, month - 1, 1);
-  const periodEnd = new Date(year, month, 1);
+  const periodStart = period === "year" ? new Date(year, 0, 1) : new Date(year, month - 1, 1);
+  const periodEnd = period === "year" ? new Date(year + 1, 0, 1) : new Date(year, month, 1);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -86,7 +87,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Quantity and Amount Aggregations
-  const [qtyAgg, amountAgg, businessAgg, highPriorityLeads, missingPhoneLeads, demandCountPeriod] = await Promise.all([
+  const [qtyAgg, amountAgg, businessAgg, highPriorityLeads, missingPhoneLeads, overdueFollowUps, demandCountPeriod] = await Promise.all([
     prisma.demandRecord.aggregate({
       _sum: { serviceQty: true },
       where: { createdAt: { gte: periodStart, lt: periodEnd } },
@@ -101,7 +102,8 @@ export async function GET(req: NextRequest) {
         totalSalesAmount: true,
         callsMade: true,
         appointmentsMade: true,
-        totalDemandCount: true
+        totalDemandCount: true,
+        closedDeals: true
       },
       where: { reportDate: { gte: periodStart, lt: periodEnd } },
     }),
@@ -120,6 +122,13 @@ export async function GET(req: NextRequest) {
       },
     }),
     prisma.demandRecord.count({
+      where: {
+        followUpStatus: "overdue",
+        status: { notIn: ["closed", "completed"] },
+        createdAt: { gte: periodStart, lt: periodEnd },
+      },
+    }),
+    prisma.demandRecord.count({
       where: { createdAt: { gte: periodStart, lt: periodEnd } },
     }),
   ]);
@@ -129,6 +138,7 @@ export async function GET(req: NextRequest) {
   const totalAmountSold = Math.max(demandRevenue, reportRevenue);
   const totalCost = businessAgg._sum.marketingBudget || 0;
   const profitLoss = totalAmountSold - totalCost;
+  const roi = totalCost > 0 ? (profitLoss / totalCost) * 100 : null;
 
   // Retrieve latest targets set in this period
   const latestReportWithTargets = await prisma.businessReport.findFirst({
@@ -148,20 +158,24 @@ export async function GET(req: NextRequest) {
   const targetSalesAmount = latestReportWithTargets?.targetSalesAmount || null;
 
   // Pacing calculations
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
-  const currentDay = now.getDate();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const totalDaysInPeriod = Math.round((periodEnd.getTime() - periodStart.getTime()) / msPerDay);
 
   let elapsedRatio = 1.0;
-  if (year === currentYear && month === currentMonth) {
-    const totalDaysInMonth = new Date(year, month, 0).getDate();
-    elapsedRatio = currentDay / totalDaysInMonth;
-  } else if (year > currentYear || (year === currentYear && month > currentMonth)) {
+  let elapsedDays = totalDaysInPeriod;
+  if (now >= periodStart && now < periodEnd) {
+    elapsedDays = Math.floor((startOfToday.getTime() - periodStart.getTime()) / msPerDay) + 1;
+    elapsedRatio = elapsedDays / totalDaysInPeriod;
+  } else if (periodStart > now) {
     elapsedRatio = 0.0;
+    elapsedDays = 0;
   }
 
   const actualDemandCount = Math.max(demandCountPeriod, businessAgg._sum.totalDemandCount || 0);
   const actualAppointments = businessAgg._sum.appointmentsMade || 0;
+  const closedDeals = businessAgg._sum.closedDeals || 0;
+  const appointmentConversionRate = actualDemandCount > 0 ? (actualAppointments / actualDemandCount) * 100 : null;
+  const closeConversionRate = actualAppointments > 0 ? (closedDeals / actualAppointments) * 100 : null;
 
   const expectedRevenue = targetSalesAmount !== null ? targetSalesAmount * elapsedRatio : null;
   const expectedDemandCount = targetDemandCount !== null ? targetDemandCount * elapsedRatio : null;
@@ -180,7 +194,7 @@ export async function GET(req: NextRequest) {
     alerts.push({
       type: 'revenue_target',
       status: 'warning',
-      message: `Sales Revenue is behind pacing target (${Math.round(elapsedRatio * 100)}% of month elapsed).`,
+      message: `Sales Revenue is behind pacing target (${elapsedDays} of ${totalDaysInPeriod} days elapsed).`,
       actual: totalAmountSold,
       expected: expectedRevenue!,
       target: targetSalesAmount,
@@ -191,7 +205,7 @@ export async function GET(req: NextRequest) {
     alerts.push({
       type: 'demand_target',
       status: 'warning',
-      message: `Demand messages (leads) count is behind pacing target (${Math.round(elapsedRatio * 100)}% of month elapsed).`,
+      message: `Demand messages (leads) count is behind pacing target (${elapsedDays} of ${totalDaysInPeriod} days elapsed).`,
       actual: actualDemandCount,
       expected: expectedDemandCount!,
       target: targetDemandCount,
@@ -202,7 +216,7 @@ export async function GET(req: NextRequest) {
     alerts.push({
       type: 'appointments_target',
       status: 'warning',
-      message: `Appointments count is behind pacing target (${Math.round(elapsedRatio * 100)}% of month elapsed).`,
+      message: `Appointments count is behind pacing target (${elapsedDays} of ${totalDaysInPeriod} days elapsed).`,
       actual: actualAppointments,
       expected: expectedAppointments!,
       target: targetAppointments,
@@ -238,20 +252,77 @@ export async function GET(req: NextRequest) {
     weeklyActivity.push({ date: key, count: countsByDay.get(key) ?? 0 });
   }
 
+  // Financial Trend
+  const trendBucketCount = period === "year" ? 12 : totalDaysInPeriod;
+  const trendBuckets = Array.from({ length: trendBucketCount }).map((_, index) => {
+    const date = period === "year" ? new Date(year, index, 1) : new Date(year, month - 1, index + 1);
+    const key = period === "year"
+      ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+      : formatLocalDate(date);
+    const label = period === "year"
+      ? date.toLocaleDateString("en", { month: "short" })
+      : String(index + 1);
+    return {
+      key,
+      label,
+      revenueFromDemand: 0,
+      revenueFromReports: 0,
+      expense: 0,
+    };
+  });
+  const trendByKey = new Map(trendBuckets.map((bucket) => [bucket.key, bucket]));
+  const trendKey = (date: Date) => period === "year"
+    ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+    : formatLocalDate(date);
+
+  const [trendDemandRows, trendBusinessRows] = await Promise.all([
+    prisma.demandRecord.findMany({
+      where: { createdAt: { gte: periodStart, lt: periodEnd } },
+      select: { createdAt: true, serviceAmount: true },
+    }),
+    prisma.businessReport.findMany({
+      where: { reportDate: { gte: periodStart, lt: periodEnd } },
+      select: { reportDate: true, totalSalesAmount: true, marketingBudget: true },
+    }),
+  ]);
+
+  for (const row of trendDemandRows) {
+    const bucket = trendByKey.get(trendKey(row.createdAt));
+    if (bucket) bucket.revenueFromDemand += row.serviceAmount || 0;
+  }
+  for (const row of trendBusinessRows) {
+    const bucket = trendByKey.get(trendKey(row.reportDate));
+    if (bucket) {
+      bucket.revenueFromReports += row.totalSalesAmount || 0;
+      bucket.expense += row.marketingBudget || 0;
+    }
+  }
+  const financialTrend = trendBuckets.map((bucket) => {
+    const revenue = Math.max(bucket.revenueFromDemand, bucket.revenueFromReports);
+    return {
+      label: bucket.label,
+      revenue,
+      expense: bucket.expense,
+      profit: revenue - bucket.expense,
+    };
+  });
+
   // Top Services
   const serviceGroups = await prisma.demandRecord.groupBy({
     by: ['serviceName'],
-    where: { serviceName: { not: null } },
+    where: {
+      serviceName: { not: null },
+      createdAt: { gte: periodStart, lt: periodEnd },
+    },
     _count: { _all: true },
-    _sum: { serviceQty: true },
-    orderBy: { _count: { serviceName: 'desc' } },
-    take: 5,
+    _sum: { serviceQty: true, serviceAmount: true },
   });
   const topProducts = serviceGroups.map(g => ({
     product: g.serviceName || 'Unknown',
     count: g._count._all,
     totalQty: g._sum.serviceQty || 0,
-  }));
+    revenue: g._sum.serviceAmount || 0,
+  })).sort((a, b) => b.revenue - a.revenue || b.count - a.count).slice(0, 5);
 
   // Due Today Follow-ups
   const dueTodayRecordsRaw = await prisma.demandRecord.findMany({
@@ -322,12 +393,28 @@ export async function GET(req: NextRequest) {
     totalAmountSold,
     totalCost,
     profitLoss,
+    roi,
+    period,
     selectedMonth: month,
     selectedYear: year,
     highPriorityLeads,
     missingPhoneLeads,
     weeklyActivity,
     topProducts,
+    financialTrend,
+    salesFunnel: {
+      leads: actualDemandCount,
+      appointments: actualAppointments,
+      closedDeals,
+      appointmentConversionRate,
+      closeConversionRate,
+    },
+    risks: {
+      overdueFollowUps,
+      highPriorityLeads,
+      missingPhoneLeads,
+      dueTodayFollowUps,
+    },
     dueTodayRecords,
     upcomingRecords,
     targetDemandCount,
@@ -340,6 +427,8 @@ export async function GET(req: NextRequest) {
     expectedDemandCount,
     expectedAppointments,
     elapsedRatio,
+    elapsedDays,
+    totalDaysInPeriod,
     alerts,
   });
 }
