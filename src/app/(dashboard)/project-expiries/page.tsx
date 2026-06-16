@@ -148,6 +148,14 @@ export default function ProjectExpiriesPage() {
         urgency: 'expired',
         daysLeft: days,
       };
+    } else if (days === 0) {
+      return {
+        label: 'Expires Today',
+        className: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 font-medium animate-pulse',
+        textClass: 'text-orange-600 dark:text-orange-400 font-semibold',
+        urgency: 'urgent',
+        daysLeft: days,
+      };
     } else if (days <= 15) {
       return {
         label: `Expires in ${days} day${days === 1 ? '' : 's'}`,

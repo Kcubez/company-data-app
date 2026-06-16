@@ -292,7 +292,7 @@ export default function DemandSheetsPage() {
             size="sm"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={!data?.total || deleteAllMutation.isPending}
-            className="bg-red-950/20 border-red-900/50 text-red-700 dark:text-red-300 hover:bg-red-900/40 hover:text-red-800 dark:hover:text-red-200 dark:text-red-800 shrink-0 cursor-pointer"
+            className="bg-red-950/20 border-red-900/50 text-red-700 dark:text-red-800 hover:bg-red-900/40 hover:text-red-800 dark:hover:text-red-200 dark:text-red-800 shrink-0 cursor-pointer"
           >
             <Trash2 className="w-4 h-4 mr-1.5" />
             Delete All

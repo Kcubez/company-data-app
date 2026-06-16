@@ -32,6 +32,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/s
 import { Separator } from '@/components/ui/separator';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useState } from 'react';
+import { useSyncPolling } from '@/hooks/use-sync-polling';
 
 type NavItem = {
   title: string;
@@ -106,6 +107,9 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Poll for background Telegram updates and auto-refresh TanStack Query client
+  useSyncPolling();
 
   const handleSignOut = async () => {
     await signOut();

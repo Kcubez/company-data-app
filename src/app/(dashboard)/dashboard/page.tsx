@@ -178,7 +178,7 @@ function FinancialTrendChart({ data }: { data?: FinancialTrend[] }) {
 
   return (
     <div className="overflow-x-auto pb-1">
-      <div className="min-w-[720px]">
+      <div className="min-w-180">
         <div className="flex items-end gap-2 h-56 px-1">
           {data.map(item => {
             const revenueHeight = Math.max((item.revenue / maxValue) * 100, item.revenue > 0 ? 6 : 2);

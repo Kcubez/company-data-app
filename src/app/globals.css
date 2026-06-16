@@ -310,3 +310,10 @@
   color: var(--popover-foreground) !important;
   border: 1px solid var(--border) !important;
 }
+
+/* Custom utility override to render numbers in clean tabular sans-serif */
+.font-mono {
+  font-family: var(--font-sans) !important;
+  font-variant-numeric: tabular-nums !important;
+  letter-spacing: -0.01em;
+}

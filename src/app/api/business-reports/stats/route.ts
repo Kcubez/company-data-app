@@ -99,7 +99,46 @@ export async function GET(req: NextRequest) {
       leads: existing.leads + (r.newLeads ?? 0),
     });
   }
-  const dailyTrend = Array.from(dailyMap.entries()).map(([date, v]) => ({ date, ...v }));
+
+  // Pad missing dates if the date range is <= 45 days to show a continuous timeline
+  let startDate: Date | null = null;
+  let endDate: Date | null = null;
+
+  if (dateFrom) {
+    startDate = new Date(dateFrom);
+  }
+  if (dateTo) {
+    endDate = new Date(dateTo);
+  }
+
+  if (!startDate || !endDate) {
+    const dates = Array.from(dailyMap.keys()).map((d) => new Date(d));
+    if (dates.length > 0) {
+      if (!startDate) startDate = new Date(Math.min(...dates.map((d) => d.getTime())));
+      if (!endDate) endDate = new Date(Math.max(...dates.map((d) => d.getTime())));
+    }
+  }
+
+  if (startDate && endDate) {
+    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 45) {
+      const current = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate()));
+      const endUTC = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate()));
+      while (current <= endUTC) {
+        const key = current.toISOString().slice(0, 10);
+        if (!dailyMap.has(key)) {
+          dailyMap.set(key, { sales: 0, budget: 0, leads: 0 });
+        }
+        current.setUTCDate(current.getUTCDate() + 1);
+      }
+    }
+  }
+
+  const dailyTrend = Array.from(dailyMap.entries())
+    .map(([date, v]) => ({ date, ...v }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   return NextResponse.json({
     totalReports,

@@ -62,28 +62,87 @@ function fmt(n: number | null | undefined, prefix = '') {
 }
 
 function MiniBarChart({
-  data,
+  trendData,
   maxVal,
   color,
 }: {
-  data: number[];
+  trendData: { date: string; sales: number; budget: number; leads: number }[];
   maxVal: number;
   color: string;
 }) {
-  if (!data.length || maxVal === 0) return null;
+  if (!trendData.length || maxVal === 0) return null;
   return (
-    <div className="flex items-end gap-0.5 h-8">
-      {data.map((v, i) => (
-        <div
-          key={i}
-          className="flex-1 rounded-sm min-w-0.75"
-          style={{
-            height: `${Math.max(4, Math.round((v / maxVal) * 32))}px`,
-            background: color,
-            opacity: 0.7 + (i / data.length) * 0.3,
-          }}
-        />
-      ))}
+    <div className="flex items-end gap-1 h-20 pt-6">
+      {trendData.map((item, i) => {
+        const pct = Math.max(6, Math.round((item.sales / maxVal) * 100));
+
+        let formattedDate = item.date;
+        try {
+          const [y, m, d] = item.date.split('-');
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          formattedDate = `${months[Number(m) - 1]} ${Number(d)}, ${y}`;
+        } catch (_) {}
+
+        const isLeft = i <= 1;
+        const isRight = i >= trendData.length - 2;
+
+        let tooltipClass = "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-20";
+        let arrowClass = "w-1.5 h-1.5 bg-slate-950/95 dark:bg-slate-50/95 rotate-45 -mt-1 border-r border-b border-white/10 dark:border-black/5";
+
+        if (isLeft) {
+          tooltipClass = "absolute bottom-full left-0 mb-2 hidden group-hover:flex flex-col items-start pointer-events-none z-20";
+          arrowClass = "w-1.5 h-1.5 bg-slate-950/95 dark:bg-slate-50/95 rotate-45 -mt-1 border-r border-b border-white/10 dark:border-black/5 ml-3";
+        } else if (isRight) {
+          tooltipClass = "absolute bottom-full right-0 mb-2 hidden group-hover:flex flex-col items-end pointer-events-none z-20";
+          arrowClass = "w-1.5 h-1.5 bg-slate-950/95 dark:bg-slate-50/95 rotate-45 -mt-1 border-r border-b border-white/10 dark:border-black/5 mr-3";
+        }
+
+        return (
+          <div key={item.date} className="group relative flex-1 flex flex-col items-center justify-end h-full">
+            {/* The bar */}
+            <div
+              className="w-full rounded-sm transition-all duration-300 group-hover:opacity-100 hover:scale-y-105 cursor-pointer"
+              style={{
+                height: `${pct}%`,
+                background: color,
+                opacity: item.sales === 0 ? 0.15 : 0.7 + (i / trendData.length) * 0.3,
+              }}
+            />
+
+            {/* Tooltip */}
+            <div className={tooltipClass}>
+              <div className="bg-slate-950/95 text-white dark:bg-slate-50/95 dark:text-slate-900 text-[10px] rounded-lg p-2.5 shadow-xl border border-white/10 dark:border-black/5 min-w-36 space-y-1 backdrop-blur-sm whitespace-nowrap">
+                <div className="font-semibold border-b border-white/10 dark:border-black/10 pb-1 mb-1 opacity-80">
+                  {formattedDate}
+                </div>
+                <div className="flex justify-between gap-5">
+                  <span className="text-slate-400 dark:text-slate-500">Sales:</span>
+                  <span className="font-bold text-emerald-400 dark:text-emerald-600 font-mono">
+                    {item.sales.toLocaleString()} Ks
+                  </span>
+                </div>
+                {item.leads > 0 && (
+                  <div className="flex justify-between gap-5">
+                    <span className="text-slate-400 dark:text-slate-500">Leads:</span>
+                    <span className="font-semibold font-mono text-amber-400 dark:text-amber-600">
+                      {item.leads}
+                    </span>
+                  </div>
+                )}
+                {item.budget > 0 && (
+                  <div className="flex justify-between gap-5">
+                    <span className="text-slate-400 dark:text-slate-500">Budget:</span>
+                    <span className="font-semibold font-mono text-blue-400 dark:text-blue-600">
+                      {item.budget.toLocaleString()} Ks
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className={arrowClass} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -341,7 +400,7 @@ export default function BusinessReportsPage() {
               <p className="text-xs text-muted-foreground">No data yet</p>
             ) : (
               <div className="space-y-1">
-                <MiniBarChart data={dailySales} maxVal={maxSales} color="#10B981" />
+                <MiniBarChart trendData={s?.dailyTrend ?? []} maxVal={maxSales} color="#10B981" />
                 <div className="flex justify-between text-[10px] text-slate-600 pt-1">
                   <span>{s?.dailyTrend[0]?.date}</span>
                   <span>{s?.dailyTrend[s.dailyTrend.length - 1]?.date}</span>

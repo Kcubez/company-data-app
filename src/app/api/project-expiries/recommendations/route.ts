@@ -94,7 +94,11 @@ export async function GET(req: NextRequest) {
         if (p.urgency === "expired") {
           insight = `Domain သို့မဟုတ် hosting သက်တမ်းကုန်ဆုံးသွားပါပြီ — ဝဘ်ဆိုက် ရပ်တန့်မသွားစေရန် ချက်ချင်းသက်တမ်းတိုးပါ။`;
         } else if (p.urgency === "critical") {
-          insight = `သက်တမ်းကုန်ဆုံးရန် ${p.minDays} ရက်သာ လိုပါတော့သည်။ သက်တမ်းတိုးရန် ${p.domainProvider || p.hostingProvider || "provider"} သို့ ချက်ချင်းဆက်သွယ်ပါ။`;
+          if (p.minDays === 0) {
+            insight = `ယနေ့ သက်တမ်းကုန်ဆုံးပါမည်။ သက်တမ်းတိုးရန် ${p.domainProvider || p.hostingProvider || "provider"} သို့ ချက်ချင်းဆက်သွယ်ပါ။`;
+          } else {
+            insight = `သက်တမ်းကုန်ဆုံးရန် ${p.minDays} ရက်သာ လိုပါတော့သည်။ သက်တမ်းတိုးရန် ${p.domainProvider || p.hostingProvider || "provider"} သို့ ချက်ချင်းဆက်သွယ်ပါ။`;
+          }
         } else if (p.urgency === "warning") {
           insight = `သက်တမ်းကုန်ဆုံးရန် ${p.minDays} ရက် လိုပါသေးသည်။ ဝဘ်ဆိုက် ပြတ်တောက်မှုမရှိစေရန် သက်တမ်းတိုးရန် စီစဉ်ပါ။`;
         } else {
@@ -175,6 +179,8 @@ Example output:
         const insight =
           days !== null && days < 0
             ? `သက်တမ်းကုန်ဆုံးသွားပါပြီ — ချက်ချင်းသက်တမ်းတိုးပါ။`
+            : days === 0
+            ? `ယနေ့ သက်တမ်းကုန်ဆုံးပါမည် — သက်တမ်းတိုးရန် ချက်ချင်းဆောင်ရွက်ပါ။`
             : days !== null && days <= 30
             ? `သက်တမ်းကုန်ဆုံးရန် ${days} ရက်သာ လိုပါတော့သည် — သက်တမ်းတိုးရန် ပြင်ဆင်ပါ။`
             : `ပရောဂျက်အတွက် သက်တမ်းကုန်ဆုံးမည့် ရက်စွဲများကို စစ်ဆေးပါ။`;
