@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { format } from 'date-fns';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   useBusinessReports,
   useBusinessReportStats,
@@ -11,7 +12,7 @@ import {
   useDeleteAllBusinessReports,
 } from '@/hooks/use-business-reports';
 import { BusinessReport } from '@/lib/api';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,26 +27,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  BarChart3,
   TrendingUp,
-  Target,
-  Users,
   DollarSign,
-  Phone,
-  CalendarCheck,
-  Bot,
-  RefreshCw,
   Trash2,
   Edit2,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   Percent,
   Megaphone,
-  ShoppingCart,
+  Wallet,
+  CircleAlert,
 } from 'lucide-react';
 
 const CHANNELS = ['All', 'Facebook', 'Google', 'Referral', 'Walk-in', 'Telegram', 'Other'];
+const FINANCE_TYPES = ['All', 'Income', 'Expense'];
 
 const CHANNEL_COLORS: Record<string, string> = {
   Facebook: '#1877F2',
@@ -54,6 +48,13 @@ const CHANNEL_COLORS: Record<string, string> = {
   'Walk-in': '#F59E0B',
   Telegram: '#0088CC',
   Other: '#6B7280',
+  Unknown: '#64748B',
+  Marketing: '#f59e0b',
+  Infrastructure: '#64748b',
+  Software: '#8b5cf6',
+  Admin: '#94a3b8',
+  Payroll: '#0ea5e9',
+  Service: '#22c55e',
 };
 
 function fmt(n: number | null | undefined, prefix = '') {
@@ -61,146 +62,366 @@ function fmt(n: number | null | undefined, prefix = '') {
   return prefix + n.toLocaleString();
 }
 
-function MiniBarChart({
-  trendData,
-  maxVal,
-  color,
+function extractLabeledValue(text: string | null | undefined, labels: string[]) {
+  if (!text) return null;
+  for (const label of labels) {
+    const pattern = new RegExp(`${label}\\s*[:=-]\\s*([^\\n,]+)`, 'i');
+    const match = text.match(pattern);
+    if (match?.[1]?.trim()) return match[1].trim();
+  }
+  return null;
+}
+
+function inferFinanceCategory(record: BusinessReport, type: 'Income' | 'Expense') {
+  const explicit = extractLabeledValue(record.notes, ['category', 'cat']);
+  if (explicit) return explicit;
+  if (type === 'Income') return 'Service';
+
+  const haystack = `${record.notes ?? ''} ${record.marketingChannel ?? ''}`.toLowerCase();
+  if (/payroll|salary|wage/.test(haystack)) return 'Payroll';
+  if (/software|saas|subscription|license/.test(haystack)) return 'Software';
+  if (/aws|hosting|server|infra|infrastructure|domain|cloud/.test(haystack)) return 'Infrastructure';
+  if (/office|admin|supplies|utility|rent/.test(haystack)) return 'Admin';
+  if (/facebook|google|ads|ad spend|marketing|campaign|ကြော်ငြာ/.test(haystack)) return 'Marketing';
+  return record.marketingChannel || 'Marketing';
+}
+
+function inferFinanceDescription(record: BusinessReport, type: 'Income' | 'Expense') {
+  const explicit = extractLabeledValue(record.notes, ['description', 'desc', 'item']);
+  if (explicit) return explicit;
+  const owner = record.reporterName ?? record.sender?.displayName ?? 'Business report';
+  return type === 'Income' ? `${owner} revenue` : `${inferFinanceCategory(record, 'Expense')} expense`;
+}
+
+type PeriodMode = 'month' | 'year';
+type FinanceType = 'All' | 'Income' | 'Expense';
+
+function getPeriodRange(period: PeriodMode, month: number, year: number) {
+  if (period === 'year') {
+    return {
+      dateFrom: `${year}-01-01`,
+      dateTo: `${year}-12-31`,
+    };
+  }
+
+  const start = new Date(Date.UTC(year, month - 1, 1));
+  const end = new Date(Date.UTC(year, month, 0));
+
+  return {
+    dateFrom: start.toISOString().slice(0, 10),
+    dateTo: end.toISOString().slice(0, 10),
+  };
+}
+
+function FinanceKpiCard({
+  label,
+  value,
+  unit,
+  icon: Icon,
+  accentClass,
 }: {
-  trendData: { date: string; sales: number; budget: number; leads: number }[];
-  maxVal: number;
-  color: string;
+  label: string;
+  value: string;
+  unit?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  accentClass?: string;
 }) {
-  if (!trendData.length || maxVal === 0) return null;
   return (
-    <div className="flex items-end gap-1 h-20 pt-6">
-      {trendData.map((item, i) => {
-        const pct = Math.max(6, Math.round((item.sales / maxVal) * 100));
-
-        let formattedDate = item.date;
-        try {
-          const [y, m, d] = item.date.split('-');
-          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-          formattedDate = `${months[Number(m) - 1]} ${Number(d)}, ${y}`;
-        } catch (_) {}
-
-        const isLeft = i <= 1;
-        const isRight = i >= trendData.length - 2;
-
-        let tooltipClass = "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-20";
-        let arrowClass = "w-1.5 h-1.5 bg-slate-950/95 dark:bg-slate-50/95 rotate-45 -mt-1 border-r border-b border-white/10 dark:border-black/5";
-
-        if (isLeft) {
-          tooltipClass = "absolute bottom-full left-0 mb-2 hidden group-hover:flex flex-col items-start pointer-events-none z-20";
-          arrowClass = "w-1.5 h-1.5 bg-slate-950/95 dark:bg-slate-50/95 rotate-45 -mt-1 border-r border-b border-white/10 dark:border-black/5 ml-3";
-        } else if (isRight) {
-          tooltipClass = "absolute bottom-full right-0 mb-2 hidden group-hover:flex flex-col items-end pointer-events-none z-20";
-          arrowClass = "w-1.5 h-1.5 bg-slate-950/95 dark:bg-slate-50/95 rotate-45 -mt-1 border-r border-b border-white/10 dark:border-black/5 mr-3";
-        }
-
-        return (
-          <div key={item.date} className="group relative flex-1 flex flex-col items-center justify-end h-full">
-            {/* The bar */}
-            <div
-              className="w-full rounded-sm transition-all duration-300 group-hover:opacity-100 hover:scale-y-105 cursor-pointer"
-              style={{
-                height: `${pct}%`,
-                background: color,
-                opacity: item.sales === 0 ? 0.15 : 0.7 + (i / trendData.length) * 0.3,
-              }}
-            />
-
-            {/* Tooltip */}
-            <div className={tooltipClass}>
-              <div className="bg-slate-950/95 text-white dark:bg-slate-50/95 dark:text-slate-900 text-[10px] rounded-lg p-2.5 shadow-xl border border-white/10 dark:border-black/5 min-w-36 space-y-1 backdrop-blur-sm whitespace-nowrap">
-                <div className="font-semibold border-b border-white/10 dark:border-black/10 pb-1 mb-1 opacity-80">
-                  {formattedDate}
-                </div>
-                <div className="flex justify-between gap-5">
-                  <span className="text-slate-400 dark:text-slate-500">Sales:</span>
-                  <span className="font-bold text-emerald-400 dark:text-emerald-600 font-mono">
-                    {item.sales.toLocaleString()} Ks
-                  </span>
-                </div>
-                {item.leads > 0 && (
-                  <div className="flex justify-between gap-5">
-                    <span className="text-slate-400 dark:text-slate-500">Leads:</span>
-                    <span className="font-semibold font-mono text-amber-400 dark:text-amber-600">
-                      {item.leads}
-                    </span>
-                  </div>
-                )}
-                {item.budget > 0 && (
-                  <div className="flex justify-between gap-5">
-                    <span className="text-slate-400 dark:text-slate-500">Budget:</span>
-                    <span className="font-semibold font-mono text-blue-400 dark:text-blue-600">
-                      {item.budget.toLocaleString()} Ks
-                    </span>
-                  </div>
-                )}
-              </div>
-              <div className={arrowClass} />
-            </div>
+    <Card className={`bg-card border-2 border-slate-200 dark:border-slate-800 shadow-sm rounded-xl ${accentClass ?? ''}`}>
+      <CardContent className="p-6 flex flex-col justify-center h-32">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">{label}</p>
+            <h3 className="flex items-baseline gap-1.5 whitespace-nowrap text-2xl font-black text-slate-900 tracking-tight dark:text-slate-100">
+              <span>{value}</span>
+              {unit ? <span className="text-xs font-bold text-slate-400">{unit}</span> : null}
+            </h3>
           </div>
-        );
-      })}
+          <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400">
+            <Icon className="w-4 h-4" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RevenueExpenseTimeline({
+  trendData,
+}: {
+  trendData: { label: string; revenue: number; expense: number }[];
+}) {
+  const maxVal = Math.max(...trendData.flatMap((item) => [item.revenue, item.expense]), 1);
+  const maxMillions = Math.max(1, maxVal / 1_000_000);
+  const axisMax = Math.ceil(maxMillions * 10) / 10;
+  const width = 680;
+  const height = 300;
+  const paddingLeft = 56;
+  const paddingRight = 22;
+  const paddingTop = 24;
+  const paddingBottom = 42;
+  const innerHeight = height - paddingTop - paddingBottom;
+  const pointFor = (value: number, index: number) => {
+    const x = paddingLeft + (trendData.length <= 1 ? 0 : (index / (trendData.length - 1)) * (width - paddingLeft - paddingRight));
+    const y = paddingTop + innerHeight - ((value / 1_000_000) / axisMax) * innerHeight;
+    return `${x},${y}`;
+  };
+  const revenuePoints = trendData.map((item, index) => pointFor(item.revenue, index)).join(' ');
+  const expensePoints = trendData.map((item, index) => pointFor(item.expense, index)).join(' ');
+  const ticks = Array.from({ length: 6 }).map((_, index) => {
+    const value = (axisMax / 5) * index;
+    const y = paddingTop + innerHeight - (value / axisMax) * innerHeight;
+    return { value, y };
+  });
+
+  if (!trendData.length) return null;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-center gap-6 text-sm font-semibold text-slate-600">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-4 w-8 rounded-sm border-4 border-sky-500" />
+          Revenue
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-4 w-8 rounded-sm border-4 border-red-500" />
+          Expense
+        </span>
+      </div>
+      <div className="relative h-80 w-full">
+        <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Revenue and expense monthly line graph">
+          {ticks.map((tick) => (
+            <g key={tick.value}>
+              <line x1={paddingLeft} x2={width - paddingRight} y1={tick.y} y2={tick.y} stroke="#e2e8f0" strokeWidth="1" />
+              <text x={paddingLeft - 12} y={tick.y + 4} textAnchor="end" className="fill-slate-500 text-[12px] font-semibold">
+                {tick.value.toFixed(1)}
+              </text>
+            </g>
+          ))}
+          <line x1={paddingLeft} x2={paddingLeft} y1={paddingTop} y2={height - paddingBottom} stroke="#cbd5e1" strokeWidth="1.5" />
+          <line x1={paddingLeft} x2={width - paddingRight} y1={height - paddingBottom} y2={height - paddingBottom} stroke="#cbd5e1" strokeWidth="1.5" />
+          <polyline points={revenuePoints} fill="none" stroke="#0ea5e9" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          <polyline points={expensePoints} fill="none" stroke="#ef4444" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          {trendData.map((item, index) => {
+            const [revenueX, revenueY] = pointFor(item.revenue, index).split(',').map(Number);
+            const [expenseX, expenseY] = pointFor(item.expense, index).split(',').map(Number);
+            return (
+              <g key={item.label}>
+                <circle cx={revenueX} cy={revenueY} r="4" fill="#0ea5e9" stroke="white" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                <circle cx={expenseX} cy={expenseY} r="4" fill="#ef4444" stroke="white" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                <text x={revenueX} y={height - 14} textAnchor="middle" className="fill-slate-500 text-[13px] font-semibold">
+                  {item.label}
+                </text>
+              </g>
+            );
+          })}
+          <text x={paddingLeft} y={height - 2} className="fill-slate-400 text-[10px] font-bold">Month</text>
+        </svg>
+      </div>
     </div>
   );
 }
 
-export default function BusinessReportsPage() {
+function buildMonthlyTrend(
+  dailyTrend: { date: string; sales: number; budget: number; leads: number }[],
+  selectedMonth: number,
+  selectedYear: number,
+  selectedPeriod: PeriodMode,
+) {
+  const monthCount = selectedPeriod === 'year' ? 12 : selectedMonth;
+  const monthNames = Array.from({ length: monthCount }).map((_, index) =>
+    new Date(selectedYear, index, 1).toLocaleString('en', { month: 'short' }),
+  );
+  const monthly = monthNames.map((label, index) => ({
+    label,
+    revenue: 0,
+    expense: 0,
+    monthIndex: index,
+  }));
+
+  for (const item of dailyTrend) {
+    const date = new Date(item.date);
+    if (date.getFullYear() !== selectedYear) continue;
+    const monthIndex = date.getMonth();
+    if (monthIndex < 0 || monthIndex >= monthly.length) continue;
+    monthly[monthIndex].revenue += item.sales;
+    monthly[monthIndex].expense += item.budget;
+  }
+
+  return monthly;
+}
+
+function ExpenseDonutChart({
+  items,
+}: {
+  items: { channel: string; budget: number }[];
+}) {
+  const total = items.reduce((sum, item) => sum + item.budget, 0);
+  const gradient = items.map((item, index) => {
+    const color = CHANNEL_COLORS[item.channel] ?? '#64748B';
+    const start = total > 0
+      ? items.slice(0, index).reduce((sum, previous) => sum + (previous.budget / total) * 100, 0)
+      : 0;
+    const pct = total > 0 ? (item.budget / total) * 100 : 0;
+    return `${color} ${start}% ${start + pct}%`;
+  }).join(', ');
+
+  return (
+    <div className="grid min-h-72 grid-cols-1 items-center gap-6 md:grid-cols-[1fr_170px]">
+      <div className="flex justify-center">
+        <div
+          className="relative h-64 w-64 rounded-full shadow-sm"
+          style={{ background: `conic-gradient(${gradient})` }}
+          aria-label="Expense breakdown donut chart"
+        >
+          <div className="absolute inset-16 rounded-full bg-card shadow-inner" />
+        </div>
+      </div>
+      <div className="space-y-3">
+        {items.map((item) => {
+          const color = CHANNEL_COLORS[item.channel] ?? '#64748B';
+          const pct = total > 0 ? Math.round((item.budget / total) * 100) : 0;
+          return (
+            <div key={item.channel} className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
+              <span className="h-4 w-12" style={{ background: color }} />
+              <span className="min-w-0 flex-1 truncate">{item.channel}</span>
+              <span className="text-xs text-slate-500">{pct}%</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BusinessReportsPageContent() {
+  const now = new Date();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [page, setPage] = useState(1);
-  const [insightPage, setInsightPage] = useState(1);
   const [channelFilter, setChannelFilter] = useState('All');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [typeFilter, setTypeFilter] = useState<FinanceType>('All');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingRecord, setEditingRecord] = useState<BusinessReport | null>(null);
   const [editForm, setEditForm] = useState<Partial<BusinessReport>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const limit = 20;
-  const insightPageSize = 5;
+  const period: PeriodMode = searchParams.get('period') === 'year' ? 'year' : 'month';
+  const month = Math.min(
+    12,
+    Math.max(1, Number(searchParams.get('month') || now.getMonth() + 1)),
+  );
+  const year = Number(searchParams.get('year') || now.getFullYear());
+  const years = Array.from({ length: 5 }).map((_, index) => now.getFullYear() - 2 + index);
+  const { dateFrom, dateTo } = getPeriodRange(period, month, year);
+
+  const updatePeriod = (next: { period?: PeriodMode; month?: number; year?: number }) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('period', next.period ?? period);
+    params.set('month', String(next.month ?? month));
+    params.set('year', String(next.year ?? year));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setPage(1);
+  };
 
   const listParams = {
     page,
     limit,
     channel: channelFilter !== 'All' ? channelFilter : undefined,
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
+    dateFrom,
+    dateTo,
   };
 
   const { data, isLoading } = useBusinessReports(listParams);
   const { data: statsData, isLoading: statsLoading } = useBusinessReportStats({
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
+    dateFrom,
+    dateTo,
+  });
+  const { data: yearStatsData, isLoading: yearStatsLoading } = useBusinessReportStats({
+    dateFrom: `${year}-01-01`,
+    dateTo: `${year}-12-31`,
   });
   const {
     data: recsData,
     isLoading: recsLoading,
-    refetch: recsRefetch,
     isFetching: recsFetching,
   } = useBusinessReportRecommendations();
 
   const updateMutation = useUpdateBusinessReport();
   const deleteMutation = useDeleteBusinessReport();
   const deleteAllMutation = useDeleteAllBusinessReports();
-  const insightTotal = recsData?.recommendations.length || 0;
-  const insightTotalPages = Math.max(1, Math.ceil(insightTotal / insightPageSize));
-  const visibleInsights = recsData?.recommendations.slice(
-    (insightPage - 1) * insightPageSize,
-    insightPage * insightPageSize,
-  ) || [];
-
-  useEffect(() => {
-    setInsightPage(1);
-  }, [insightTotal]);
+  const visibleInsights = recsData?.recommendations.slice(0, 2) || [];
 
   const s = statsData;
   const records = data?.records ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / limit);
+  const totalRevenue = s?.totalSales ?? 0;
+  const totalExpense = s?.totalBudget ?? 0;
+  const profitLoss = totalRevenue - totalExpense;
+  const profitMargin = totalRevenue > 0 ? Math.round((profitLoss / totalRevenue) * 100) : 0;
+  const expenseBreakdown = s?.channelPerformance?.filter((ch) => ch.budget > 0) ?? [];
+  const monthlyTrend = buildMonthlyTrend(yearStatsData?.dailyTrend ?? [], month, year, period);
+  const financeRows = records.flatMap((r) => {
+    const rows: {
+      id: string;
+      report: BusinessReport;
+      date: string;
+      description: string;
+      category: string;
+      type: 'Income' | 'Expense';
+      amount: number;
+    }[] = [];
 
-  const dailySales = (s?.dailyTrend ?? []).map((d) => d.sales);
-  const maxSales = Math.max(...dailySales, 1);
+    if ((r.totalSalesAmount ?? 0) > 0) {
+      rows.push({
+        id: `${r.id}-income`,
+        report: r,
+        date: r.reportDate,
+        description: inferFinanceDescription(r, 'Income'),
+        category: inferFinanceCategory(r, 'Income'),
+        type: 'Income',
+        amount: r.totalSalesAmount ?? 0,
+      });
+    }
+
+    if ((r.marketingBudget ?? 0) > 0) {
+      rows.push({
+        id: `${r.id}-expense`,
+        report: r,
+        date: r.reportDate,
+        description: inferFinanceDescription(r, 'Expense'),
+        category: inferFinanceCategory(r, 'Expense'),
+        type: 'Expense',
+        amount: -(r.marketingBudget ?? 0),
+      });
+    }
+
+    return rows;
+  }).filter((row) => typeFilter === 'All' || row.type === typeFilter);
+
+  const computedFinanceInsights = [
+    {
+      tone: profitLoss >= 0 ? 'success' : 'warning',
+      title: profitLoss >= 0 ? 'Profit Margin Optimization' : 'Profit Pressure Warning',
+      insight: profitLoss >= 0
+        ? `This period is profitable by ${profitLoss.toLocaleString()} MMK with a ${profitMargin}% margin. Keep expense growth below revenue growth.`
+        : `Expenses exceed revenue by ${Math.abs(profitLoss).toLocaleString()} MMK this period. Review high-spend channels before scaling budget.`,
+    },
+    {
+      tone: s?.roi && s.roi >= 0 ? 'success' : 'warning',
+      title: 'Expense Efficiency Watch',
+      insight: `Marketing expense is ${totalExpense.toLocaleString()} MMK against ${totalRevenue.toLocaleString()} MMK revenue. Current ROI is ${s?.roi ?? 0}%.`,
+    },
+  ];
+  const financeInsights = (visibleInsights.length > 0
+    ? visibleInsights.slice(0, 2).map((rec, index) => ({
+        tone: index === 0 ? 'success' : 'warning',
+        title: rec.title,
+        insight: rec.insight,
+      }))
+    : computedFinanceInsights);
 
   // Edit helpers
   const openEdit = (r: BusinessReport) => {
@@ -231,26 +452,75 @@ export default function BusinessReportsPage() {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* ─── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold  text-foreground flex items-center gap-2">
-            <BarChart3 className="h-7 w-7 text-violet-600 dark:text-violet-400" />
-            Business Reports
+          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
+            <Wallet className="h-7 w-7 text-sky-600 dark:text-sky-400" />
+            Finance Department
           </h1>
           <p className="text-muted-foreground">
-            Marketing activity, appointments &amp; sales performance tracking.
+            Financial records, reporting, and cash flow.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={deleteAllMutation.isPending}
-          className="bg-red-950/30 border-red-900/50 text-red-700 dark:text-red-300 hover:bg-red-900/40 hover:text-red-800 dark:hover:text-red-200 dark:text-red-800 shrink-0"
-        >
-          <Trash2 className="w-4 h-4 mr-1.5" />
-          Delete All
-        </Button>
+        <div className="flex flex-wrap gap-2 items-center">
+          <Select value={period} onValueChange={(value) => {
+            if (value === 'month' || value === 'year') {
+              updatePeriod({ period: value });
+            }
+          }}>
+            <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              {period === 'year' ? 'Yearly' : 'Monthly'}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="month">Monthly</SelectItem>
+              <SelectItem value="year">Yearly</SelectItem>
+            </SelectContent>
+          </Select>
+          {period === 'month' ? (
+            <Select value={String(month)} onValueChange={(value) => {
+              if (value) {
+                updatePeriod({ month: Number(value) });
+              }
+            }}>
+              <SelectTrigger className="h-9 w-32 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+                {new Date(year, month - 1, 1).toLocaleString('en', { month: 'long' })}
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <SelectItem key={index + 1} value={String(index + 1)}>
+                    {new Date(year, index, 1).toLocaleString('en', { month: 'long' })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          <Select value={String(year)} onValueChange={(value) => {
+            if (value) {
+              updatePeriod({ year: Number(value) });
+            }
+          }}>
+            <SelectTrigger className="h-9 w-24 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              {year}
+            </SelectTrigger>
+            <SelectContent>
+              {years.map((itemYear) => (
+                <SelectItem key={itemYear} value={String(itemYear)}>
+                  {itemYear}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleteAllMutation.isPending}
+            className="h-9 border-2 border-red-200 bg-red-50 text-xs font-bold text-red-700 hover:bg-red-100 hover:text-red-800 dark:border-red-950 dark:bg-red-950/30 dark:text-red-300"
+          >
+            <Trash2 className="w-4 h-4 mr-1.5" />
+            Delete All
+          </Button>
+        </div>
       </div>
 
       {/* ─── Delete All Confirm ───────────────────────────────────────── */}
@@ -276,481 +546,288 @@ export default function BusinessReportsPage() {
       )}
 
       {/* ─── KPI Cards ───────────────────────────────────────────────── */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-6">
-        {/* Total Sales */}
-        <Card className="bg-card border-border shadow-sm border-l-4 border-l-emerald-500/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-              <DollarSign className="w-4 h-4" /> Total Sales
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {statsLoading ? <Skeleton className="h-8 w-20 bg-muted" /> : (
-              <>
-                <div className="text-2xl font-bold text-foreground">{s ? `${(s.totalSales / 1000).toFixed(0)}K` : '—'} <span className="text-sm text-muted-foreground">Ks</span></div>
-                <p className="text-xs text-muted-foreground mt-1">{s?.totalReports ?? 0} reports</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Ad Spend */}
-        <Card className="bg-card border-border shadow-sm border-l-4 border-l-blue-500/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
-              <Megaphone className="w-4 h-4" /> Ad Spend
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {statsLoading ? <Skeleton className="h-8 w-20 bg-muted" /> : (
-              <>
-                <div className="text-2xl font-bold text-foreground">{s ? `${(s.totalBudget / 1000).toFixed(0)}K` : '—'} <span className="text-sm text-muted-foreground">Ks</span></div>
-                <p className="text-xs text-muted-foreground mt-1">{s && s.roi != null ? `ROI ${s.roi > 0 ? '+' : ''}${s.roi}%` : '—'}</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* New Leads */}
-        <Card className="bg-card border-border shadow-sm border-l-4 border-l-amber-500/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-              <Users className="w-4 h-4" /> New Leads
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {statsLoading ? <Skeleton className="h-8 w-16 bg-muted" /> : (
-              <>
-                <div className="text-2xl font-bold text-foreground">{fmt(s?.totalLeads)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Closed: {fmt(s?.totalClosed)}</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Conversion */}
-        <Card className="bg-card border-border shadow-sm border-l-4 border-l-pink-500/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-pink-600 dark:text-pink-400 flex items-center gap-1.5">
-              <Percent className="w-4 h-4" /> Conversion
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {statsLoading ? <Skeleton className="h-8 w-16 bg-muted" /> : (
-              <>
-                <div className="text-2xl font-bold text-foreground">{s ? `${s.conversionRate}%` : '—'}</div>
-                <p className="text-xs text-muted-foreground mt-1">Cost/Lead: {fmt(s?.costPerLead)} Ks</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Appt Show Rate */}
-        <Card className="bg-card border-border shadow-sm border-l-4 border-l-teal-500/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-teal-600 dark:text-teal-400 flex items-center gap-1.5">
-              <CalendarCheck className="w-4 h-4" /> Show Rate
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {statsLoading ? <Skeleton className="h-8 w-16 bg-muted" /> : (
-              <>
-                <div className="text-2xl font-bold text-foreground">{s ? `${s.apptShowRate}%` : '—'}</div>
-                <p className="text-xs text-muted-foreground mt-1">{fmt(s?.totalApptsKept)}/{fmt(s?.totalApptsMade)} kept</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Calls Made */}
-        <Card className="bg-card border-border shadow-sm border-l-4 border-l-violet-500/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-violet-600 dark:text-violet-400 flex items-center gap-1.5">
-              <Phone className="w-4 h-4" /> Calls Made
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {statsLoading ? <Skeleton className="h-8 w-16 bg-muted" /> : (
-              <>
-                <div className="text-2xl font-bold text-foreground">{fmt(s?.totalCalls)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Demand: {fmt(s?.totalDemand)}</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ─── Charts Row ─────────────────────────────────────────────── */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Daily Sales Trend */}
-        <Card className="lg:col-span-2 bg-card border-border shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-foreground flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-              Daily Sales Trend
-            </CardTitle>
-            <CardDescription className="text-slate-500 text-xs">
-              Total sales per day (recent {(s?.dailyTrend ?? []).length} days)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {statsLoading ? (
-              <Skeleton className="h-20 w-full bg-muted" />
-            ) : (s?.dailyTrend ?? []).length === 0 ? (
-              <p className="text-xs text-muted-foreground">No data yet</p>
-            ) : (
-              <div className="space-y-1">
-                <MiniBarChart trendData={s?.dailyTrend ?? []} maxVal={maxSales} color="#10B981" />
-                <div className="flex justify-between text-[10px] text-slate-600 pt-1">
-                  <span>{s?.dailyTrend[0]?.date}</span>
-                  <span>{s?.dailyTrend[s.dailyTrend.length - 1]?.date}</span>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Channel Performance */}
-        <Card className="glass-card glass-card-hover border-border/70 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-foreground flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              Channel Performance
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2.5">
-            {statsLoading ? (
-              <Skeleton className="h-40 w-full bg-muted" />
-            ) : (s?.channelPerformance ?? []).length === 0 ? (
-              <p className="text-xs text-muted-foreground">No channel data yet</p>
-            ) : (
-              (s?.channelPerformance ?? []).slice(0, 5).map((ch) => {
-                const maxChSales = Math.max(...(s?.channelPerformance ?? []).map((c) => c.sales), 1);
-                const pct = maxChSales > 0 ? Math.round((ch.sales / maxChSales) * 100) : 0;
-                const color = CHANNEL_COLORS[ch.channel] ?? '#6B7280';
-                return (
-                  <div key={ch.channel} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium text-foreground/85">{ch.channel}</span>
-                      <span className="text-muted-foreground">{(ch.sales / 1000).toFixed(0)}K Ks</span>
-                    </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%`, background: color }}
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {statsLoading ? (
+          [...Array(4)].map((_, index) => <Skeleton key={index} className="h-32 rounded-xl" />)
+        ) : (
+          <>
+            <FinanceKpiCard
+              label="Total Revenue"
+              value={fmt(totalRevenue)}
+              unit="MMK"
+              icon={DollarSign}
+              accentClass="border-l-4 border-l-sky-500"
+            />
+            <FinanceKpiCard
+              label="Total Expense"
+              value={fmt(totalExpense)}
+              unit="MMK"
+              icon={Megaphone}
+              accentClass="border-l-4 border-l-red-500"
+            />
+            <FinanceKpiCard
+              label="Profit / Loss"
+              value={`${profitLoss >= 0 ? '+' : ''}${fmt(profitLoss)}`}
+              unit="MMK"
+              icon={TrendingUp}
+              accentClass={profitLoss >= 0 ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-amber-500'}
+            />
+            <FinanceKpiCard
+              label="Profit Margin"
+              value={`${profitMargin}%`}
+              icon={Percent}
+              accentClass={profitMargin >= 0 ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-amber-500'}
+            />
+          </>
+        )}
       </div>
 
       {/* ─── AI Insights ────────────────────────────────────────────── */}
-      <Card className="glass-card glass-card-hover border-border/70 shadow-sm">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-foreground flex items-center gap-2">
-                <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-pulse" />
-                AI Business Insights
-              </CardTitle>
-              <CardDescription className="text-muted-foreground">
-                Gemini AI-powered marketing &amp; sales performance analysis
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => recsRefetch()}
-              disabled={recsFetching}
-              className="bg-card border-border text-foreground hover:bg-muted shrink-0"
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {recsLoading || recsFetching ? (
+          <>
+            <Skeleton className="h-32 rounded-xl" />
+            <Skeleton className="h-32 rounded-xl" />
+          </>
+        ) : financeInsights.map((insight, index) => {
+          const isSuccess = insight.tone === 'success';
+          const Icon = isSuccess ? TrendingUp : CircleAlert;
+          return (
+            <Card
+              key={`${insight.title}-${index}`}
+              className={`bg-card border-2 ${isSuccess ? 'border-emerald-300 border-l-8 border-l-emerald-500' : 'border-amber-300 border-l-8 border-l-amber-500'} rounded-xl shadow-sm`}
             >
-              <RefreshCw className={`w-4 h-4 mr-1.5 ${recsFetching ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {recsLoading || recsFetching ? (
-            <div className="space-y-3">
-              <Skeleton className="h-12 w-full bg-muted rounded-lg" />
-              <Skeleton className="h-12 w-full bg-muted rounded-lg" />
-              <Skeleton className="h-12 w-full bg-muted rounded-lg" />
-            </div>
-          ) : !recsData?.recommendations?.length ? (
-            <div className="text-center py-8 text-slate-500">
-              <Bot className="w-8 h-8 text-slate-800 mx-auto mb-2" />
-              <p className="text-sm font-medium">No insights yet</p>
-              <p className="text-xs text-muted-foreground mt-1">Upload business reports via Telegram to get AI analysis</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {visibleInsights.map((rec, i) => (
-                <div
-                  key={`${rec.title}-${i}`}
-                  className="flex items-start gap-3 p-3 rounded-lg bg-muted/40 border border-border/70 hover:border-border transition-colors"
-                >
-                  <div className="p-2 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 shrink-0 mt-0.5">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-foreground/85">{rec.title}</p>
-                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{rec.insight}</p>
-                  </div>
+              <CardContent className="p-5">
+                <div className="mb-2 flex items-center gap-3">
+                  <Icon className={`h-5 w-5 ${isSuccess ? 'text-emerald-600' : 'text-amber-600'}`} />
+                  <h4 className="font-bold text-slate-900 dark:text-slate-100">{insight.title}</h4>
                 </div>
-              ))}
-              {insightTotalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-border/70 pt-3">
-                  <p className="text-[11px] font-mono text-muted-foreground">
-                    Page {insightPage} of {insightTotalPages} · {insightTotal} insights
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={insightPage === 1}
-                      onClick={() => setInsightPage((current) => Math.max(1, current - 1))}
-                      className="h-8 rounded-lg border-border bg-card px-2.5 text-xs text-foreground hover:bg-muted/50 disabled:opacity-50 cursor-pointer"
-                    >
-                      <ChevronLeft className="mr-1 h-3.5 w-3.5" />
-                      Prev
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={insightPage === insightTotalPages}
-                      onClick={() => setInsightPage((current) => Math.min(insightTotalPages, current + 1))}
-                      className="h-8 rounded-lg border-border bg-card px-2.5 text-xs text-foreground hover:bg-muted/50 disabled:opacity-50 cursor-pointer"
-                    >
-                      Next
-                      <ChevronRight className="ml-1 h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{insight.insight}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
-      {/* ─── Filters + Table ────────────────────────────────────────── */}
-      <Card className="glass-card glass-card-hover border-border/70 shadow-sm">
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* ─── Finance Records ────────────────────────────────────────── */}
+      <Card className="overflow-hidden rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
+        <CardHeader className="border-b-2 border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-950/40">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <CardTitle className="text-foreground text-lg">Records</CardTitle>
-              <CardDescription className="text-muted-foreground text-xs">
-                {total.toLocaleString()} record{total !== 1 ? 's' : ''} found
-              </CardDescription>
+              <CardTitle className="text-sm font-bold uppercase tracking-wide text-slate-900 dark:text-slate-100">
+                Finance Records
+              </CardTitle>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Select
-                value={channelFilter}
-                onValueChange={(v) => { setChannelFilter(v ?? 'All'); setPage(1); }}
+                value={typeFilter}
+                onValueChange={(value) => { setTypeFilter((value as FinanceType) ?? 'All'); setPage(1); }}
               >
-                <SelectTrigger className="h-8 w-36 text-xs bg-muted border-border text-foreground">
-                  <SelectValue placeholder="Channel" />
+                <SelectTrigger className="h-9 w-32 rounded border-2 border-slate-300 bg-card text-xs font-bold text-slate-800 dark:border-slate-800 dark:text-slate-200">
+                  <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CHANNELS.map((c) => (
-                    <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                  {FINANCE_TYPES.map((type) => (
+                    <SelectItem key={type} value={type} className="text-xs">{type}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Input
-                type="date"
-                className="h-8 w-36 text-xs bg-muted border-border text-foreground"
-                value={dateFrom}
-                onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-                placeholder="From"
-              />
-              <Input
-                type="date"
-                className="h-8 w-36 text-xs bg-muted border-border text-foreground"
-                value={dateTo}
-                onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-                placeholder="To"
-              />
-              {(dateFrom || dateTo || channelFilter !== 'All') && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => { setDateFrom(''); setDateTo(''); setChannelFilter('All'); setPage(1); }}
-                >
-                  Clear
-                </Button>
-              )}
+              <Select
+                value={channelFilter}
+                onValueChange={(value) => { setChannelFilter(value ?? 'All'); setPage(1); }}
+              >
+                <SelectTrigger className="h-9 w-36 rounded border-2 border-slate-300 bg-card text-xs font-bold text-slate-800 dark:border-slate-800 dark:text-slate-200">
+                  <SelectValue placeholder="Channel" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CHANNELS.map((channel) => (
+                    <SelectItem key={channel} value={channel} className="text-xs">{channel}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  {['Date', 'Reporter', 'Channel', 'Budget', 'Calls', 'Appts', 'Leads', 'Sales', 'Closed', 'Pending', 'Conv%', 'Actions'].map((h) => (
-                    <th key={h} className="px-3 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">
-                      {h}
+            <table className="w-full text-left text-sm">
+              <thead className="border-b-2 border-slate-200 bg-card text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:border-slate-800">
+                <tr>
+                  {['Date', 'Description', 'Category', 'Type', 'Amount (MMK)', 'Actions'].map((heading) => (
+                    <th key={heading} className={`px-6 py-4 ${heading === 'Amount (MMK)' ? 'text-right' : heading === 'Actions' ? 'text-center' : 'text-left'}`}>
+                      {heading}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
-                {isLoading
-                  ? [...Array(5)].map((_, i) => (
-                      <tr key={i} className="border-b border-border/70">
-                        {[...Array(12)].map((_, j) => (
-                          <td key={j} className="px-3 py-2.5">
-                            <Skeleton className="h-4 w-16 bg-muted" />
-                          </td>
-                        ))}
-                      </tr>
-                    ))
-                  : records.length === 0
-                  ? (
-                    <tr>
-                      <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
-                        No records found. Send a business report via Telegram or upload the Excel template.
+              <tbody className="divide-y-2 divide-slate-100 dark:divide-slate-900">
+                {isLoading ? (
+                  [...Array(5)].map((_, index) => (
+                    <tr key={index}>
+                      {[...Array(6)].map((__, cellIndex) => (
+                        <td key={cellIndex} className="px-6 py-4">
+                          <Skeleton className="h-4 w-20" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : financeRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-500">
+                      No finance records found for this period.
+                    </td>
+                  </tr>
+                ) : (
+                  financeRows.map((row) => (
+                    <tr key={row.id} className="transition hover:bg-slate-50 dark:hover:bg-slate-950/50">
+                      <td className="whitespace-nowrap px-6 py-4 text-xs font-bold text-slate-600 dark:text-slate-400">
+                        {format(new Date(row.date), 'yyyy-MM-dd')}
+                      </td>
+                      <td className="px-6 py-4 text-xs font-bold text-slate-900 dark:text-slate-100">
+                        {row.description}
+                      </td>
+                      <td className="px-6 py-4 text-xs font-semibold text-slate-500">{row.category}</td>
+                      <td className="px-6 py-4">
+                        <Badge
+                          variant="outline"
+                          className={`rounded border-2 px-2.5 py-1 text-[10px] font-extrabold ${
+                            row.type === 'Income'
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-300'
+                              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-950 dark:bg-red-950/30 dark:text-red-300'
+                          }`}
+                        >
+                          {row.type.toUpperCase()}
+                        </Badge>
+                      </td>
+                      <td className={`whitespace-nowrap px-6 py-4 text-right text-sm font-black ${row.amount >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                        {row.amount >= 0 ? '+' : '-'}{Math.abs(row.amount).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-blue-600 hover:text-blue-700"
+                            onClick={() => openEdit(row.report)}
+                            aria-label="Edit finance source record"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          {deleteConfirmId === row.report.id ? (
+                            <div className="flex gap-1">
+                              <Button
+                                size="icon"
+                                className="h-7 w-7 bg-red-600 text-white hover:bg-red-700"
+                                disabled={deleteMutation.isPending}
+                                onClick={async () => {
+                                  await deleteMutation.mutateAsync(row.report.id);
+                                  setDeleteConfirmId(null);
+                                }}
+                                aria-label="Confirm delete finance source record"
+                              >
+                                {deleteMutation.isPending ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  '✓'
+                                )}
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 text-slate-500"
+                                onClick={() => setDeleteConfirmId(null)}
+                                aria-label="Cancel delete finance source record"
+                              >
+                                ✕
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-red-600 hover:text-red-700"
+                              onClick={() => setDeleteConfirmId(row.report.id)}
+                              aria-label="Delete finance source record"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
-                  )
-                  : records.map((r) => {
-                      const convRate =
-                        r.newLeads && r.newLeads > 0 && r.closedDeals != null
-                          ? `${Math.round((r.closedDeals / r.newLeads) * 100)}%`
-                          : '—';
-                      const chColor = CHANNEL_COLORS[r.marketingChannel ?? ''] ?? '#6B7280';
-                      return (
-                        <tr
-                          key={r.id}
-                          className="border-b border-border/70 hover:bg-muted/60 transition-colors"
-                        >
-                          <td className="px-3 py-2.5 whitespace-nowrap font-medium text-foreground/85">
-                            {format(new Date(r.reportDate), 'MM/dd/yy')}
-                          </td>
-                          <td className="px-3 py-2.5 whitespace-nowrap text-foreground">
-                            {r.reporterName ?? r.sender?.displayName ?? '—'}
-                          </td>
-                          <td className="px-3 py-2.5 whitespace-nowrap">
-                            {r.marketingChannel ? (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] border-0"
-                                style={{ background: `${chColor}22`, color: chColor }}
-                              >
-                                {r.marketingChannel}
-                              </Badge>
-                            ) : <span className="text-muted-foreground">—</span>}
-                          </td>
-                          <td className="px-3 py-2.5 whitespace-nowrap text-foreground">
-                            {r.marketingBudget != null ? `${r.marketingBudget.toLocaleString()} Ks` : '—'}
-                          </td>
-                          <td className="px-3 py-2.5 text-foreground">{fmt(r.callsMade)}</td>
-                          <td className="px-3 py-2.5 whitespace-nowrap text-foreground">
-                            {r.appointmentsKept != null && r.appointmentsMade != null
-                              ? `${r.appointmentsKept}/${r.appointmentsMade}`
-                              : '—'}
-                          </td>
-                          <td className="px-3 py-2.5 text-foreground">{fmt(r.newLeads)}</td>
-                          <td className="px-3 py-2.5 whitespace-nowrap font-medium text-emerald-600 dark:text-emerald-400">
-                            {r.totalSalesAmount != null ? `${r.totalSalesAmount.toLocaleString()} Ks` : '—'}
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className="text-green-600 dark:text-green-400">{fmt(r.closedDeals)}</span>
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className="text-amber-600 dark:text-amber-400">{fmt(r.pendingDeals)}</span>
-                          </td>
-                          <td className="px-3 py-2.5 text-foreground">{convRate}</td>
-                          <td className="px-3 py-2.5">
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                onClick={() => openEdit(r)}
-                              >
-                                <Edit2 className="h-3.5 w-3.5" />
-                              </Button>
-                              {deleteConfirmId === r.id ? (
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="icon"
-                                    className="h-6 w-6 bg-red-600 hover:bg-red-700 text-white"
-                                    disabled={deleteMutation.isPending}
-                                    onClick={async () => {
-                                      await deleteMutation.mutateAsync(r.id);
-                                      setDeleteConfirmId(null);
-                                    }}
-                                  >
-                                    {deleteMutation.isPending ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      '✓'
-                                    )}
-                                  </Button>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-6 w-6 text-muted-foreground"
-                                    onClick={() => setDeleteConfirmId(null)}
-                                  >
-                                    ✕
-                                  </Button>
-                                </div>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 dark:text-red-700"
-                                  onClick={() => setDeleteConfirmId(r.id)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
 
-          {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-border px-4 py-3">
-              <p className="text-xs text-muted-foreground">
-                Page {page} of {totalPages}
-              </p>
+            <div className="flex items-center justify-between border-t-2 border-slate-200 bg-slate-50/60 px-6 py-5 dark:border-slate-800 dark:bg-slate-950/40">
+              <span className="text-xs font-bold text-slate-500">Page {page} of {totalPages}</span>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  size="icon"
-                  className="h-7 w-7 bg-muted border-border text-foreground"
+                  size="sm"
+                  className="h-8 border-2 border-slate-300 bg-card text-xs font-bold"
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
                 >
-                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Prev
                 </Button>
                 <Button
                   variant="outline"
-                  size="icon"
-                  className="h-7 w-7 bg-muted border-border text-foreground"
+                  size="sm"
+                  className="h-8 border-2 border-slate-300 bg-card text-xs font-bold"
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  <ChevronRight className="h-3.5 w-3.5" />
+                  Next
                 </Button>
               </div>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* ─── Charts Row ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
+          <CardHeader>
+            <CardTitle className="border-b-2 border-slate-100 pb-3 text-sm font-bold uppercase tracking-wide text-slate-900 dark:border-slate-800 dark:text-slate-100">
+              Revenue vs Expense Timeline
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {yearStatsLoading ? (
+              <Skeleton className="h-72 w-full" />
+            ) : monthlyTrend.every((item) => item.revenue === 0 && item.expense === 0) ? (
+              <p className="py-12 text-center text-sm text-slate-500">No timeline data yet.</p>
+            ) : (
+              <RevenueExpenseTimeline trendData={monthlyTrend} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
+          <CardHeader>
+            <CardTitle className="border-b-2 border-slate-100 pb-3 text-sm font-bold uppercase tracking-wide text-slate-900 dark:border-slate-800 dark:text-slate-100">
+              Expense Breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {statsLoading ? (
+              <Skeleton className="h-72 w-full" />
+            ) : expenseBreakdown.length === 0 ? (
+              <div className="py-12 text-center text-sm text-slate-500">
+                <p className="font-semibold">No expense breakdown yet.</p>
+                <p className="mt-1 text-xs">Add records with Marketing Budget and Channel to show this chart.</p>
+              </div>
+            ) : (
+              <ExpenseDonutChart items={expenseBreakdown.slice(0, 6)} />
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* ─── Edit Dialog ────────────────────────────────────────────── */}
       {editingRecord && (
@@ -837,5 +914,13 @@ export default function BusinessReportsPage() {
         </ModalPortal>
       )}
     </div>
+  );
+}
+
+export default function BusinessReportsPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-96 w-full rounded-xl" />}>
+      <BusinessReportsPageContent />
+    </Suspense>
   );
 }

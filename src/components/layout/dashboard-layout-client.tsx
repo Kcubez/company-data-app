@@ -12,11 +12,10 @@ import {
   MessageSquare,
   Settings,
   UserCircle,
-  BarChart3,
   Clock,
-  Wrench,
   TrendingUp,
   Database,
+  Wallet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,62 +45,6 @@ type NavGroup = {
   items: NavItem[];
 };
 
-function NavigationLinks({
-  groups,
-  pathname,
-  onNavigate,
-}: {
-  groups: NavGroup[];
-  pathname: string;
-  onNavigate: () => void;
-}) {
-  return (
-    <nav className="flex flex-col gap-4 p-3" aria-label="Primary">
-      {groups.map(group => (
-        <div key={group.label} className="space-y-1">
-          <p className="px-3 text-[10px] font-bold uppercase tracking-wide text-muted-foreground/80">
-            {group.label}
-          </p>
-          <div className="space-y-0.5">
-            {group.items.map(item => {
-              const isActive =
-                pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onNavigate}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={`group/nav relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 ${
-                    isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold'
-                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                  }`}
-                >
-                  {isActive && (
-                    <span
-                      aria-hidden
-                      className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r-full bg-primary"
-                    />
-                  )}
-                  <Icon
-                    className={`h-4 w-4 shrink-0 transition-colors ${
-                      isActive ? 'text-primary' : 'text-muted-foreground group-hover/nav:text-foreground'
-                    }`}
-                    aria-hidden
-                  />
-                  <span className="truncate">{item.title}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </nav>
-  );
-}
-
 export function DashboardLayoutClient({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const router = useRouter();
@@ -119,30 +62,19 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
 
   const navGroups: NavGroup[] = [
     {
-      label: 'Overview',
+      label: 'Intelligence Workspaces',
       items: [
-        { title: 'Founder Dashboard', href: '/dashboard', icon: LayoutDashboard, adminOnly: false },
-      ],
-    },
-    {
-      label: 'Revenue',
-      items: [
-        { title: 'Demand Sheets', href: '/demand-sheets', icon: BarChart3, adminOnly: false },
-        { title: 'Business Reports', href: '/business-reports', icon: TrendingUp, adminOnly: false },
-        { title: 'Customers / CRM', href: '/customers', icon: UserCircle, adminOnly: false },
+        { title: 'Business Overview', href: '/dashboard', icon: LayoutDashboard, adminOnly: false },
+        { title: 'Finance', href: '/finance', icon: Wallet, adminOnly: false },
+        { title: 'Sales & Marketing', href: '/sales-marketing', icon: TrendingUp, adminOnly: false },
+        { title: 'Customer Service', href: '/customer-service', icon: UserCircle, adminOnly: false },
+        { title: 'Projects / Infra', href: '/projects-infra', icon: Clock, adminOnly: false },
       ],
     },
     {
       label: 'Operations',
       items: [
-        { title: 'Project Expiries', href: '/project-expiries', icon: Clock, adminOnly: false },
-        { title: 'Website Updates', href: '/website-updates', icon: Wrench, adminOnly: false },
-      ],
-    },
-    {
-      label: 'Data',
-      items: [
-        { title: 'Messages', href: '/messages', icon: MessageSquare, adminOnly: false },
+        { title: 'Data Feed', href: '/data-feed', icon: MessageSquare, adminOnly: false },
       ],
     },
     {
@@ -163,14 +95,14 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
-      {/* Mobile Header */}
-      <header className="md:hidden flex items-center justify-between gap-2 px-4 h-14 border-b border-border bg-sidebar/80 backdrop-blur-xl sticky top-0 z-40">
+      {/* Mobile Header - MOT Business AI Style */}
+      <header className="md:hidden flex items-center justify-between gap-2 px-4 h-14 border-b-2 border-slate-800 bg-[#020617] text-white backdrop-blur-xl sticky top-0 z-40 shadow-lg">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shadow-sm">
+          <div className="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-500/20">
             <Database className="w-4 h-4" aria-hidden />
           </div>
-          <span className="font-heading font-bold text-base truncate">
-            {process.env.NEXT_PUBLIC_APP_NAME ?? 'Company Data'}
+          <span className="font-bold text-base whitespace-nowrap text-white">
+            {process.env.NEXT_PUBLIC_APP_NAME ?? 'MOT Business AI'}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -182,7 +114,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
                   variant="ghost"
                   size="icon"
                   aria-label="Open navigation"
-                  className="cursor-pointer"
+                  className="cursor-pointer text-white hover:bg-white/10"
                 />
               }
             >
@@ -190,70 +122,131 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
             </SheetTrigger>
             <SheetContent
               side="left"
-              className="bg-sidebar text-sidebar-foreground border-r border-sidebar-border p-0 w-72"
+              className="bg-[#020617] text-white border-r-2 border-slate-800 p-0 w-72"
             >
               <SheetTitle className="sr-only">Primary navigation</SheetTitle>
-              <div className="flex items-center gap-2.5 px-5 h-14 border-b border-sidebar-border">
-                <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center">
+              <div className="flex items-center gap-2.5 px-5 h-14 border-b-2 border-slate-800">
+                <div className="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-500/20">
                   <Database className="w-4 h-4" aria-hidden />
                 </div>
-                <span className="font-heading font-bold truncate">
-                  {process.env.NEXT_PUBLIC_APP_NAME ?? 'Company Data'}
-                </span>
+                <div className="min-w-0">
+                  <h1 className="font-bold text-sm tracking-tight whitespace-nowrap text-white">
+                    {process.env.NEXT_PUBLIC_APP_NAME ?? 'MOT Business AI'}
+                  </h1>
+                  <p className="text-[10px] text-sky-400 font-medium">Enterprise Edition</p>
+                </div>
               </div>
-              <NavigationLinks
-                groups={filteredNavGroups}
-                pathname={pathname}
-                onNavigate={() => setIsMobileMenuOpen(false)}
-              />
+              <div className="p-4">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3 px-3">
+                  Intelligence Workspaces
+                </p>
+                <nav className="space-y-1" aria-label="Primary">
+                  {filteredNavGroups.map(group =>
+                    group.items.map(item => {
+                      const isActive =
+                        pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                      const Icon = item.icon;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          aria-current={isActive ? 'page' : undefined}
+                          className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                            isActive
+                              ? 'bg-white/12 border-l-3 border-l-sky-500 text-slate-100'
+                              : 'text-slate-400 hover:bg-white/8'
+                          }`}
+                        >
+                          <Icon className={`w-5 h-5 ${isActive ? 'text-slate-100' : 'text-slate-400'}`} aria-hidden />
+                          <span>{item.title}</span>
+                        </Link>
+                      );
+                    })
+                  )}
+                </nav>
+              </div>
             </SheetContent>
           </Sheet>
         </div>
       </header>
 
-      {/* Desktop Sidebar */}
+      {/* Desktop Sidebar - MOT Business AI Style */}
       <aside
-        className="hidden md:flex flex-col w-64 bg-sidebar text-sidebar-foreground border-r border-sidebar-border min-h-screen sticky top-0"
+        className="hidden md:flex flex-col w-64 bg-[#020617] text-white min-h-screen sticky top-0 shadow-xl"
         aria-label="Primary"
       >
-        <div className="flex items-center gap-2.5 px-5 h-16 border-b border-sidebar-border">
-          <div className="w-9 h-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shadow-sm">
-            <Database className="w-5 h-5" aria-hidden />
+        {/* Header Section with Branding */}
+        <div className="px-5 py-6 border-b-2 border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+              <Database className="w-5 h-5 text-white" aria-hidden />
+            </div>
+            <div className="min-w-0">
+              <h1 className="font-bold text-base tracking-tight whitespace-nowrap text-white">
+                {process.env.NEXT_PUBLIC_APP_NAME ?? 'MOT Business AI'}
+              </h1>
+              <p className="text-xs text-sky-400 font-medium tracking-wide">Enterprise Edition</p>
+            </div>
           </div>
-          <span className="font-heading font-bold text-base  truncate">
-            {process.env.NEXT_PUBLIC_APP_NAME ?? 'Company Data'}
-          </span>
         </div>
 
-        <div className="flex-1 overflow-y-auto py-2">
-          <NavigationLinks
-            groups={filteredNavGroups}
-            pathname={pathname}
-            onNavigate={() => setIsMobileMenuOpen(false)}
-          />
+        {/* Navigation Section */}
+        <div className="p-4 flex-1 overflow-y-auto">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3 px-3">
+            Intelligence Workspaces
+          </p>
+          <nav className="space-y-1" aria-label="Primary">
+            {filteredNavGroups.map(group =>
+              group.items.map(item => {
+                const isActive =
+                  pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`sidebar-item flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      isActive
+                        ? 'bg-white/12 border-l-3 border-l-sky-500 text-slate-100'
+                        : 'text-slate-400 hover:bg-white/8'
+                    }`}
+                  >
+                    <Icon
+                      className={`w-5 h-5 text-center ${isActive ? 'text-slate-100' : 'text-slate-400'}`}
+                      aria-hidden
+                    />
+                    <span>{item.title}</span>
+                  </Link>
+                );
+              })
+            )}
+          </nav>
         </div>
 
-        <div className="p-3 border-t border-sidebar-border">
+        {/* User Profile Section */}
+        <div className="p-3 border-t-2 border-slate-800">
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
                 <Button
                   variant="ghost"
-                  className="w-full justify-start gap-3 h-auto p-2.5 hover:bg-sidebar-accent rounded-lg cursor-pointer"
+                  className="w-full justify-start gap-3 h-auto p-2.5 hover:bg-white/8 rounded-lg cursor-pointer text-white"
                 />
               }
             >
-              <Avatar className="h-9 w-9 bg-muted text-muted-foreground">
+              <Avatar className="h-9 w-9 bg-sky-900 text-sky-300 border-2 border-sky-700">
                 <AvatarImage src={session?.user?.image ?? ''} alt={session?.user?.name ?? ''} />
-                <AvatarFallback className="bg-primary/15 text-primary text-sm font-semibold">
+                <AvatarFallback className="bg-sky-900 text-sky-300 text-sm font-semibold">
                   {session?.user?.name?.[0]?.toUpperCase() ?? 'U'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col items-start truncate text-left flex-1 min-w-0">
-                <span className="font-medium text-sm text-foreground truncate w-full">
+                <span className="font-medium text-sm text-white truncate w-full">
                   {session?.user?.name}
                 </span>
-                <span className="text-[11px] text-muted-foreground truncate w-full">
+                <span className="text-[11px] text-sky-400 truncate w-full">
                   {session?.user?.email}
                 </span>
               </div>
@@ -268,15 +261,9 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">
                   {session?.user?.email}
                 </p>
-                <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border">
+                <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium bg-sky-50 text-sky-700 border border-sky-200">
                   Role:{' '}
-                  <span
-                    className={
-                      session?.user?.role === 'admin'
-                        ? 'text-primary font-semibold'
-                        : 'text-foreground'
-                    }
-                  >
+                  <span className="font-semibold">
                     {session?.user?.role}
                   </span>
                 </div>
@@ -302,10 +289,10 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Separator className="my-2" />
+          <Separator className="my-2 bg-slate-800" />
 
           <div className="flex items-center justify-between px-1">
-            <span className="text-[10px] uppercase  text-muted-foreground font-semibold">
+            <span className="text-[10px] uppercase text-slate-500 font-semibold">
               Theme
             </span>
             <ThemeToggle />

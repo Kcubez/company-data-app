@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -34,8 +34,9 @@ import {
 } from 'lucide-react';
 import { customersApi, type Customer } from '@/lib/api';
 import { toast } from 'sonner';
+import { useDemandRecords, useDemandRecordStats } from '@/hooks/use-demand-records';
 
-const PAGE_SIZE = 18;
+const PAGE_SIZE = 10;
 
 const statusColors: Record<string, string> = {
   active: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
@@ -72,6 +73,11 @@ export default function CustomersPage() {
     page,
     limit: PAGE_SIZE,
   });
+  const { data: demandStats, isLoading: demandStatsLoading } = useDemandRecordStats();
+  const { data: demandRecordsData, isLoading: demandRecordsLoading } = useDemandRecords({
+    page: 1,
+    limit: 10,
+  });
 
   const deleteCustomer = useMutation({
     mutationFn: (id: string) => customersApi.delete(id),
@@ -97,14 +103,19 @@ export default function CustomersPage() {
   });
 
   const totalPages = data?.totalPages ?? 1;
+  const currentCustomers = data?.customers ?? [];
+  const activeCustomers = currentCustomers.filter((customer) => customer.status === 'active').length;
+  const totalDemandRecords = demandStats?.totalRecords ?? 0;
+  const highPotential = demandStats?.priority.high ?? 0;
+  const demandLeads = demandRecordsData?.records ?? [];
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold  text-foreground font-heading">Customers</h1>
+          <h1 className="text-3xl font-bold  text-foreground font-heading">Customer Service</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Track customer follow-ups and history
+            Customer directory, demand leads, and satisfaction metrics
             {data?.total ? (
               <span className="ml-2 text-xs font-mono text-blue-600 dark:text-blue-400">
                 ({data.total} total)
@@ -158,6 +169,180 @@ export default function CustomersPage() {
             </AlertDialogContent>
           </AlertDialog>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Demands', value: totalDemandRecords, color: 'text-slate-900 dark:text-slate-100', loading: demandStatsLoading },
+          { label: 'High Potential', value: highPotential, color: 'text-blue-600 dark:text-blue-400', loading: demandStatsLoading, accent: 'border-l-4 border-l-blue-500' },
+          { label: 'Total Customers', value: data?.total ?? 0, color: 'text-emerald-600 dark:text-emerald-400', loading: isLoading, accent: 'border-l-4 border-l-emerald-500' },
+          { label: 'Active On Page', value: activeCustomers, color: 'text-slate-900 dark:text-slate-100', loading: isLoading },
+        ].map((item) => (
+          <Card key={item.label} className={`bg-card border-2 border-slate-200 dark:border-slate-800 shadow-sm rounded-xl ${item.accent ?? ''}`}>
+            <CardContent className="p-6 h-32 flex flex-col justify-center">
+              <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">{item.label}</p>
+              {item.loading ? <Skeleton className="h-8 w-16" /> : <h3 className={`text-2xl font-black ${item.color}`}>{item.value.toLocaleString()}</h3>}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-white dark:bg-card border-2 border-red-300 border-l-8 border-l-red-500 rounded-xl shadow-sm">
+          <CardContent className="p-5">
+            <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">Critical Phone Missing Alert</h4>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              High potential leads should include phone numbers before handoff. Keep checking demand lead records for missing contact details.
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="bg-white dark:bg-card border-2 border-emerald-300 border-l-8 border-l-emerald-500 rounded-xl shadow-sm">
+          <CardContent className="p-5">
+            <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">Follow-up Quality</h4>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Use the paginated customer directory below for repeated follow-up, service history, and customer activity review.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-6">
+        <Card className="bg-white dark:bg-card border-2 border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+          <CardHeader className="border-b border-slate-200 dark:border-slate-800 pb-4">
+            <CardTitle className="text-lg font-extrabold text-slate-900 dark:text-slate-100">
+              Purchased Customers Directory
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] text-sm">
+                <thead className="bg-slate-50 dark:bg-slate-900/60 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-5 py-4 text-left font-extrabold">Customer</th>
+                    <th className="px-5 py-4 text-left font-extrabold">Company</th>
+                    <th className="px-5 py-4 text-left font-extrabold">Contact</th>
+                    <th className="px-5 py-4 text-left font-extrabold">Records</th>
+                    <th className="px-5 py-4 text-left font-extrabold">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                  {isLoading ? (
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <tr key={index}>
+                        <td className="px-5 py-4"><Skeleton className="h-4 w-32" /></td>
+                        <td className="px-5 py-4"><Skeleton className="h-4 w-28" /></td>
+                        <td className="px-5 py-4"><Skeleton className="h-4 w-24" /></td>
+                        <td className="px-5 py-4"><Skeleton className="h-4 w-12" /></td>
+                        <td className="px-5 py-4"><Skeleton className="h-5 w-16" /></td>
+                      </tr>
+                    ))
+                  ) : currentCustomers.length > 0 ? (
+                    currentCustomers.map((customer) => (
+                      <tr key={customer.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-900/40">
+                        <td className="px-5 py-4">
+                          <Link href={`/customers/${customer.id}`} className="font-bold text-slate-900 dark:text-slate-100 hover:text-blue-600">
+                            {customer.name}
+                          </Link>
+                        </td>
+                        <td className="px-5 py-4 text-slate-600 dark:text-slate-400">{customer.company || '-'}</td>
+                        <td className="px-5 py-4 font-mono text-xs text-slate-700 dark:text-slate-300">{customer.phone || 'No phone'}</td>
+                        <td className="px-5 py-4 font-bold text-slate-900 dark:text-slate-100">
+                          {customer._count?.demandRecords || 0}
+                        </td>
+                        <td className="px-5 py-4">
+                          <Badge variant="outline" className={`text-xs ${statusColors[customer.status] || statusColors.active}`}>
+                            {customer.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-500">
+                        No purchased customers available yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white dark:bg-card border-2 border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+          <CardHeader className="border-b border-slate-200 dark:border-slate-800 pb-4">
+            <CardTitle className="text-lg font-extrabold text-slate-900 dark:text-slate-100">
+              Demand Leads Data
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead className="bg-slate-50 dark:bg-slate-900/60 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-5 py-4 text-left font-extrabold">Date</th>
+                    <th className="px-5 py-4 text-left font-extrabold">Lead</th>
+                    <th className="px-5 py-4 text-left font-extrabold">Service</th>
+                    <th className="px-5 py-4 text-left font-extrabold">Priority</th>
+                    <th className="px-5 py-4 text-left font-extrabold">Follow-up</th>
+                    <th className="px-5 py-4 text-left font-extrabold">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                  {demandRecordsLoading ? (
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <tr key={index}>
+                        <td className="px-5 py-4"><Skeleton className="h-4 w-20" /></td>
+                        <td className="px-5 py-4"><Skeleton className="h-4 w-32" /></td>
+                        <td className="px-5 py-4"><Skeleton className="h-4 w-28" /></td>
+                        <td className="px-5 py-4"><Skeleton className="h-5 w-16" /></td>
+                        <td className="px-5 py-4"><Skeleton className="h-4 w-20" /></td>
+                        <td className="px-5 py-4"><Skeleton className="h-5 w-16" /></td>
+                      </tr>
+                    ))
+                  ) : demandLeads.length > 0 ? (
+                    demandLeads.map((lead) => (
+                      <tr key={lead.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-900/40">
+                        <td className="px-5 py-4 font-mono text-xs text-slate-600 dark:text-slate-400">
+                          {format(new Date(lead.createdAt), 'yyyy-MM-dd')}
+                        </td>
+                        <td className="px-5 py-4 font-bold text-slate-900 dark:text-slate-100">
+                          {lead.customerId ? (
+                            <Link href={`/customers/${lead.customerId}`} className="hover:text-blue-600">
+                              {lead.customerName || 'Unknown'}
+                            </Link>
+                          ) : (
+                            lead.customerName || 'Unknown'
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-slate-600 dark:text-slate-400">{lead.serviceName || '-'}</td>
+                        <td className="px-5 py-4">
+                          <Badge variant="outline" className="text-xs uppercase">
+                            {lead.priority}
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-4 font-mono text-xs text-slate-600 dark:text-slate-400">
+                          {lead.followUpDate ? format(new Date(lead.followUpDate), 'yyyy-MM-dd') : '-'}
+                        </td>
+                        <td className="px-5 py-4">
+                          <Badge variant="outline" className="text-xs">
+                            {lead.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-10 text-center text-sm text-slate-500">
+                        No demand leads available yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

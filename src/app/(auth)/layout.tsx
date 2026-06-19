@@ -21,7 +21,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             </svg>
           </div>
           <h1 className="text-3xl font-heading font-extrabold  text-foreground">
-            {process.env.NEXT_PUBLIC_APP_NAME ?? 'Company Data'}
+            {process.env.NEXT_PUBLIC_APP_NAME ?? 'MOT Business AI'}
           </h1>
           <p className="text-xs text-muted-foreground mt-1 uppercase font-semibold">
             Secure Admin Portal

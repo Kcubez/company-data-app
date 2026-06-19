@@ -40,7 +40,7 @@ export default async function SetupPage() {
             System Initialization
           </h1>
           <p className="text-muted-foreground">
-            Welcome to the Company Data App. Create the first super-admin account to unlock the
+            Welcome to the Company Business App. Create the first super-admin account to unlock the
             system.
           </p>
         </div>

@@ -217,6 +217,10 @@ Extract and return a JSON object with these fields:
 
 Rules:
 - Extract numbers even if written in Burmese digits.
+- If the message is a finance transaction with type/category/amount:
+  - type "expense" means put the positive amount in marketingBudget and put category in marketingChannel when no channel exists.
+  - type "income" means put the positive amount in totalSalesAmount.
+  - preserve the original description/category details in notes.
 - If a field is not mentioned, set it to null.
 - Return ONLY valid JSON, no explanation.`;
 }
@@ -1263,6 +1267,12 @@ export function parseBusinessReportMessage(text: string): ParsedBusinessReport {
     const n = getNum(keys);
     return n !== null ? Math.round(n) : null;
   };
+  const transactionType = getVal(['type', 'transaction type']);
+  const amount = getNum(['amount (mmk)', 'amount', 'value']);
+  const absoluteAmount = amount != null ? Math.abs(amount) : null;
+  const category = getVal(['category', 'cat']);
+  const isExpense = transactionType ? /expense|cost|spend|out/i.test(transactionType) : false;
+  const isIncome = transactionType ? /income|revenue|sale|in/i.test(transactionType) : false;
 
   const dateStr = getVal(['date', 'report date', 'ရက်']);
   let reportDate = new Date();
@@ -1295,14 +1305,14 @@ export function parseBusinessReportMessage(text: string): ParsedBusinessReport {
   return {
     reportDate,
     reporterName: getVal(['reporter', 'reported by', 'staff', 'name']) || null,
-    marketingBudget: getNum(['marketing budget', 'budget', 'ad spend', 'ad cost', 'ကြော်ငြာ']),
-    marketingChannel: getVal(['channel', 'marketing channel', 'platform', 'source']),
+    marketingBudget: getNum(['marketing budget', 'budget', 'ad spend', 'ad cost', 'ကြော်ငြာ']) ?? (isExpense ? absoluteAmount : null),
+    marketingChannel: getVal(['channel', 'marketing channel', 'platform', 'source']) ?? (isExpense ? category : null),
     callsMade: getInt(['calls made', 'ph call', 'calls', 'call', 'ဖုန်းခေါ်']),
     appointmentsMade: getInt(['appointments made', 'appointment', 'appt made', 'appointments', 'ချိန်းဆိုမှု']),
     appointmentsKept: getInt(['appointments kept', 'appt kept', 'kept', 'ဆုံတွေ့']),
     newLeads: getInt(['new leads', 'potential', 'leads', 'lead', 'lead count', 'customer count', 'ဖောက်သည်']),
     totalDemandCount: getInt(['total demand', 'messages', 'demand count', 'demand', 'total demand count']),
-    totalSalesAmount: getNum(['total income', 'total sales amount', 'total sales', 'sales amount', 'sales', 'revenue', 'ရောင်းရငွေ']),
+    totalSalesAmount: getNum(['total income', 'total sales amount', 'total sales', 'sales amount', 'sales', 'revenue', 'ရောင်းရငွေ']) ?? (isIncome ? absoluteAmount : null),
     closedDeals: getInt(['closed deals', 'closed', 'deals closed', 'deal closed']),
     pendingDeals: getInt(['pending deals', 'need to follow up', 'pending', 'pipeline']),
     notes: getVal(['notes', 'note', 'remarks', 'remark', 'မှတ်ချက်']) || text.trim() || null,

@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { format, differenceInDays } from 'date-fns';
 import { useProjectExpiries } from '@/hooks/use-project-expiries';
-import { ProjectExpiration } from '@/lib/api';
+import { ProjectExpiration, WebsiteUpdate } from '@/lib/api';
+import { useWebsiteUpdates } from '@/hooks/use-website-updates';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -31,10 +33,10 @@ import {
   CheckCircle,
   FileSpreadsheet,
   Bot,
-  RefreshCw,
   Trash2,
   Edit2,
   Loader2,
+  Wrench,
 } from 'lucide-react';
 import { useProjectExpiryRecommendations, useDeleteAllProjectExpiries, useUpdateProjectExpiry } from '@/hooks/use-project-expiries';
 
@@ -43,7 +45,6 @@ export default function ProjectExpiriesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'expired' | 'expiring_soon' | 'active'>('all');
   const [page, setPage] = useState(1);
-  const [insightPage, setInsightPage] = useState(1);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Edit state
   const [editingRecord, setEditingRecord] = useState<ProjectExpiration | null>(null);
@@ -51,8 +52,7 @@ export default function ProjectExpiriesPage() {
   const [editHostingExpiry, setEditHostingExpiry] = useState('');
   const [editRemark, setEditRemark] = useState('');
   const [editPackageName, setEditPackageName] = useState('');
-  const limit = 20;
-  const insightPageSize = 5;
+  const limit = 10;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -68,18 +68,13 @@ export default function ProjectExpiriesPage() {
     search: debouncedSearch || undefined,
     filter: filter === 'all' ? undefined : filter,
   });
+  const { data: websiteData, isLoading: websiteLoading } = useWebsiteUpdates({
+    page: 1,
+    limit: 10,
+  });
 
   const { data: recsData, isLoading: recsLoading, refetch: recsRefetch, isFetching: recsFetching } = useProjectExpiryRecommendations();
   const insightTotal = recsData?.recommendations.length || 0;
-  const insightTotalPages = Math.max(1, Math.ceil(insightTotal / insightPageSize));
-  const visibleInsights = recsData?.recommendations.slice(
-    (insightPage - 1) * insightPageSize,
-    insightPage * insightPageSize,
-  ) || [];
-
-  useEffect(() => {
-    setInsightPage(1);
-  }, [insightTotal]);
 
   const deleteAllMutation = useDeleteAllProjectExpiries();
   const updateMutation = useUpdateProjectExpiry();
@@ -123,6 +118,8 @@ export default function ProjectExpiriesPage() {
 
   const stats = data?.stats || { total: 0, expired: 0, expiringSoon: 0, active: 0 };
   const records = data?.records || [];
+  const websiteStats = websiteData?.stats || { total: 0, upToDate: 0, pendingUpdate: 0, inProgress: 0 };
+  const websiteRecords = websiteData?.records || [];
 
   // Helper to determine status style of an expiration date
   const getExpiryDetails = (dateStr: string | null) => {
@@ -194,6 +191,16 @@ export default function ProjectExpiriesPage() {
       hDetails.urgency === 'urgent'
     );
   }).slice(0, 5); // limit to top 5 alerts to keep it clean
+
+  const getWebsiteStatusBadge = (status: WebsiteUpdate['status']) => {
+    if (status === 'up_to_date') {
+      return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold">Up to date</Badge>;
+    }
+    if (status === 'in_progress') {
+      return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] font-bold">In progress</Badge>;
+    }
+    return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-[10px] font-bold">Pending update</Badge>;
+  };
 
 
 
@@ -282,93 +289,40 @@ export default function ProjectExpiriesPage() {
         </Card>
       </div>
 
-      {/* AI Insights Card */}
-      <Card className="glass-card border-border/70 shadow-sm">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-foreground flex items-center gap-2 font-heading text-base">
-                <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-pulse" />
-                AI Renewal Insights
-              </CardTitle>
-              <CardDescription className="text-muted-foreground text-xs">
-                Gemini AI-powered renewal priority recommendations
-              </CardDescription>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="bg-white dark:bg-card border-2 border-red-300 border-l-8 border-l-red-500 rounded-xl shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">Renewal Risk Summary</h4>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  {stats.expired} expired and {stats.expiringSoon} expiring-soon records need owner review before service interruption.
+                </p>
+              </div>
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0" />
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => recsRefetch()}
-              disabled={recsFetching}
-              className="bg-muted/40 border-border text-foreground hover:bg-card/40 shrink-0 cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${recsFetching ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {recsLoading || recsFetching ? (
-            <div className="space-y-3">
-              <Skeleton className="h-12 w-full bg-muted rounded-lg" />
-              <Skeleton className="h-12 w-full bg-muted rounded-lg" />
-              <Skeleton className="h-12 w-full bg-muted rounded-lg" />
-            </div>
-          ) : recsData?.recommendations && recsData.recommendations.length > 0 ? (
-            <div className="space-y-3">
-              {visibleInsights.map((rec, idx) => (
-                <div
-                  key={`${rec.projectName}-${idx}`}
-                  className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border/60 hover:border-border hover:bg-muted/40 transition-colors cursor-pointer"
-                >
-                  <div className="p-2 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5 animate-pulse">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-foreground/85">{rec.projectName}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{rec.insight}</p>
-                  </div>
-                </div>
-              ))}
-              {insightTotalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-border/70 pt-3">
-                  <p className="text-[11px] font-mono text-muted-foreground">
-                    Page {insightPage} of {insightTotalPages} · {insightTotal} insights
+          </CardContent>
+        </Card>
+        <Card className="bg-white dark:bg-card border-2 border-amber-300 border-l-8 border-l-amber-500 rounded-xl shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">AI Action Summary</h4>
+                {recsLoading || recsFetching ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    {insightTotal > 0
+                      ? `${insightTotal} renewal recommendation${insightTotal === 1 ? '' : 's'} found. Prioritize the highest-risk domains and hosting renewals first.`
+                      : 'No urgent AI renewal actions found for the current project list.'}
                   </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={insightPage === 1}
-                      onClick={() => setInsightPage((current) => Math.max(1, current - 1))}
-                      className="h-8 rounded-lg border-border bg-card px-2.5 text-xs text-foreground hover:bg-muted/50 disabled:opacity-50 cursor-pointer"
-                    >
-                      <ChevronLeft className="mr-1 h-3.5 w-3.5" />
-                      Prev
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={insightPage === insightTotalPages}
-                      onClick={() => setInsightPage((current) => Math.min(insightTotalPages, current + 1))}
-                      className="h-8 rounded-lg border-border bg-card px-2.5 text-xs text-foreground hover:bg-muted/50 disabled:opacity-50 cursor-pointer"
-                    >
-                      Next
-                      <ChevronRight className="ml-1 h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
+              <Bot className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
             </div>
-          ) : (
-            <div className="text-center py-8 text-slate-500">
-              <Bot className="w-8 h-8 text-slate-700 mx-auto mb-2" />
-              <p className="text-xs font-semibold text-slate-500">No urgent renewal actions</p>
-              <p className="text-[10px] text-slate-600 mt-1">All projects are within safe expiry range</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Urgent Warning Alerts Box */}
       {!isLoading && urgentRecords.length > 0 && (
@@ -658,6 +612,86 @@ export default function ProjectExpiriesPage() {
           </div>
         )}
       </Card>
+
+      {/* Website Updates merged into Projects / Infra */}
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center justify-between border-b-2 border-slate-200 pb-4">
+          <div>
+            <h2 className="text-xl font-bold text-foreground uppercase tracking-wide">Website Updates</h2>
+            <p className="text-xs text-muted-foreground mt-1">Maintenance status is grouped under Projects / Infra.</p>
+          </div>
+          <Link href="/website-updates" className="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
+            Open full view <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: 'Total Websites', value: websiteStats.total, className: '' },
+            { label: 'Pending Updates', value: websiteStats.pendingUpdate, className: 'border-l-4 border-l-red-500/60 text-red-600' },
+            { label: 'In Progress', value: websiteStats.inProgress, className: 'border-l-4 border-l-amber-500/60 text-amber-600' },
+            { label: 'Up to Date', value: websiteStats.upToDate, className: 'border-l-4 border-l-emerald-500/60 text-emerald-600' },
+          ].map((item) => (
+            <Card key={item.label} className={`bg-card border-2 border-slate-200 shadow-sm ${item.className}`}>
+              <CardContent className="p-5">
+                <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">{item.label}</p>
+                {websiteLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-black">{item.value}</div>}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <Card className="overflow-hidden rounded-xl border-2 border-slate-200 bg-card shadow-sm">
+          <div className="bg-slate-50 p-5 border-b-2 border-slate-200 flex items-center gap-2">
+            <Wrench className="h-4 w-4 text-sky-600" />
+            <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">Website Maintenance Records</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-white text-slate-500 uppercase text-[10px] tracking-wider font-extrabold border-b-2 border-slate-200">
+                <tr>
+                  <th className="px-6 py-4">Website</th>
+                  <th className="px-6 py-4">Business Type</th>
+                  <th className="px-6 py-4">Package</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Remark</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y-2 divide-slate-100">
+                {websiteLoading ? (
+                  Array.from({ length: 5 }).map((_, index) => (
+                    <tr key={index}>
+                      {Array.from({ length: 5 }).map((__, cellIndex) => (
+                        <td key={cellIndex} className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                      ))}
+                    </tr>
+                  ))
+                ) : websiteRecords.length ? (
+                  websiteRecords.map((record) => (
+                    <tr key={record.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4 font-bold text-slate-800">
+                        {record.url ? (
+                          <a href={record.url.startsWith('http') ? record.url : `https://${record.url}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline">
+                            {record.name} <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : record.name}
+                      </td>
+                      <td className="px-6 py-4 text-slate-600 font-semibold">{record.businessType || '—'}</td>
+                      <td className="px-6 py-4 text-slate-600 font-semibold">{record.packageName || '—'}</td>
+                      <td className="px-6 py-4">{getWebsiteStatusBadge(record.status)}</td>
+                      <td className="px-6 py-4 text-slate-500 max-w-xs truncate">{record.remark || '—'}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-slate-500">No website update records yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
 
       {/* Edit Project Expiry Dialog */}
       {editingRecord && (

@@ -28,6 +28,14 @@ import {
   UserCheck,
   CalendarCheck,
   Zap,
+  AlertTriangle,
+  Award,
+  DollarSign,
+  Phone,
+  Server,
+  BarChart3,
+  LineChart,
+  Trophy,
 } from 'lucide-react';
 
 type WeeklyActivity = {
@@ -168,60 +176,441 @@ function useActionRecommendations(period: PeriodMode, month: number, year: numbe
   });
 }
 
-function FinancialTrendChart({ data }: { data?: FinancialTrend[] }) {
-  if (!data || data.length === 0) return null;
 
-  const maxValue = Math.max(
-    ...data.flatMap(item => [item.revenue, item.expense, Math.abs(item.profit)]),
-    1,
-  );
+function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30 }: { data: any[], valueKey: string, labelKey: string, totalDays?: number }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  if (!data || data.length === 0) {
+    return <div className="text-sm text-muted-foreground py-10 text-center">No data available</div>;
+  }
+
+  const paddingLeft = 70;
+  const paddingRight = 20;
+  const paddingTop = 20;
+  const paddingBottom = 30;
+  const chartWidth = 700;
+  const chartHeight = 220;
+  const plotWidth = chartWidth - paddingLeft - paddingRight;
+  const plotHeight = chartHeight - paddingTop - paddingBottom;
+
+  const values = data.map(d => Number(d[valueKey]) || 0);
+  const maxValue = Math.max(...values, 1);
+  const roundedMax = Math.ceil(maxValue * 1.15);
+
+  // Include data up to current day (include today even if 0)
+  // Only trim trailing zeros if there are future-month padding entries
+  let lastActiveIndex = data.length - 1;
+  while (lastActiveIndex > 0 && Number(data[lastActiveIndex][valueKey]) === 0) {
+    lastActiveIndex--;
+  }
+  // Include one more after last non-zero to show today if it's zero
+  const cutoff = Math.min(lastActiveIndex + 1, data.length - 1);
+  const validData = data.slice(0, cutoff + 1);
+
+  const getDay = (label: string) => {
+    if (!label) return 1;
+    if (!isNaN(Number(label))) return Number(label);
+    const parts = label.split('-');
+    if (parts.length >= 3) return Number(parts[2]);
+    return 1;
+  };
+
+  const points = validData.map((d) => {
+    const day = getDay(d[labelKey]);
+    const x = paddingLeft + ((day - 1) / (totalDays - 1 || 1)) * plotWidth;
+    const y = paddingTop + plotHeight - ((Number(d[valueKey]) || 0) / roundedMax) * plotHeight;
+    return { x, y, value: d[valueKey], label: d[labelKey], day };
+  });
+
+  // Create smooth SVG path (cubic bezier for tension like Chart.js tension:0.3)
+  let pathD = '';
+  let areaD = '';
+  if (points.length > 0) {
+    pathD = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      const cp1x = prev.x + (curr.x - prev.x) * 0.3;
+      const cp2x = curr.x - (curr.x - prev.x) * 0.3;
+      pathD += ` C ${cp1x} ${prev.y}, ${cp2x} ${curr.y}, ${curr.x} ${curr.y}`;
+    }
+    areaD = `${pathD} L ${points[points.length - 1].x} ${paddingTop + plotHeight} L ${points[0].x} ${paddingTop + plotHeight} Z`;
+  }
+
+  // Y axis ticks (6 ticks)
+  const yTicks = Array.from({ length: 6 }).map((_, i) => {
+    const val = (roundedMax / 5) * i;
+    const y = paddingTop + plotHeight - (val / roundedMax) * plotHeight;
+    return { val, y };
+  });
+
+  // X axis ticks — 1..totalDays
+  const xTicks = Array.from({ length: totalDays }).map((_, i) => {
+    const day = i + 1;
+    const x = paddingLeft + ((day - 1) / (totalDays - 1 || 1)) * plotWidth;
+    return { x, label: String(day) };
+  });
 
   return (
-    <div className="overflow-x-auto pb-1">
-      <div className="min-w-180">
-        <div className="flex items-end gap-2 h-56 px-1">
-          {data.map(item => {
-            const revenueHeight = Math.max((item.revenue / maxValue) * 100, item.revenue > 0 ? 6 : 2);
-            const expenseHeight = Math.max((item.expense / maxValue) * 100, item.expense > 0 ? 6 : 2);
-            const profitHeight = Math.max((Math.abs(item.profit) / maxValue) * 100, item.profit !== 0 ? 6 : 2);
-            const profitColor = item.profit >= 0 ? 'bg-emerald-500' : 'bg-red-500';
+    <div className="relative w-full mt-4 select-none">
+      <svg viewBox={`0 0 ${chartWidth} ${chartHeight + 20}`} className="w-full overflow-visible" style={{ display: 'block' }} preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.12" />
+            <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.05" />
+          </linearGradient>
+        </defs>
 
-            return (
-              <div key={item.label} className="flex-1 min-w-5 flex flex-col items-center gap-2 h-full">
-                <div className="flex flex-1 items-end gap-1 w-full">
-                  <div
-                    className="flex-1 rounded-t bg-emerald-500/80 transition-colors duration-200 hover:bg-emerald-500"
-                    style={{ height: `${revenueHeight}%` }}
-                    title={`Revenue: ${item.revenue.toLocaleString()} Ks`}
-                  />
-                  <div
-                    className="flex-1 rounded-t bg-rose-500/75 transition-colors duration-200 hover:bg-rose-500"
-                    style={{ height: `${expenseHeight}%` }}
-                    title={`Expense: ${item.expense.toLocaleString()} Ks`}
-                  />
-                  <div
-                    className={`flex-1 rounded-t ${profitColor} transition-opacity duration-200 hover:opacity-80`}
-                    style={{ height: `${profitHeight}%` }}
-                    title={`Profit/Loss: ${item.profit.toLocaleString()} Ks`}
-                  />
-                </div>
-                <span className="text-[10px] font-semibold text-muted-foreground font-mono">{item.label}</span>
-              </div>
-            );
-          })}
+        {/* Horizontal Grid lines */}
+        {yTicks.map((tick, i) => (
+          <g key={`y-${i}`}>
+            <line
+              x1={paddingLeft}
+              y1={tick.y}
+              x2={chartWidth - paddingRight}
+              y2={tick.y}
+              stroke="#f1f5f9"
+              className="dark:stroke-slate-800"
+              strokeWidth="1"
+            />
+            <text
+              x={paddingLeft - 8}
+              y={tick.y + 4}
+              textAnchor="end"
+              className="fill-slate-500 dark:fill-slate-400"
+              style={{ fontSize: '9px', fontFamily: "'Inter', sans-serif" }}
+            >
+              {tick.val.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </text>
+          </g>
+        ))}
+
+        {/* Vertical Grid lines */}
+        {xTicks.map((tick, i) => (
+          <line
+            key={`x-${i}`}
+            x1={tick.x}
+            y1={paddingTop}
+            x2={tick.x}
+            y2={paddingTop + plotHeight}
+            stroke="#f1f5f9"
+            className="dark:stroke-slate-800"
+            strokeWidth="1"
+          />
+        ))}
+
+        {/* X axis line */}
+        <line
+          x1={paddingLeft}
+          y1={paddingTop + plotHeight}
+          x2={chartWidth - paddingRight}
+          y2={paddingTop + plotHeight}
+          stroke="#f1f5f9"
+          className="dark:stroke-slate-700"
+          strokeWidth="1"
+        />
+
+        {/* X labels */}
+        {xTicks.map((tick, i) => (
+          <text
+            key={i}
+            x={tick.x}
+            y={paddingTop + plotHeight + 15}
+            textAnchor="middle"
+            className="fill-slate-500 dark:fill-slate-400"
+            style={{ fontSize: '9px', fontFamily: "'Inter', sans-serif" }}
+          >
+            {tick.label}
+          </text>
+        ))}
+
+        {/* X axis title */}
+        <text
+          x={paddingLeft + plotWidth / 2}
+          y={paddingTop + plotHeight + 30}
+          textAnchor="middle"
+          className="fill-slate-500 dark:fill-slate-400"
+          style={{ fontSize: '10px', fontWeight: 700, fontFamily: "'Inter', sans-serif" }}
+        >
+          Day of Month
+        </text>
+
+        {/* Area fill */}
+        {areaD && <path d={areaD} fill="url(#lineGrad)" />}
+
+        {/* The line */}
+        {pathD && (
+          <path
+            d={pathD}
+            fill="none"
+            stroke="#0ea5e9"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {/* Data points */}
+        {points.map((p, idx) => (
+          <g key={idx}>
+            {hoveredIndex === idx && (
+              <>
+                <line x1={p.x} y1={paddingTop} x2={p.x} y2={paddingTop + plotHeight} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
+                <circle cx={p.x} cy={p.y} r="5" fill="#0ea5e9" stroke="white" strokeWidth="2" />
+              </>
+            )}
+            <circle cx={p.x} cy={p.y} r="3" fill="#0ea5e9" stroke="white" strokeWidth="1.5" />
+          </g>
+        ))}
+
+        {/* Hover detection zones */}
+        {points.map((p, idx) => {
+          const zoneWidth = plotWidth / (totalDays - 1 || 1);
+          return (
+            <rect key={idx} x={p.x - zoneWidth / 2} y={paddingTop} width={zoneWidth} height={plotHeight}
+              fill="transparent" className="cursor-pointer"
+              onMouseEnter={() => setHoveredIndex(idx)} onMouseLeave={() => setHoveredIndex(null)}
+            />
+          );
+        })}
+      </svg>
+
+      {/* Chart.js-style tooltip */}
+      {hoveredIndex !== null && points[hoveredIndex] && (
+        <div
+          className="absolute pointer-events-none z-20"
+          style={{
+            left: `${((points[hoveredIndex].x - paddingLeft) / plotWidth) * 100}%`,
+            top: `${Math.max(2, ((points[hoveredIndex].y - paddingTop) / plotHeight) * 65)}%`,
+            transform: 'translateX(-50%)',
+            marginLeft: `${paddingLeft / chartWidth * 100}%`,
+          }}
+        >
+          <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3 py-2 rounded-md shadow-lg backdrop-blur-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
+            <div className="font-bold mb-1">{points[hoveredIndex].day}</div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-sky-400 inline-block" />
+              <span className="text-slate-300">Daily Income (MMK):</span>
+              <span className="font-semibold">{Number(points[hoveredIndex].value).toLocaleString()}</span>
+            </div>
+          </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500" />Revenue</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-rose-500" />Expense</span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-sm bg-emerald-500" />
-            <span className="h-2 w-2 rounded-sm bg-red-500" />
-            Profit/Loss
-          </span>
+      )}
+    </div>
+  );
+}
+
+function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30 }: { data: any[], valueKey: string, labelKey: string, totalDays?: number }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  if (!data || data.length === 0) {
+    return <div className="text-sm text-muted-foreground py-10 text-center">No data available</div>;
+  }
+
+  const paddingLeft = 50;
+  const paddingRight = 20;
+  const paddingTop = 20;
+  const paddingBottom = 30;
+  const chartWidth = 700;
+  const chartHeight = 220;
+  const plotWidth = chartWidth - paddingLeft - paddingRight;
+  const plotHeight = chartHeight - paddingTop - paddingBottom;
+
+  const values = data.map(d => Number(d[valueKey]) || 0);
+  const maxValue = Math.max(...values, 1);
+  const roundedMax = Math.ceil(maxValue * 1.15);
+
+  const getDay = (label: string) => {
+    if (!label) return 1;
+    if (!isNaN(Number(label))) return Number(label);
+    const parts = label.split('-');
+    if (parts.length >= 3) return Number(parts[2]);
+    return 1;
+  };
+
+  // Slot width per day (uniform across all 30 days)
+  const slotWidth = plotWidth / totalDays;
+  const barWidth = Math.max(6, slotWidth * 0.65);
+
+  const points = data.map((d) => {
+    const day = getDay(d[labelKey]);
+    // Center bar within its day slot
+    const slotX = paddingLeft + (day - 1) * slotWidth;
+    const x = slotX + (slotWidth - barWidth) / 2;
+    const heightVal = ((Number(d[valueKey]) || 0) / roundedMax) * plotHeight;
+    const y = paddingTop + plotHeight - heightVal;
+    return { x, y, heightVal, value: d[valueKey], label: d[labelKey], day, slotX };
+  });
+
+  // Y axis ticks (6 ticks)
+  const yTicks = Array.from({ length: 6 }).map((_, i) => {
+    const val = (roundedMax / 5) * i;
+    const y = paddingTop + plotHeight - (val / roundedMax) * plotHeight;
+    return { val, y };
+  });
+
+  // X axis ticks — 1..totalDays
+  const xTicks = Array.from({ length: totalDays }).map((_, i) => {
+    const day = i + 1;
+    const cx = paddingLeft + (day - 1) * slotWidth + slotWidth / 2;
+    return { x: cx, label: String(day) };
+  });
+
+  return (
+    <div className="relative w-full mt-4 select-none">
+      <svg viewBox={`0 0 ${chartWidth} ${chartHeight + 20}`} className="w-full overflow-visible" style={{ display: 'block' }} preserveAspectRatio="xMidYMid meet">
+        {/* Horizontal Grid lines */}
+        {yTicks.map((tick, i) => (
+          <g key={`y-${i}`}>
+            <line x1={paddingLeft} y1={tick.y} x2={chartWidth - paddingRight} y2={tick.y}
+              stroke="#f1f5f9" className="dark:stroke-slate-800" strokeWidth="1" />
+            <text x={paddingLeft - 8} y={tick.y + 4} textAnchor="end"
+              className="fill-slate-500 dark:fill-slate-400"
+              style={{ fontSize: '9px', fontFamily: "'Inter', sans-serif" }}>
+              {tick.val.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </text>
+          </g>
+        ))}
+
+        {/* Vertical Grid lines */}
+        {xTicks.map((tick, i) => (
+          <line key={`x-${i}`} x1={tick.x} y1={paddingTop} x2={tick.x} y2={paddingTop + plotHeight}
+            stroke="#f1f5f9" className="dark:stroke-slate-800" strokeWidth="1" />
+        ))}
+
+        {/* X axis line */}
+        <line x1={paddingLeft} y1={paddingTop + plotHeight} x2={chartWidth - paddingRight} y2={paddingTop + plotHeight}
+          stroke="#f1f5f9" className="dark:stroke-slate-700" strokeWidth="1" />
+
+        {/* X labels */}
+        {xTicks.map((tick, i) => (
+          <text key={i} x={tick.x} y={paddingTop + plotHeight + 15} textAnchor="middle"
+            className="fill-slate-500 dark:fill-slate-400"
+            style={{ fontSize: '9px', fontFamily: "'Inter', sans-serif" }}>
+            {tick.label}
+          </text>
+        ))}
+
+        {/* X axis title */}
+        <text x={paddingLeft + plotWidth / 2} y={paddingTop + plotHeight + 30} textAnchor="middle"
+          className="fill-slate-500 dark:fill-slate-400"
+          style={{ fontSize: '10px', fontWeight: 700, fontFamily: "'Inter', sans-serif" }}>
+          Day of Month
+        </text>
+
+        {/* Bars — top-only rounded corners */}
+        {points.map((p, idx) => {
+          const h = Math.max(1, p.heightVal);
+          const r = Math.min(4, barWidth / 2, h);
+          // Path: start bottom-left, go up, round top-left, across top, round top-right, go down, close
+          const barPath = `M ${p.x} ${p.y + h} V ${p.y + r} Q ${p.x} ${p.y} ${p.x + r} ${p.y} H ${p.x + barWidth - r} Q ${p.x + barWidth} ${p.y} ${p.x + barWidth} ${p.y + r} V ${p.y + h} Z`;
+          return (
+            <path key={idx} d={barPath} fill="#8b5cf6"
+              opacity={hoveredIndex === idx ? 1 : 0.85}
+            />
+          );
+        })}
+
+        {/* Hover detection zones */}
+        {points.map((p, idx) => (
+          <rect key={`hz-${idx}`} x={p.slotX} y={paddingTop} width={slotWidth} height={plotHeight}
+            fill="transparent" className="cursor-pointer"
+            onMouseEnter={() => setHoveredIndex(idx)} onMouseLeave={() => setHoveredIndex(null)}
+          />
+        ))}
+      </svg>
+
+      {/* Chart.js-style tooltip */}
+      {hoveredIndex !== null && points[hoveredIndex] && (
+        <div
+          className="absolute pointer-events-none z-20"
+          style={{
+            left: `${((points[hoveredIndex].x + barWidth / 2 - paddingLeft) / plotWidth) * 100}%`,
+            top: `${Math.max(2, ((points[hoveredIndex].y - paddingTop) / plotHeight) * 60)}%`,
+            transform: 'translateX(-50%)',
+            marginLeft: `${paddingLeft / chartWidth * 100}%`,
+          }}
+        >
+          <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3 py-2 rounded-md shadow-lg backdrop-blur-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
+            <div className="font-bold mb-1">{points[hoveredIndex].day}</div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block" />
+              <span className="text-slate-300">Daily Demands:</span>
+              <span className="font-semibold">{Number(points[hoveredIndex].value).toLocaleString()}</span>
+            </div>
+          </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function ProgressCard({
+  title, statusLabel, statusColor,
+  value, maxValue, valueSuffix,
+  expectedLabel, expectedValue,
+  actualPct, timePct, barColor, icon: Icon
+}: {
+  title: string; statusLabel: string; statusColor: string;
+  value: number | string; maxValue?: number | string; valueSuffix?: string;
+  expectedLabel: string; expectedValue: number | string;
+  actualPct: number; timePct: number; barColor: string; icon: any;
+}) {
+  return (
+    <div className="bg-card dark:bg-slate-900/40 border-2 border-slate-300 dark:border-slate-800 p-6 flex flex-col justify-between h-48 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-slate-400 dark:hover:border-slate-700 transition-all duration-200">
+      <div className="flex justify-between items-center">
+        <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{title}</h4>
+        <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500">
+          {Icon && <Icon className="w-4 h-4" />}
+        </div>
+      </div>
+      
+      <div className="flex items-baseline gap-2">
+        <h3 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight font-sans">{value}</h3>
+        {maxValue && (
+          <p className="text-sm text-slate-400 dark:text-slate-500 font-medium font-sans">
+            / {maxValue}{valueSuffix ? ` ${valueSuffix}` : ''}
+          </p>
+        )}
+      </div>
+
+      <div className="relative w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700 shadow-inner overflow-visible">
+        {/* Pacing Marker */}
+        <div 
+          className="absolute top-[-4px] bottom-[-4px] w-[2px] bg-slate-800 dark:bg-slate-200 z-10 rounded" 
+          style={{ left: `${Math.min(100, Math.max(0, timePct))}%` }}
+        />
+        {/* Actual progress */}
+        <div 
+          className="absolute top-0 left-0 h-full rounded-full transition-all duration-500 ease-out"
+          style={{ 
+            width: `${Math.min(100, Math.max(0, actualPct))}%`,
+            backgroundColor: barColor
+          }}
+        />
+      </div>
+
+      <div className="flex justify-between items-center text-xs font-bold">
+        <span className="text-slate-500 dark:text-slate-400 font-sans">
+          {expectedLabel}: {expectedValue}
+        </span>
+        <span style={{ color: statusColor }}>{statusLabel}</span>
       </div>
     </div>
   );
+}
+
+function getPacingStatus(actual: number, expected: number, isInverse = false): { label: string; color: string; barColor: string } {
+  if (isInverse) {
+    // For expenses: lower is better
+    if (actual <= expected) return { label: 'On Track', color: '#16a34a', barColor: '#22c55e' };
+    if (actual <= expected * 1.15) return { label: 'Near Target', color: '#d97706', barColor: '#f59e0b' };
+    return { label: 'Below Target', color: '#dc2626', barColor: '#ef4444' };
+  }
+  // For revenue, demand, appointments, customers: higher is better
+  if (actual >= expected) return { label: 'On Track', color: '#16a34a', barColor: '#22c55e' };
+  if (actual >= expected * 0.85) return { label: 'Near Target', color: '#d97706', barColor: '#f59e0b' };
+  return { label: 'Below Target', color: '#dc2626', barColor: '#ef4444' };
 }
 
 function DashboardPageContent() {
@@ -249,7 +638,6 @@ function DashboardPageContent() {
   }, [period, month, year]);
 
   const user = session?.user;
-  const isAdmin = stats?.isAdmin ?? false;
   const years = Array.from({ length: 5 }).map((_, index) => now.getFullYear() - 2 + index);
 
   const updatePeriod = (next: { period?: PeriodMode; month?: number; year?: number }) => {
@@ -288,116 +676,69 @@ function DashboardPageContent() {
     }
   }, [searchParams, pathname, router, period, month, year]);
 
-  const heroCards = [
-    {
-      title: 'Total Revenue',
-      value: stats?.totalAmountSold ?? 0,
-      suffix: ' Ks',
-      icon: Banknote,
-      color: 'text-emerald-600 dark:text-emerald-400',
-      bg: 'bg-emerald-500/10',
-      border: 'border-emerald-500/20',
-    },
-    {
-      title: 'Total Expense',
-      value: stats?.totalCost ?? 0,
-      suffix: ' Ks',
-      icon: Wallet,
-      color: 'text-rose-600 dark:text-rose-400',
-      bg: 'bg-rose-500/10',
-      border: 'border-rose-500/20',
-    },
-    {
-      title: 'Profit / Loss',
-      value: stats?.profitLoss ?? 0,
-      suffix: ' Ks',
-      icon: TrendingUp,
-      color:
-        (stats?.profitLoss ?? 0) >= 0
-          ? 'text-emerald-600 dark:text-emerald-400'
-          : 'text-red-600 dark:text-red-400',
-      bg: (stats?.profitLoss ?? 0) >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10',
-      border: (stats?.profitLoss ?? 0) >= 0 ? 'border-emerald-500/20' : 'border-red-500/20',
-    },
-    {
-      title: 'ROI',
-      value: stats?.roi ?? null,
-      suffix: '%',
-      icon: Activity,
-      color:
-        (stats?.roi ?? 0) >= 0
-          ? 'text-blue-600 dark:text-blue-400'
-          : 'text-red-600 dark:text-red-400',
-      bg: (stats?.roi ?? 0) >= 0 ? 'bg-blue-500/10' : 'bg-red-500/10',
-      border: (stats?.roi ?? 0) >= 0 ? 'border-blue-500/20' : 'border-red-500/20',
-    },
-  ];
+  const timePct = stats?.elapsedRatio ? stats.elapsedRatio * 100 : 0;
+  
+  // Calculations for cards
+  const revenueTarget = stats?.targetSalesAmount || 3000000;
+  const revenueValue = stats?.totalAmountSold || 0;
+  const revenueActualPct = (revenueValue / revenueTarget) * 100;
+  const revenueExpected = stats?.expectedRevenue || 0;
+  const revenuePacing = getPacingStatus(revenueValue, revenueExpected);
 
-  // Admin gets extra cards
-  if (isAdmin) {
-    heroCards.push(
-      {
-        title: 'Account Users',
-        value: stats?.adminStats?.totalUsers ?? 0,
-        suffix: '',
-        icon: Users,
-        color: 'text-cyan-600 dark:text-cyan-400',
-        bg: 'bg-cyan-500/10',
-        border: 'border-cyan-500/20',
-      },
-      {
-        title: 'Active Sessions',
-        value: stats?.adminStats?.activeSessions ?? 0,
-        suffix: '',
-        icon: Activity,
-        color: 'text-rose-600 dark:text-rose-400',
-        bg: 'bg-rose-500/10',
-        border: 'border-rose-500/20',
-      }
-    );
-  }
+  const expenseTarget = revenueTarget * 0.5;
+  const expenseValue = stats?.totalCost || 0;
+  const expenseActualPct = (expenseValue / expenseTarget) * 100;
+  const expenseExpected = revenueExpected * 0.5;
+  const expensePacing = getPacingStatus(expenseValue, expenseExpected, true);
 
-  const hasFinancialStats = !isLoading && !!stats;
-  const isProfitable = (stats?.profitLoss ?? 0) >= 0;
-  const roiValue = stats?.roi ?? null;
-  const periodText = period === 'year' ? 'ဒီနှစ်' : 'ဒီလ';
-  const periodTitle = period === 'year' ? 'This Year' : 'This Month';
-  const dayLabel = period === 'year' ? 'Year Day' : 'Day';
-  const moneySummary = stats
-    ? stats.totalCost > 0
-      ? isProfitable
-        ? `${periodText}မှာ ${stats.profitLoss.toLocaleString()} Ks အမြတ်ရှိပြီး ROI ${
-            roiValue !== null ? roiValue.toLocaleString(undefined, { maximumFractionDigits: 1 }) : 'N/A'
-          }% ရနေပါတယ်။`
-        : `${periodText}မှာ ${Math.abs(stats.profitLoss).toLocaleString()} Ks အရှုံးရှိနေပါတယ်။ Expense နဲ့ sales conversion ကို ပြန်စစ်သင့်ပါတယ်။`
-      : stats.totalAmountSold > 0
-        ? `${periodText}မှာ revenue ${stats.totalAmountSold.toLocaleString()} Ks ရှိပြီး expense data မရှိသေးပါ။ ROI တွက်ရန် marketing budget ထည့်ရန်လိုပါတယ်။`
-        : `${periodText}အတွက် revenue နဲ့ expense data မရှိသေးပါ။ Business report data ဝင်လာမှ financial health ပြမယ်။`
-    : '';
-  const targetSummary = stats?.alerts?.length
-    ? `Action needed: ${periodText} ${stats.elapsedDays}/${stats.totalDaysInPeriod} ရက် ကုန်ဆုံးပြီ။ ${stats.alerts.length} ကဏ္ဍ target pace နောက်ကျနေပါတယ်။`
-    : 'Target pace ကောင်းနေပါတယ်။ ဒီနေ့ follow-up workflow ကိုသာ ဆက်ထိန်းပါ။';
+  const profitTarget = revenueTarget * 0.5;
+  const profitValue = stats?.profitLoss || 0;
+  const profitActualPct = profitTarget > 0 ? (profitValue / profitTarget) * 100 : 0;
+  const profitExpected = revenueExpected * 0.5;
+  const profitMarginPercent = revenueValue > 0 ? (profitValue / revenueValue) * 100 : 0;
+  const targetMarginPct = 50;
+  const profitPacing = getPacingStatus(profitMarginPercent, targetMarginPct);
+
+  const demandTarget = stats?.targetDemandCount || 10000;
+  const demandValue = stats?.actualDemandCount || 0;
+  const demandActualPct = (demandValue / demandTarget) * 100;
+  const demandExpected = stats?.expectedDemandCount || 0;
+  const demandPacing = getPacingStatus(demandValue, demandExpected);
+
+  const apptTarget = stats?.targetAppointments || 500;
+  const apptValue = stats?.actualAppointments || 0;
+  const apptActualPct = (apptValue / apptTarget) * 100;
+  const apptExpected = stats?.expectedAppointments || 0;
+  const apptPacing = getPacingStatus(apptValue, apptExpected);
+
+  const customerTarget = 80;
+  const customerValue = stats?.totalCustomers || 0;
+  const customerActualPct = (customerValue / customerTarget) * 100;
+  const customerExpected = Math.round(customerTarget * (stats?.elapsedRatio || 0));
+  const customerPacing = getPacingStatus(customerValue, customerExpected);
+
+  const elapsedDaysText = stats?.elapsedDays ? ` (Day ${stats.elapsedDays})` : '';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold  text-foreground mb-1 font-heading">
-            MOT Business Overview
+          <h1 className="text-3xl font-bold text-foreground mb-1 font-heading">
+            Business Overview
           </h1>
           <p className="text-muted-foreground text-sm">
-            Important revenue, expense, profit/loss, and ROI signals for {user?.name}.
+            Daily intelligence feed and target pacing.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           <Select value={localPeriod} onValueChange={(value) => {
             if (value === 'month' || value === 'year') {
               setLocalPeriod(value);
               updatePeriod({ period: value });
             }
           }}>
-            <SelectTrigger className="h-9 w-28 rounded-lg border-border bg-card text-xs">
+            <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
               {localPeriod === 'year' ? 'Yearly' : 'Monthly'}
             </SelectTrigger>
             <SelectContent>
@@ -412,7 +753,7 @@ function DashboardPageContent() {
                 updatePeriod({ month: Number(value) });
               }
             }}>
-              <SelectTrigger className="h-9 w-32 rounded-lg border-border bg-card text-xs">
+              <SelectTrigger className="h-9 w-32 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
                 {new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long' })}
               </SelectTrigger>
               <SelectContent>
@@ -430,7 +771,7 @@ function DashboardPageContent() {
               updatePeriod({ year: Number(value) });
             }
           }}>
-            <SelectTrigger className="h-9 w-24 rounded-lg border-border bg-card text-xs">
+            <SelectTrigger className="h-9 w-24 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
               {localYear}
             </SelectTrigger>
             <SelectContent>
@@ -444,583 +785,236 @@ function DashboardPageContent() {
         </div>
       </div>
 
-      {/* Business Health Summary */}
-      <Card className={`glass-card border-border/70 shadow-sm overflow-hidden ${stats?.alerts?.length ? 'border-red-500/25' : ''}`}>
-        <CardHeader className="pb-4 border-b border-border/60">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-1">
-              <CardTitle className="text-base font-bold text-foreground font-heading">
-                Business Health {periodTitle}
-              </CardTitle>
-              <CardDescription className="text-xs text-muted-foreground">
-                Revenue, expense, profit/loss, ROI, and target action in one view
-              </CardDescription>
-            </div>
-            {hasFinancialStats ? (
-              <Badge
-                className={`w-fit border text-xs font-bold ${
-                  stats.alerts.length
-                    ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
-                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                }`}
-              >
-                {stats.alerts.length ? 'Action Needed' : 'On Track'}
-              </Badge>
-            ) : null}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-5 pt-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {heroCards.slice(0, 4).map((stat, i) => (
-              <div key={i} className={`rounded-lg border ${stat.border} ${stat.bg} p-3.5 space-y-3`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold uppercase text-muted-foreground font-heading">
-                    {stat.title}
-                  </span>
-                  <div className="rounded-md bg-background/70 p-1.5">
-                    <stat.icon className={`h-4 w-4 ${stat.color}`} />
-                  </div>
-                </div>
-                {isLoading ? (
-                  <Skeleton className="h-8 w-24 bg-muted" />
-                ) : (
-                  <div className={`text-2xl font-bold font-mono leading-none ${stat.color}`}>
-                    {typeof stat.value === 'number'
-                      ? stat.value.toLocaleString(undefined, {
-                          maximumFractionDigits: stat.title === 'ROI' ? 1 : 0,
-                        })
-                      : 'N/A'}
-                    {typeof stat.value === 'number' && stat.suffix && (
-                      <span className="ml-1 text-xs font-sans text-muted-foreground">{stat.suffix}</span>
-                    )}
-                  </div>
-                )}
-                {stat.title === 'Total Revenue' && stats?.targetSalesAmount ? (
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] text-muted-foreground font-semibold font-mono">
-                      <span>{dayLabel}: {stats.elapsedDays}/{stats.totalDaysInPeriod}</span>
-                      <span>Goal: {Math.round((stats.totalAmountSold / stats.targetSalesAmount) * 100)}%</span>
-                    </div>
-                    <div className="h-1 w-full bg-background/70 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full"
-                        style={{ width: `${Math.min(100, (stats.totalAmountSold / stats.targetSalesAmount) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ))}
+      {/* 1. Universal Reports KPI Grid */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-48 w-full bg-card/60 rounded-xl" />)}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Row 1 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <ProgressCard
+              title="Revenue"
+              statusLabel={revenuePacing.label}
+              statusColor={revenuePacing.color}
+              value={revenueValue.toLocaleString()}
+              maxValue={revenueTarget.toLocaleString()}
+              valueSuffix="MMK"
+              expectedLabel={`Expected${elapsedDaysText}`}
+              expectedValue={Math.round(revenueExpected).toLocaleString()}
+              actualPct={revenueActualPct}
+              timePct={timePct}
+              barColor={revenuePacing.barColor}
+              icon={Banknote}
+            />
+            <ProgressCard
+              title="Expense Limit"
+              statusLabel={expensePacing.label}
+              statusColor={expensePacing.color}
+              value={expenseValue.toLocaleString()}
+              maxValue={expenseTarget.toLocaleString()}
+              valueSuffix="MMK"
+              expectedLabel={`Expected${elapsedDaysText}`}
+              expectedValue={Math.round(expenseExpected).toLocaleString()}
+              actualPct={expenseActualPct}
+              timePct={timePct}
+              barColor={expensePacing.barColor}
+              icon={Wallet}
+            />
+            <ProgressCard
+              title="Profit Margin"
+              statusLabel={profitPacing.label}
+              statusColor={profitPacing.color}
+              value={(revenueValue > 0 ? (profitValue / revenueValue) * 100 : 0).toFixed(1) + "%"}
+              maxValue="Margin"
+              expectedLabel="Target Margin"
+              expectedValue="50%"
+              actualPct={((revenueValue > 0 ? (profitValue / revenueValue) * 100 : 0) / 50) * 100}
+              timePct={timePct}
+              barColor={profitPacing.barColor}
+              icon={TrendingUp}
+            />
           </div>
 
-          {isLoading ? (
-            <Skeleton className="h-24 w-full bg-muted rounded-lg" />
-          ) : (
-            <div
-              className={`rounded-lg border p-4 ${
-                stats?.alerts?.length
-                  ? 'border-red-500/20 bg-red-500/5'
-                  : 'border-emerald-500/20 bg-emerald-500/5'
-              }`}
-            >
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`rounded-md p-1.5 ${
-                        stats?.alerts?.length ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'
-                      }`}
-                    >
-                      {stats?.alerts?.length ? <ArrowRight className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                    </div>
-                    <p
-                      className={`text-sm font-bold font-heading ${
-                        stats?.alerts?.length ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
-                      }`}
-                    >
-                      {stats?.alerts?.length ? 'Target Alert' : 'Healthy Pace'}
-                    </p>
-                  </div>
-                  <p className="text-sm text-foreground leading-relaxed">{moneySummary}</p>
-                  <p className="text-xs text-muted-foreground">{targetSummary}</p>
-                </div>
-              </div>
-
-              {stats?.alerts && stats.alerts.length > 0 ? (
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  {stats.alerts.map((alert) => {
-                    const actualVal = alert.actual;
-                    const targetVal = alert.target;
-                    const expectedVal = alert.expected;
-                    const remaining = targetVal - actualVal;
-                    const achievedPct = targetVal > 0 ? Math.round((actualVal / targetVal) * 100) : 0;
-                    const expectedPct = targetVal > 0 ? Math.round((expectedVal / targetVal) * 100) : 0;
-                    const isRevenue = alert.type === 'revenue_target';
-                    const metricLabel = {
-                      revenue_target: 'Revenue',
-                      demand_target: 'Lead / Messages',
-                      appointments_target: 'Appointment',
-                    }[alert.type];
-                    const actionLabel = {
-                      revenue_target: 'High-potential lead တွေကို အရင်ဦးစားပေး ဆက်သွယ်ပါ',
-                      demand_target: 'Marketing ကို တိုးမြှင့်ပြီး Lead ပိုရှာပါ',
-                      appointments_target: 'Pending lead တွေကို ဖုန်းဆက်ပြီး Appointment ချိန်းပါ',
-                    }[alert.type];
-                    const formatShort = (val: number) => {
-                      if (!isRevenue) return val.toLocaleString();
-                      if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M Ks`;
-                      if (val >= 1_000) return `${(val / 1_000).toFixed(0)}K Ks`;
-                      return `${val.toLocaleString()} Ks`;
-                    };
-
-                    return (
-                      <div key={alert.type} className="rounded-lg border border-red-500/15 bg-card/45 p-3 space-y-2.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-bold uppercase text-muted-foreground font-heading">{metricLabel}</p>
-                          <span className="text-[10px] font-semibold text-red-600 dark:text-red-400">
-                            {achievedPct}% done
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-lg font-bold font-mono text-red-600 dark:text-red-400">
-                            {formatShort(actualVal)}
-                          </span>
-                          <span className="ml-1 text-[11px] text-muted-foreground font-mono">
-                            / {formatShort(targetVal)}
-                          </span>
-                        </div>
-                        <div className="space-y-1.5">
-                          <div className="relative h-2 w-full bg-muted rounded-full overflow-hidden">
-                            <div
-                              className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10 rounded-full"
-                              style={{ left: `${Math.min(expectedPct, 99)}%` }}
-                            />
-                            <div
-                              className="h-full bg-linear-to-r from-red-600 to-red-400 rounded-full transition-all duration-500"
-                              style={{ width: `${Math.min(achievedPct, 100)}%` }}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] font-semibold">
-                            <span className="text-amber-500">Today should be {formatShort(Math.round(expectedVal))}</span>
-                            <span className="text-muted-foreground">{formatShort(Math.round(remaining))} left</span>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-1.5 border-t border-red-500/10 pt-2">
-                          <ArrowRight className="w-3 h-3 shrink-0 mt-0.5 text-red-500" />
-                          <p className="text-[11px] text-red-600 dark:text-red-400 leading-relaxed font-medium">
-                            {actionLabel}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* AI Action Recommendations — only shown when there are active alerts */}
-      {!isLoading && stats?.alerts && stats.alerts.length > 0 && (
-      <Card className="glass-card border-border/70 shadow-sm">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-md bg-violet-500/10">
-              <Lightbulb className="h-4.5 w-4.5 text-violet-600 dark:text-violet-400" />
-            </div>
-            <div>
-              <CardTitle className="text-sm font-bold text-foreground font-heading">
-                AI အကြံပြုချက်များ
-              </CardTitle>
-              <CardDescription className="text-xs text-muted-foreground">
-                Marketing · Sales · Appointment
-              </CardDescription>
-            </div>
+          {/* Row 2 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <ProgressCard
+              title="Demand (Messages)"
+              statusLabel={demandPacing.label}
+              statusColor={demandPacing.color}
+              value={demandValue.toLocaleString()}
+              maxValue={demandTarget.toLocaleString()}
+              expectedLabel={`Expected${elapsedDaysText}`}
+              expectedValue={Math.round(demandExpected).toLocaleString()}
+              actualPct={demandActualPct}
+              timePct={timePct}
+              barColor={demandPacing.barColor}
+              icon={Megaphone}
+            />
+            <ProgressCard
+              title="Appointments"
+              statusLabel={apptPacing.label}
+              statusColor={apptPacing.color}
+              value={apptValue.toLocaleString()}
+              maxValue={apptTarget.toLocaleString()}
+              expectedLabel={`Expected${elapsedDaysText}`}
+              expectedValue={Math.round(apptExpected).toLocaleString()}
+              actualPct={apptActualPct}
+              timePct={timePct}
+              barColor={apptPacing.barColor}
+              icon={CalendarCheck}
+            />
+            <ProgressCard
+              title="New Customers"
+              statusLabel={customerPacing.label}
+              statusColor={customerPacing.color}
+              value={customerValue.toLocaleString()}
+              maxValue={`${customerTarget} Target`}
+              expectedLabel={`Expected${elapsedDaysText}`}
+              expectedValue={customerExpected.toLocaleString()}
+              actualPct={customerActualPct}
+              timePct={timePct}
+              barColor={customerPacing.barColor}
+              icon={Users}
+            />
           </div>
-        </CardHeader>
-        <CardContent>
-          {recsLoading ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-24 w-full bg-muted rounded-lg" />
-              ))}
-            </div>
-          ) : (recsData?.recommendations?.length ?? 0) === 0 ? (
-            <div className="flex items-center justify-center py-6 text-muted-foreground text-xs gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-              အရေးပေါ် ဆောင်ရွက်ရန် မရှိပါ — လုပ်ငန်းလည်ပတ်မှု ကောင်းနေသည်။
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {recsData!.recommendations.map((rec, i) => {
-                const areaConfig = {
-                  marketing: { icon: Megaphone, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', label: 'Marketing' },
-                  sales: { icon: Zap, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', label: 'Sales' },
-                  appointments: { icon: CalendarCheck, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', label: 'Appointments' },
-                  general: { icon: UserCheck, color: 'text-slate-600 dark:text-slate-400', bg: 'bg-slate-500/10', border: 'border-slate-500/20', label: 'General' },
-                };
-                const severityBadge = {
-                  urgent: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
-                  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
-                  info: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
-                };
-                const severityLabel = {
-                  urgent: 'အရေးပေါ်',
-                  warning: 'သတိပြု',
-                  info: 'သတင်းအချက်',
-                };
-                const cfg = areaConfig[rec.area] ?? areaConfig.general;
-                const Icon = cfg.icon;
-                return (
-                  <div
-                    key={i}
-                    className={`p-3.5 rounded-lg border ${cfg.border} bg-card/40 space-y-2.5 hover:bg-card/60 transition-colors duration-200`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className={`p-1.5 rounded-md ${cfg.bg}`}>
-                          <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
-                        </div>
-                        <span className={`text-[10px] font-bold uppercase tracking-wider ${cfg.color} font-heading`}>
-                          {cfg.label}
-                        </span>
-                      </div>
-                      <Badge className={`text-[9px] font-bold border px-1.5 py-0 ${severityBadge[rec.severity]}`}>
-                        {severityLabel[rec.severity]}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-foreground leading-snug mb-1">{rec.title}</p>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed">{rec.insight}</p>
-                    </div>
-                    <div className={`text-[11px] font-medium ${cfg.color} flex items-start gap-1.5 pt-1 border-t ${cfg.border}`}>
-                      <ArrowRight className="w-3 h-3 shrink-0 mt-0.5" />
-                      <span>{rec.action}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      )}
-
-      {/* Admin extra cards */}
-      {isAdmin && heroCards.length > 4 && (
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-          {heroCards.slice(4).map((stat, i) => (
-            <Card
-              key={i}
-              className="glass-card glass-card-hover border-border/85 shadow-sm cursor-pointer"
-            >
-              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">{stat.title}</CardTitle>
-                <div className={`p-2 rounded-lg ${stat.bg}`}>
-                  <stat.icon className={`h-4.5 w-4.5 ${stat.color}`} />
-                </div>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <Skeleton className="h-8 w-20 bg-muted" />
-                ) : (
-                  <div className="text-2xl font-bold text-foreground font-mono ">
-                    {typeof stat.value === 'number' ? stat.value.toLocaleString() : 'N/A'}
-                    {typeof stat.value === 'number' && stat.suffix && (
-                      <span className="text-xs font-sans text-muted-foreground ml-0.5">{stat.suffix}</span>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
         </div>
       )}
 
-      {/* Founder Analytics */}
-      <div className="grid gap-6 grid-cols-1 md:grid-cols-6">
+      {/* AI Global Overview Alerts (Relocated under KPI Cards Grid) */}
+      {!recsLoading && recsData?.recommendations && recsData.recommendations.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+          {recsData.recommendations.slice(0, 4).map((rec, i) => {
+             const isAlert = rec.severity === 'urgent' || rec.severity === 'warning';
+             const borderColor = isAlert ? 'border-red-300 dark:border-red-900/60' : 'border-emerald-300 dark:border-emerald-900/60';
+             const borderLeftColor = isAlert ? 'border-l-red-500' : 'border-l-emerald-500';
+             const iconColor = isAlert ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400';
+             const Icon = isAlert ? AlertTriangle : Award;
 
-        {/* Financial Trend */}
-        <Card className="glass-card md:col-span-4 border-border/70 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-foreground flex items-center gap-2 font-heading text-base">
-              <TrendingUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              Financial Trend
-            </CardTitle>
-            <CardDescription className="text-muted-foreground text-xs">
-              Revenue, expense, and profit/loss across the selected {period}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-64 w-full bg-card/60 rounded-lg" />
-            ) : (
-              <FinancialTrendChart data={stats?.financialTrend} />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Sales Funnel */}
-        <Card className="glass-card md:col-span-2 border-border/70 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-foreground flex items-center gap-2 font-heading text-base">
-              <Activity className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-              Sales Funnel
-            </CardTitle>
-            <CardDescription className="text-muted-foreground text-xs">
-              Lead to appointment to closed deal conversion
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-14 w-full bg-card/60 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {[
-                  { label: 'Leads', value: stats?.salesFunnel.leads ?? 0, color: 'bg-blue-500' },
-                  { label: 'Appointments', value: stats?.salesFunnel.appointments ?? 0, color: 'bg-cyan-500' },
-                  { label: 'Closed Deals', value: stats?.salesFunnel.closedDeals ?? 0, color: 'bg-emerald-500' },
-                ].map((stage) => {
-                  const maxValue = Math.max(stats?.salesFunnel.leads ?? 0, 1);
-                  const width = Math.max((stage.value / maxValue) * 100, stage.value > 0 ? 8 : 2);
-                  return (
-                    <div key={stage.label} className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-foreground">{stage.label}</span>
-                        <span className="text-sm font-bold font-mono text-foreground">{stage.value.toLocaleString()}</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-muted overflow-hidden">
-                        <div className={`h-full rounded-full ${stage.color}`} style={{ width: `${width}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-                <div className="grid grid-cols-2 gap-2 pt-2">
-                  <div className="rounded-lg border border-border/70 bg-card/45 p-3">
-                    <p className="text-[10px] uppercase text-muted-foreground font-semibold">Lead to Appt</p>
-                    <p className="mt-1 text-lg font-bold font-mono text-cyan-600 dark:text-cyan-400">
-                      {stats?.salesFunnel.appointmentConversionRate !== null && stats?.salesFunnel.appointmentConversionRate !== undefined
-                        ? `${stats.salesFunnel.appointmentConversionRate.toFixed(1)}%`
-                        : 'N/A'}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border/70 bg-card/45 p-3">
-                    <p className="text-[10px] uppercase text-muted-foreground font-semibold">Appt to Close</p>
-                    <p className="mt-1 text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                      {stats?.salesFunnel.closeConversionRate !== null && stats?.salesFunnel.closeConversionRate !== undefined
-                        ? `${stats.salesFunnel.closeConversionRate.toFixed(1)}%`
-                        : 'N/A'}
-                    </p>
-                  </div>
+             return (
+              <div key={i} className={`bg-card border-2 ${borderColor} border-l-8 ${borderLeftColor} rounded-xl p-5 flex flex-col justify-center shadow-sm`}>
+                <div className="flex items-center gap-3 mb-2">
+                  <Icon className={`${iconColor} w-5 h-5 flex-shrink-0`} />
+                  <h4 className="font-bold text-foreground text-sm">{rec.title}</h4>
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Top Services by Revenue */}
-        <Card className="glass-card md:col-span-3 border-border/70 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-foreground flex items-center gap-2 font-heading text-base">
-              <Banknote className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              Top Services by Revenue
-            </CardTitle>
-            <CardDescription className="text-muted-foreground text-xs">
-              Services contributing the most revenue in this {period}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-3.5">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full bg-card/60 rounded-lg" />
-                ))}
-              </div>
-            ) : stats?.topProducts && stats.topProducts.length > 0 ? (
-              <div className="space-y-3.5">
-                {stats.topProducts.map((product, i) => {
-                  const maxRevenue = Math.max(stats.topProducts[0].revenue, 1);
-                  const barWidth = Math.max((product.revenue / maxRevenue) * 100, product.revenue > 0 ? 8 : 2);
-                  return (
-                    <div key={i} className="space-y-1.5 cursor-pointer group">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-foreground truncate">
-                          {product.product}
-                        </span>
-                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground font-mono shrink-0">
-                          <span>{product.revenue.toLocaleString()} Ks</span>
-                        </div>
-                      </div>
-                      <div className="h-2 rounded-full bg-card/65 border border-border/60 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-linear-to-r from-emerald-600 to-emerald-400 transition-all duration-500 "
-                          style={{ width: `${barWidth}%` }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground font-mono">
-                        {product.count} records · {product.totalQty.toLocaleString()} qty
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-10">
-                <Banknote className="w-8 h-8 text-slate-700 mx-auto mb-2" />
-                <p className="text-xs text-muted-foreground font-semibold">No service revenue tracked yet</p>
-                <p className="text-[10px] text-slate-600 mt-1 max-w-50 mx-auto leading-relaxed">
-                  Service revenue appears when reports include service amounts
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Business Risks */}
-        <Card className="glass-card md:col-span-3 border-border/70 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-foreground flex items-center gap-2 font-heading text-base">
-              <Lightbulb className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-              Business Risks
-            </CardTitle>
-            <CardDescription className="text-muted-foreground text-xs">
-              Compact risk signals that can affect revenue conversion
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="grid grid-cols-2 gap-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-24 w-full bg-card/60 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  {
-                    label: 'Overdue Follow-ups',
-                    value: stats?.risks.overdueFollowUps ?? 0,
-                    tone: (stats?.risks.overdueFollowUps ?? 0) > 0 ? 'red' : 'emerald',
-                    note: 'Lead leakage risk',
-                  },
-                  {
-                    label: 'High-priority Leads',
-                    value: stats?.risks.highPriorityLeads ?? 0,
-                    tone: (stats?.risks.highPriorityLeads ?? 0) > 0 ? 'amber' : 'emerald',
-                    note: 'Close-first pipeline',
-                  },
-                  {
-                    label: 'Missing Phone',
-                    value: stats?.risks.missingPhoneLeads ?? 0,
-                    tone: (stats?.risks.missingPhoneLeads ?? 0) > 0 ? 'red' : 'emerald',
-                    note: 'Cannot contact',
-                  },
-                  {
-                    label: 'Due Today',
-                    value: stats?.risks.dueTodayFollowUps ?? 0,
-                    tone: (stats?.risks.dueTodayFollowUps ?? 0) > 0 ? 'blue' : 'emerald',
-                    note: 'Today workload',
-                  },
-                ].map((risk) => {
-                  const toneClass = {
-                    red: 'border-red-500/20 bg-red-500/5 text-red-600 dark:text-red-400',
-                    amber: 'border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400',
-                    blue: 'border-blue-500/20 bg-blue-500/5 text-blue-600 dark:text-blue-400',
-                    emerald: 'border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400',
-                  }[risk.tone];
-
-                  return (
-                    <div key={risk.label} className={`rounded-lg border p-3.5 ${toneClass}`}>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{risk.label}</p>
-                      <p className="mt-2 text-2xl font-bold font-mono">{risk.value.toLocaleString()}</p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">{risk.note}</p>
-                    </div>
-                  );
-                })}
-                <div className="col-span-2 rounded-lg border border-border/70 bg-card/45 p-3">
-                  <p className="text-xs font-semibold text-foreground">Founder read</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-                    Overdue follow-ups and missing phone numbers are conversion blockers. High-priority leads are the fastest path to near-term revenue.
-                  </p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent Bot Activity moved lower as system context */}
-        <Card className="glass-card md:col-span-6 border-border/70 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-foreground flex items-center gap-2 font-heading text-base">
-              <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              Data Ingestion Status
-            </CardTitle>
-            <CardDescription className="text-muted-foreground text-xs">
-              System health context for the business data feeding this dashboard
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-16 w-full bg-card/60 rounded-lg" />
-            ) : (
-              <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-                <div
-                  className={`flex items-center gap-3.5 p-4 rounded-lg border transition-colors duration-200 ${
-                    stats?.botActive
-                      ? 'bg-emerald-500/5 border-emerald-500/20'
-                      : 'bg-card/40 border-border/70'
-                  }`}
-                >
-                  <div className="relative flex h-3 w-3 shrink-0">
-                    {stats?.botActive ? (
-                      <>
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                      </>
-                    ) : (
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-slate-500"></span>
-                    )}
-                  </div>
-                  <div>
-                    <p className={`text-xs font-semibold tracking-wide ${stats?.botActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
-                      {stats?.botActive ? 'TELEGRAM BOT ONLINE' : 'BOT DISCONNECTED'}
-                    </p>
-                    <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                      {stats?.botActive
-                        ? `${stats.todayMessages} messages today · ${stats.weekMessages} this week`
-                        : 'Configure your bot token in Settings'}
-                    </p>
-                  </div>
-                </div>
-                {stats?.recentMessages && stats.recentMessages.length > 0 ? (
-                  <div className="space-y-2">
-                    {stats.recentMessages.slice(0, 4).map(msg => (
-                      <div key={msg.id} className="flex items-center gap-2.5 text-xs py-1.5 hover:bg-muted/40 transition-colors duration-150 rounded px-2">
-                        <span className="text-blue-600 dark:text-blue-400 font-semibold shrink-0">
-                          {msg.senderName}
-                        </span>
-                        <span className="text-muted-foreground truncate flex-1 leading-none">{msg.text}</span>
-                        <span className="text-slate-600 text-[10px] shrink-0 font-mono">
-                          {formatDistanceToNow(new Date(msg.receivedAt), { addSuffix: true })}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center py-6 text-slate-600 text-xs">
-                    No recent messages logged
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{rec.insight}</p>
+                {rec.action && (
+                  <div className="mt-3">
+                    <button className={`${
+                      isAlert
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : 'bg-background border-2 border-slate-300 dark:border-slate-700 text-foreground hover:bg-muted'
+                    } px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm`}>
+                      {rec.action}
+                    </button>
                   </div>
                 )}
               </div>
-            )}
-          </CardContent>
-        </Card>
+             );
+          })}
+        </div>
+      )}
 
+      {/* 2. Middle Section: Top Services & Live Intelligence */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Left: Top Services Table */}
+        <div className="bg-card border-2 border-slate-300 dark:border-slate-800 p-6 flex flex-col h-full rounded-xl shadow-sm hover:shadow-lg transition-all duration-200">
+            <div className="flex items-center gap-3 mb-4 border-b-2 border-border pb-3">
+                <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                    <Trophy className="text-amber-500 w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-foreground">Top Performing Services</h3>
+            </div>
+            <div className="overflow-x-auto flex-1">
+                <table className="w-full text-left text-sm">
+                    <thead>
+                        <tr className="text-muted-foreground uppercase text-[10px] font-extrabold tracking-wider border-b-2 border-border">
+                            <th className="pb-3 pt-2">Service Package</th>
+                            <th className="pb-3 pt-2 text-center">Qty</th>
+                            <th className="pb-3 pt-2 text-right">Income (MMK)</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y-2 divide-border/50">
+                        {isLoading ? (
+                          <tr><td colSpan={3} className="py-4"><Skeleton className="h-10 w-full" /></td></tr>
+                        ) : (stats?.topProducts && stats.topProducts.length > 0) ? (
+                          stats.topProducts.map((p, i) => (
+                            <tr key={i} className="hover:bg-muted/30 transition">
+                                <td className="py-3.5 font-bold text-foreground">{p.product}</td>
+                                <td className="py-3.5 text-center text-muted-foreground font-bold">{p.totalQty}</td>
+                                <td className="py-3.5 text-right font-extrabold text-sky-600 dark:text-sky-400">{p.revenue.toLocaleString()}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr><td colSpan={3} className="py-6 text-center text-muted-foreground text-xs font-bold">No service data</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {/* Right: Live Intelligence Feed */}
+        <div className="p-6 flex-1 flex flex-col bg-slate-800 dark:bg-slate-900 border-none text-slate-300 shadow-xl relative overflow-hidden rounded-xl">
+            <h3 className="text-sm font-bold text-white mb-6 flex items-center gap-3 border-b border-slate-700 pb-4 z-10 relative">
+                <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span> Live Intelligence Data
+            </h3>
+            <div className="space-y-5 text-sm z-10 relative">
+                {/* Finance */}
+                <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-900/50 border border-emerald-500/30 text-emerald-400 flex items-center justify-center flex-shrink-0"><DollarSign className="w-4 h-4" /></div>
+                    <p className="mt-1"><span className="font-bold text-white">Finance:</span> Highest grossing service <span className="text-sky-300 font-medium">{stats?.topProducts?.[0]?.product || 'N/A'}</span> generated {stats?.topProducts?.[0]?.revenue.toLocaleString() || 0} MMK this period.</p>
+                </div>
+                {/* Sales */}
+                <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 rounded-lg bg-sky-900/50 border border-sky-500/30 text-sky-400 flex items-center justify-center flex-shrink-0"><Phone className="w-4 h-4" /></div>
+                    <p className="mt-1"><span className="font-bold text-white">Sales:</span> {stats?.dueTodayRecords && stats.dueTodayRecords.length > 0 ? `Appointment follow-up scheduled for High Potential lead ` : `Sales Funnel active with `} <span className="text-sky-300 font-medium">{stats?.dueTodayRecords && stats.dueTodayRecords.length > 0 ? stats.dueTodayRecords[0].customerName || 'client' : `${stats?.salesFunnel?.appointments || 0} total appointments`}</span> today.</p>
+                </div>
+                {/* Customers (Replacing Projects) */}
+                <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 rounded-lg bg-amber-900/50 border border-amber-500/30 text-amber-400 flex items-center justify-center flex-shrink-0"><Server className="w-4 h-4" /></div>
+                    <p className="mt-1"><span className="font-bold text-white">Customers:</span> Total active customer base reached <span className="text-sky-300 font-medium">{stats?.totalCustomers || 0}</span>. {stats?.missingPhoneLeads || 0} leads missing contact info.</p>
+                </div>
+                {/* System */}
+                <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 rounded-lg bg-blue-900/50 border border-blue-500/30 text-blue-400 flex items-center justify-center flex-shrink-0"><Bot className="w-4 h-4" /></div>
+                    <p className="mt-1"><span className="font-bold text-white">System:</span> Telegram Bot is <span className="text-sky-300 font-medium">{stats?.botActive ? 'Online' : 'Offline'}</span>. Processed {stats?.todayMessages || 0} messages and {stats?.todayDemandRecords || 0} demands today.</p>
+                </div>
+            </div>
+        </div>
+      </div>
+
+      {/* 3. Business Insights Charts */}
+      <div className="space-y-6">
+        <div className="bg-card border-2 border-slate-300 dark:border-slate-800 p-6 rounded-xl shadow-sm">
+            <div className="flex justify-between items-center mb-6 border-b-2 border-border pb-4">
+                <h3 className="font-bold text-foreground text-sm tracking-wide uppercase flex items-center gap-2">
+                  <LineChart className="w-4 h-4 text-sky-500" />
+                  Daily Income Trend (MMK)
+                </h3>
+                <span className="text-xs font-bold text-muted-foreground border-2 border-border bg-muted px-3 py-1 rounded-full">
+                  {period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
+                </span>
+            </div>
+            {isLoading ? <Skeleton className="h-[280px] w-full bg-card/60 rounded-xl" /> : (
+              <PremiumLineChart data={stats?.financialTrend || []} valueKey="revenue" labelKey="label" totalDays={stats?.totalDaysInPeriod || 30} />
+            )}
+        </div>
+        
+        <div className="bg-card border-2 border-slate-300 dark:border-slate-800 p-6 rounded-xl shadow-sm">
+            <div className="flex justify-between items-center mb-6 border-b-2 border-border pb-4">
+                <h3 className="font-bold text-foreground text-sm tracking-wide uppercase flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-sky-500" />
+                  Daily Demands Received
+                </h3>
+                <span className="text-xs font-bold text-muted-foreground border-2 border-border bg-muted px-3 py-1 rounded-full">
+                  {period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
+                </span>
+            </div>
+            {isLoading ? <Skeleton className="h-[280px] w-full bg-card/60 rounded-xl" /> : (
+              <PremiumBarChart data={stats?.weeklyActivity || []} valueKey="count" labelKey="date" totalDays={stats?.totalDaysInPeriod || 30} />
+            )}
+        </div>
       </div>
     </div>
   );

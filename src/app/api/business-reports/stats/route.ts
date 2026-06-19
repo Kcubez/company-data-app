@@ -2,6 +2,29 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
+function extractLabeledValue(text: string | null | undefined, labels: string[]) {
+  if (!text) return null;
+  for (const label of labels) {
+    const pattern = new RegExp(`${label}\\s*[:=-]\\s*([^\\n,]+)`, "i");
+    const match = text.match(pattern);
+    if (match?.[1]?.trim()) return match[1].trim();
+  }
+  return null;
+}
+
+function inferExpenseCategory(notes: string | null, channel: string | null) {
+  const explicit = extractLabeledValue(notes, ["category", "cat"]);
+  if (explicit) return explicit;
+
+  const haystack = `${notes ?? ""} ${channel ?? ""}`.toLowerCase();
+  if (/payroll|salary|wage/.test(haystack)) return "Payroll";
+  if (/software|saas|subscription|license/.test(haystack)) return "Software";
+  if (/aws|hosting|server|infra|infrastructure|domain|cloud/.test(haystack)) return "Infrastructure";
+  if (/office|admin|supplies|utility|rent/.test(haystack)) return "Admin";
+  if (/facebook|google|ads|ad spend|marketing|campaign|ကြော်ငြာ/.test(haystack)) return "Marketing";
+  return channel || "Marketing";
+}
+
 // GET /api/business-reports/stats
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -19,7 +42,7 @@ export async function GET(req: NextRequest) {
     if (dateTo) where.reportDate.lte = new Date(dateTo + "T23:59:59.999Z");
   }
 
-  const [totals, channelGroups, recentRecords] = await Promise.all([
+  const [totals, expenseRecords, recentRecords] = await Promise.all([
     prisma.businessReport.aggregate({
       where,
       _sum: {
@@ -35,17 +58,16 @@ export async function GET(req: NextRequest) {
       },
       _count: { _all: true },
     }),
-    prisma.businessReport.groupBy({
-      by: ["marketingChannel"],
-      where: { ...where, marketingChannel: { not: null } },
-      _sum: {
+    prisma.businessReport.findMany({
+      where,
+      select: {
         marketingBudget: true,
         totalSalesAmount: true,
+        marketingChannel: true,
         newLeads: true,
         closedDeals: true,
+        notes: true,
       },
-      _count: { _all: true },
-      orderBy: { _sum: { totalSalesAmount: "desc" } },
     }),
     // Last 14 days for the daily chart
     prisma.businessReport.findMany({
@@ -79,14 +101,22 @@ export async function GET(req: NextRequest) {
   const costPerLead = totalLeads > 0 ? Math.round(totalBudget / totalLeads) : 0;
   const roi = totalBudget > 0 ? Math.round(((totalSales - totalBudget) / totalBudget) * 100) : 0;
 
-  const channelPerformance = channelGroups.map((g) => ({
-    channel: g.marketingChannel || "Unknown",
-    count: g._count._all,
-    budget: g._sum.marketingBudget ?? 0,
-    sales: g._sum.totalSalesAmount ?? 0,
-    leads: g._sum.newLeads ?? 0,
-    closed: g._sum.closedDeals ?? 0,
-  }));
+  const channelMap = new Map<string, { channel: string; count: number; budget: number; sales: number; leads: number; closed: number }>();
+  for (const record of expenseRecords) {
+    const channel = record.marketingBudget && record.marketingBudget > 0
+      ? inferExpenseCategory(record.notes, record.marketingChannel)
+      : record.marketingChannel || "Service";
+    const existing = channelMap.get(channel) ?? { channel, count: 0, budget: 0, sales: 0, leads: 0, closed: 0 };
+    existing.count += 1;
+    existing.budget += record.marketingBudget ?? 0;
+    existing.sales += record.totalSalesAmount ?? 0;
+    existing.leads += record.newLeads ?? 0;
+    existing.closed += record.closedDeals ?? 0;
+    channelMap.set(channel, existing);
+  }
+
+  const channelPerformance = Array.from(channelMap.values())
+    .sort((a, b) => b.budget - a.budget || b.sales - a.sales);
 
   // Group recent records by date for daily trend chart
   const dailyMap = new Map<string, { sales: number; budget: number; leads: number }>();

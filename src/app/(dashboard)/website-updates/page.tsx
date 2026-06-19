@@ -44,7 +44,7 @@ export default function WebsiteUpdatesPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'up_to_date' | 'pending_update' | 'in_progress'>('all');
   const [page, setPage] = useState(1);
   const [insightPage, setInsightPage] = useState(1);
-  const limit = 20;
+  const limit = 10;
   const insightPageSize = 5;
 
   // Editing state for updating status/remark

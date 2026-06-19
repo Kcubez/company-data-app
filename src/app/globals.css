@@ -2,7 +2,7 @@
  * Company Data Hub — clean operational dashboard theme
  * ===================================================================*/
 
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Fira+Code:wght@400;500;600;700&display=swap');
 
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
@@ -15,9 +15,9 @@
 :root {
   /* Typography — primary font is the Fira Sans variable from next/font;
      falls back to the Google Fonts CDN import above. */
-  --font-sans: var(--font-fira-sans, "Fira Sans"), "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-fira-code, "Fira Code"), ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-heading: var(--font-fira-sans, "Fira Sans"), "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-heading: "Inter", ui-sans-serif, system-ui, sans-serif;
 
   /* Radius scale (consistent with shadcn) */
   --radius: 0.5rem;
@@ -316,4 +316,37 @@
   font-family: var(--font-sans) !important;
   font-variant-numeric: tabular-nums !important;
   letter-spacing: -0.01em;
+}
+
+/* ---------------------------------------------------------------------
+ * MOT Business AI Sidebar Styles
+ * -------------------------------------------------------------------*/
+.sidebar-item {
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-item.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-left: 3px solid #0ea5e9;
+}
+
+/* Fade-in animation */
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

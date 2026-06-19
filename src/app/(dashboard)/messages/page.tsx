@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useMessages, useMessageStats, useDeleteMessage } from '@/hooks/use-messages';
 import { useSenders } from '@/hooks/use-senders';
-import { useSession } from '@/lib/auth-client';
 import { formatDistanceToNow } from 'date-fns';
 import {
   MessageSquare,
@@ -12,7 +11,6 @@ import {
   TrendingUp,
   Search,
   Trash2,
-  ChevronLeft,
   Inbox,
   Radio,
   ClipboardList,
@@ -46,8 +44,6 @@ import {
 import type { TelegramSender } from '@/lib/api';
 
 export default function MessagesPage() {
-  const { data: session } = useSession();
-
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -80,7 +76,7 @@ export default function MessagesPage() {
 
   const statCards = [
     {
-      title: 'Total Messages',
+      title: 'Total Feed Items',
       value: stats?.totalMessages ?? 0,
       icon: MessageSquare,
       color: 'text-blue-600 dark:text-blue-400',
@@ -88,7 +84,7 @@ export default function MessagesPage() {
       border: 'border-blue-500/20',
     },
     {
-      title: "Today's Messages",
+      title: "Today's Feed",
       value: stats?.todayMessages ?? 0,
       icon: CalendarDays,
       color: 'text-emerald-600 dark:text-emerald-400',
@@ -136,7 +132,7 @@ export default function MessagesPage() {
         <div>
           <div className="flex items-center gap-3 mb-2">
             <h1 className="text-3xl font-bold  text-foreground font-heading">
-              Messages
+              Data Feed
             </h1>
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
               <Radio className="w-3 h-3 text-emerald-600 dark:text-emerald-400 animate-pulse" />
@@ -144,13 +140,13 @@ export default function MessagesPage() {
             </div>
           </div>
           <p className="text-muted-foreground">
-            Real-time data from your Telegram bot
+            Real-time structured intake from your Telegram bot
           </p>
         </div>
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <Input
-            placeholder="Search messages..."
+            placeholder="Search feed items..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 bg-card/50 border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-ring"
@@ -550,4 +546,3 @@ function EmptyState({
     </div>
   );
 }
-

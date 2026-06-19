@@ -96,48 +96,56 @@ function useDashboardStats() {
   });
 }
 
-function WeeklyChart({ data }: { data?: { date: string; count: number }[] }) {
-  if (!data || data.length === 0) return null;
-  const maxCount = Math.max(...data.map(d => d.count), 1);
-  const today = new Date().toISOString().split('T')[0];
+function MonthlyDemandChart({ data }: { data: { month: string; count: number }[] }) {
+  const width = 640;
+  const height = 280;
+  const padding = { top: 28, right: 24, bottom: 42, left: 46 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const maxCount = Math.max(...data.map(item => item.count), 1);
+  const points = data.map((item, index) => {
+    const x = padding.left + (plotWidth / Math.max(data.length - 1, 1)) * index;
+    const y = padding.top + plotHeight - (item.count / maxCount) * plotHeight;
+    return { ...item, x, y };
+  });
+  const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+  const areaPath = `${linePath} L ${points[points.length - 1]?.x ?? padding.left} ${padding.top + plotHeight} L ${padding.left} ${padding.top + plotHeight} Z`;
+  const yTicks = Array.from({ length: 5 }).map((_, index) => {
+    const value = Math.round((maxCount / 4) * (4 - index));
+    const y = padding.top + (plotHeight / 4) * index;
+    return { value, y };
+  });
 
   return (
-    <div className="flex items-end gap-3 h-48 px-2">
-      {data.map(day => {
-        const heightPct = (day.count / maxCount) * 100;
-        const isToday = day.date === today;
-        const dayLabel = new Date(day.date + 'T00:00:00').toLocaleDateString('en', {
-          weekday: 'short',
-        });
-        return (
-          <div key={day.date} className="flex-1 flex flex-col items-center gap-2 h-full group/bar cursor-pointer">
-            <span
-              className={`text-xs font-bold font-mono transition-colors duration-200 ${day.count > 0 ? 'text-foreground' : 'text-slate-600'} group-hover/bar:text-blue-600 dark:text-blue-400`}
-            >
-              {day.count}
-            </span>
-            <div className="w-full flex-1 flex items-end">
-              <div
-                className={`w-full rounded-t-md transition-all duration-300 group-hover/bar:opacity-90 group-hover/bar:-translate-y-0.5 ${
-                  isToday
-                    ? 'bg-linear-to-t from-emerald-600 to-emerald-400  shadow-emerald-500/20 border-t border-emerald-400/20'
-                    : day.count > 0
-                    ? 'bg-linear-to-t from-blue-600 to-blue-400  shadow-blue-500/10'
-                    : 'bg-muted/40'
-                }`}
-                style={{ height: `${day.count === 0 ? '4px' : `${Math.max(heightPct, 12)}%`}` }}
-              />
-            </div>
-            <span
-              className={`text-[10px] font-semibold  font-mono ${
-                isToday ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
-              }`}
-            >
-              {dayLabel.toUpperCase()}
-            </span>
-          </div>
-        );
-      })}
+    <div className="rounded-xl bg-slate-50/80 dark:bg-slate-950/30 p-4">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-72 w-full" role="img" aria-label="Monthly demand generation chart">
+        <defs>
+          <linearGradient id="monthlyDemandFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {yTicks.map(tick => (
+          <g key={`${tick.value}-${tick.y}`}>
+            <line x1={padding.left} x2={width - padding.right} y1={tick.y} y2={tick.y} stroke="#e2e8f0" strokeWidth="1" />
+            <text x={padding.left - 12} y={tick.y + 4} textAnchor="end" className="fill-slate-500 text-[11px] font-semibold">
+              {tick.value}
+            </text>
+          </g>
+        ))}
+        <line x1={padding.left} x2={padding.left} y1={padding.top} y2={padding.top + plotHeight} stroke="#cbd5e1" strokeWidth="1.5" />
+        <line x1={padding.left} x2={width - padding.right} y1={padding.top + plotHeight} y2={padding.top + plotHeight} stroke="#cbd5e1" strokeWidth="1.5" />
+        <path d={areaPath} fill="url(#monthlyDemandFill)" />
+        <path d={linePath} fill="none" stroke="#f59e0b" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map(point => (
+          <g key={point.month}>
+            <circle cx={point.x} cy={point.y} r="5" fill="#fff" stroke="#f59e0b" strokeWidth="3" />
+            <text x={point.x} y={padding.top + plotHeight + 26} textAnchor="middle" className="fill-slate-600 text-[12px] font-bold">
+              {point.month}
+            </text>
+          </g>
+        ))}
+      </svg>
     </div>
   );
 }
@@ -197,12 +205,11 @@ export default function DemandSheetsPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
   const [insightPage, setInsightPage] = useState(1);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'records' | 'services'>('dashboard');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingRecord, setEditingRecord] = useState<DemandRecord | null>(null);
   const [editStatus, setEditStatus] = useState<string>('new');
   const [editNote, setEditNote] = useState<string>('');
-  const limit = 20;
+  const limit = 10;
   const insightPageSize = 5;
 
   useEffect(() => {
@@ -226,14 +233,11 @@ export default function DemandSheetsPage() {
   const updateMutation = useUpdateDemandRecord();
   const insightTotal = recsData?.recommendations.length || 0;
   const insightTotalPages = Math.max(1, Math.ceil(insightTotal / insightPageSize));
+  const currentInsightPage = Math.min(insightPage, insightTotalPages);
   const visibleInsights = recsData?.recommendations.slice(
-    (insightPage - 1) * insightPageSize,
-    insightPage * insightPageSize,
+    (currentInsightPage - 1) * insightPageSize,
+    currentInsightPage * insightPageSize,
   ) || [];
-
-  useEffect(() => {
-    setInsightPage(1);
-  }, [insightTotal]);
 
   const handleDeleteAll = async () => {
     await deleteAllMutation.mutateAsync();
@@ -264,6 +268,30 @@ export default function DemandSheetsPage() {
     category: categoryFilter === 'all' ? undefined : categoryFilter,
     priority: priorityFilter === 'all' ? undefined : priorityFilter,
   });
+  const { data: chartRecordsData, isLoading: chartRecordsLoading } = useDemandRecords({
+    page: 1,
+    limit: 100,
+  });
+  const monthlyDemandData = (() => {
+    const now = new Date();
+    const monthStart = Math.max(0, now.getMonth() - 5);
+    const months = Array.from({ length: now.getMonth() - monthStart + 1 }).map((_, offset) => {
+      const date = new Date(now.getFullYear(), monthStart + offset, 1);
+      return {
+        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+        month: date.toLocaleDateString('en', { month: 'short' }),
+        count: 0,
+      };
+    });
+    const monthMap = new Map(months.map(month => [month.key, month]));
+    chartRecordsData?.records.forEach(record => {
+      const date = new Date(record.createdAt);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const month = monthMap.get(key);
+      if (month) month.count += 1;
+    });
+    return months;
+  })();
 
   // Auto-refresh AI insights once whenever the record count changes
   // (e.g. new data arrives via Telegram). Bounded — fires only on change, not on a timer.
@@ -281,9 +309,9 @@ export default function DemandSheetsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold  text-foreground mb-2 font-heading">MOT Demand Analysis</h1>
+          <h1 className="text-3xl font-bold  text-foreground mb-2 font-heading">Sales & Marketing</h1>
           <p className="text-muted-foreground text-sm">
-            Upload flexible demand sheets, prioritize customers, and turn raw rows into next actions.
+            Marketing demand, lead quality, follow-up pipeline, and conversion records.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -300,44 +328,7 @@ export default function DemandSheetsPage() {
         </div>
       </div>
 
-
-
-      {/* Tab Switcher */}
-      <div className="flex p-1 bg-card/60 border border-border/80 rounded-lg max-w-sm sm:max-w-md">
-        <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`flex-1 py-2 text-xs font-bold  uppercase rounded-lg transition-all duration-300 cursor-pointer ${
-            activeTab === 'dashboard'
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Dashboard
-        </button>
-        <button
-          onClick={() => setActiveTab('records')}
-          className={`flex-1 py-2 text-xs font-bold  uppercase rounded-lg transition-all duration-300 cursor-pointer ${
-            activeTab === 'records'
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          All Records
-        </button>
-        <button
-          onClick={() => setActiveTab('services')}
-          className={`flex-1 py-2 text-xs font-bold  uppercase rounded-lg transition-all duration-300 cursor-pointer ${
-            activeTab === 'services'
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Services
-        </button>
-      </div>
-
-      {activeTab === 'dashboard' && (
-        <div className="space-y-6">
+      <div className="space-y-6">
           {/* Dashboard KPI cards */}
           <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
             <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
@@ -413,9 +404,18 @@ export default function DemandSheetsPage() {
           </div>
 
           {demandStats?.insights && demandStats.insights.length > 0 && (
-            <div className="grid gap-4 md:grid-cols-3">
-              {demandStats.insights.map((insight) => (
-                <Card key={insight.title} className="border-border/70 bg-card/70 shadow-sm">
+            <div className="grid gap-4 md:grid-cols-2">
+              {demandStats.insights.slice(0, 2).map((insight) => (
+                <Card
+                  key={insight.title}
+                  className={`bg-card border-2 rounded-xl shadow-sm ${
+                    insight.severity === 'urgent'
+                      ? 'border-red-300 border-l-8 border-l-red-500'
+                      : insight.severity === 'warning'
+                      ? 'border-amber-300 border-l-8 border-l-amber-500'
+                      : 'border-sky-300 border-l-8 border-l-sky-500'
+                  }`}
+                >
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-sm font-heading">
                       {insight.severity === 'urgent' ? (
@@ -458,17 +458,14 @@ export default function DemandSheetsPage() {
                         <Skeleton key={i} className="h-8 w-full bg-muted rounded" />
                       ))}
                     </div>
-                  ) : demandStats?.services && demandStats.services.some(s => s.salesCount > 0) ? (
+                  ) : demandStats?.services && demandStats.services.length > 0 ? (
                     <div className="space-y-3.5">
-                      {demandStats.services
-                        .filter(s => s.salesCount > 0)
-                        .slice(0, 5)
-                        .map((service, i) => {
+                      {demandStats.services.map((service, i) => {
                           const maxCount = Math.max(
                             ...demandStats.services.map(s => s.salesCount),
                             1
                           );
-                          const barWidth = Math.max((service.salesCount / maxCount) * 100, 4);
+                          const barWidth = service.salesCount > 0 ? Math.max((service.salesCount / maxCount) * 100, 4) : 0;
                           return (
                             <div key={i} className="space-y-1.5 cursor-pointer group">
                               <div className="flex items-center justify-between">
@@ -491,7 +488,7 @@ export default function DemandSheetsPage() {
                     </div>
                   ) : (
                     <div className="text-center py-8 text-slate-500 text-xs">
-                      No service sales recorded yet
+                      No services tracked yet
                     </div>
                   )}
                 </CardContent>
@@ -500,18 +497,18 @@ export default function DemandSheetsPage() {
               <Card className="glass-card border-border/70 shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-foreground flex items-center gap-2 font-heading text-base">
-                    <TrendingUp className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-pulse" />
-                    Weekly Ingestion Volume
+                    <TrendingUp className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    Monthly Demand Generation
                   </CardTitle>
                   <CardDescription className="text-muted-foreground text-xs">
-                    Records created in the last 7 days
+                    Demand records grouped by month
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {statsLoading ? (
-                    <Skeleton className="h-44 w-full bg-card/60 rounded-lg" />
+                  {chartRecordsLoading ? (
+                    <Skeleton className="h-72 w-full bg-card/60 rounded-lg" />
                   ) : (
-                    <WeeklyChart data={stats?.weeklyActivity} />
+                    <MonthlyDemandChart data={monthlyDemandData} />
                   )}
                 </CardContent>
               </Card>
@@ -575,13 +572,13 @@ export default function DemandSheetsPage() {
                       {insightTotalPages > 1 && (
                         <div className="flex items-center justify-between border-t border-border/70 pt-3">
                           <p className="text-[11px] font-mono text-muted-foreground">
-                            Page {insightPage} of {insightTotalPages} · {insightTotal} insights
+                            Page {currentInsightPage} of {insightTotalPages} · {insightTotal} insights
                           </p>
                           <div className="flex items-center gap-2">
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={insightPage === 1}
+                              disabled={currentInsightPage === 1}
                               onClick={() => setInsightPage((current) => Math.max(1, current - 1))}
                               className="h-8 rounded-lg border-border bg-card px-2.5 text-xs text-foreground hover:bg-muted/50 disabled:opacity-50 cursor-pointer"
                             >
@@ -591,7 +588,7 @@ export default function DemandSheetsPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={insightPage === insightTotalPages}
+                              disabled={currentInsightPage === insightTotalPages}
                               onClick={() => setInsightPage((current) => Math.min(insightTotalPages, current + 1))}
                               className="h-8 rounded-lg border-border bg-card px-2.5 text-xs text-foreground hover:bg-muted/50 disabled:opacity-50 cursor-pointer"
                             >
@@ -666,11 +663,9 @@ export default function DemandSheetsPage() {
               </Card>
             </div>
           </div>
-        </div>
-      )}
+      </div>
 
-      {activeTab === 'records' && (
-        <>
+      <>
           {/* Filters and Search Bar */}
           <Card className="glass-card border-border/70 shadow-sm">
             <CardContent className="p-4 sm:p-6 space-y-4">
@@ -958,119 +953,7 @@ export default function DemandSheetsPage() {
               </div>
             </div>
           )}
-        </>
-      )}
-
-      {activeTab === 'services' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Top Services Card */}
-          <div className="lg:col-span-2">
-            <Card className="glass-card border-border/70 shadow-sm">
-              <CardHeader className="pb-3 border-b border-border">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                    <Briefcase className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-lg text-foreground font-heading">Top Services</CardTitle>
-                    <CardDescription className="text-muted-foreground text-xs">
-                      Best performing services by revenue
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6 space-y-4">
-                {demandStatsLoading ? (
-                  <div className="space-y-4">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} className="space-y-2">
-                        <div className="flex justify-between">
-                          <Skeleton className="h-4 w-32 bg-muted" />
-                          <Skeleton className="h-4 w-12 bg-muted" />
-                        </div>
-                        <Skeleton className="h-2 w-full bg-muted" />
-                      </div>
-                    ))}
-                  </div>
-                ) : demandStats?.services && demandStats.services.length > 0 ? (
-                  <div className="space-y-4">
-                    {demandStats.services.map((service, i) => {
-                      const maxRevenue = Math.max(...demandStats.services.map(s => s.revenue), 1);
-                      const barWidth =
-                        service.revenue > 0 ? Math.max((service.revenue / maxRevenue) * 100, 4) : 0;
-                      return (
-                        <div key={i} className="space-y-1.5 cursor-pointer group">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-foreground truncate pr-4">
-                              {service.serviceName}
-                            </span>
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0 font-mono">
-                              <span>{service.salesCount} sales</span>
-                            </div>
-                          </div>
-                          <div className="h-2 rounded-full bg-card/65 overflow-hidden border border-border/60">
-                            <div
-                              className="h-full rounded-full bg-linear-to-r from-blue-600 to-blue-400 transition-all duration-500 "
-                              style={{ width: `${barWidth}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-slate-500 text-xs">No services tracked yet</div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Quick Analytics Summary */}
-          <div className="space-y-6">
-            <Card className="glass-card border-border/70 shadow-sm">
-              <CardHeader className="pb-3 border-b border-border">
-                <CardTitle className="text-base text-foreground font-heading">Performance Summary</CardTitle>
-                <CardDescription className="text-muted-foreground text-xs">Key product analytics</CardDescription>
-              </CardHeader>
-              <CardContent className="pt-6 space-y-4">
-                <div className="space-y-3.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground">Predefined Services:</span>
-                    <span className="text-foreground font-bold font-mono">14</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground">Active Services:</span>
-                    <span className="text-foreground font-bold font-mono">
-                      {demandStatsLoading
-                        ? '...'
-                        : demandStats?.services.filter(s => s.salesCount > 0).length || 0}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground">Best Performing:</span>
-                    <span className="text-blue-600 dark:text-blue-400 font-bold truncate max-w-37.5 text-right">
-                      {demandStatsLoading
-                        ? '...'
-                        : demandStats?.services.find(s => s.revenue > 0 || s.salesCount > 0)
-                            ?.serviceName || 'None'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground">Total Quantity Sold:</span>
-                    <span className="text-foreground font-bold font-mono">{stats?.totalQuantitySold || 0}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground">Total Sales Value:</span>
-                    <span className="text-emerald-600 dark:text-emerald-400 font-bold font-mono">
-                      {(stats?.totalAmountSold || 0).toLocaleString()} Ks
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
+      </>
 
       {/* Edit Record Dialog */}
       {editingRecord && (
