@@ -45,7 +45,7 @@ export function SetupForm() {
         throw new Error(data.error || 'Failed to initialize standard admin.');
       }
 
-      router.push('/admin/login?setup=success');
+      router.push('/login?setup=success');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {

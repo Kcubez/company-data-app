@@ -14,6 +14,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     "reportDate", "reporterName", "marketingBudget", "marketingChannel",
     "callsMade", "appointmentsMade", "appointmentsKept", "newLeads",
     "totalDemandCount", "totalSalesAmount", "closedDeals", "pendingDeals", "notes",
+    "targetSalesAmount", "targetDemandCount", "targetAppointments",
   ];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = {};

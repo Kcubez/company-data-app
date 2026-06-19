@@ -187,14 +187,14 @@ export default function WebsiteUpdatesPage() {
             {isLoading ? (
               <Skeleton className="h-8 w-16 bg-muted" />
             ) : (
-              <div className="text-3xl font-bold text-foreground">{stats.total}</div>
+              <div className="text-2xl font-bold text-foreground font-mono">{stats.total}</div>
             )}
           </CardContent>
         </Card>
 
         <Card className="bg-card border-border shadow-sm border-l-4 border-l-red-500/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-red-600 dark:text-red-400 flex items-center gap-1.5">
+            <CardTitle className="text-sm font-medium text-red-600 dark:text-red-400 flex items-center gap-1.5 font-heading animate-pulse">
               <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" /> Pending Updates
             </CardTitle>
           </CardHeader>
@@ -202,14 +202,14 @@ export default function WebsiteUpdatesPage() {
             {isLoading ? (
               <Skeleton className="h-8 w-16 bg-muted" />
             ) : (
-              <div className="text-3xl font-bold text-red-600 dark:text-red-400">{stats.pendingUpdate}</div>
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400 font-mono">{stats.pendingUpdate}</div>
             )}
           </CardContent>
         </Card>
 
         <Card className="bg-card border-border shadow-sm border-l-4 border-l-amber-500/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+            <CardTitle className="text-sm font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 font-heading">
               <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" /> In Progress
             </CardTitle>
           </CardHeader>
@@ -217,14 +217,14 @@ export default function WebsiteUpdatesPage() {
             {isLoading ? (
               <Skeleton className="h-8 w-16 bg-muted" />
             ) : (
-              <div className="text-3xl font-bold text-amber-600 dark:text-amber-400">{stats.inProgress}</div>
+              <div className="text-2xl font-bold text-amber-600 dark:text-amber-400 font-mono">{stats.inProgress}</div>
             )}
           </CardContent>
         </Card>
 
         <Card className="bg-card border-border shadow-sm border-l-4 border-l-emerald-500/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+            <CardTitle className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 font-heading">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Up to Date
             </CardTitle>
           </CardHeader>
@@ -232,7 +232,7 @@ export default function WebsiteUpdatesPage() {
             {isLoading ? (
               <Skeleton className="h-8 w-16 bg-muted" />
             ) : (
-              <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{stats.upToDate}</div>
+              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono">{stats.upToDate}</div>
             )}
           </CardContent>
         </Card>

@@ -140,22 +140,22 @@ export async function GET(req: NextRequest) {
   const profitLoss = totalAmountSold - totalCost;
   const roi = totalCost > 0 ? (profitLoss / totalCost) * 100 : null;
 
-  // Retrieve latest targets set in this period
-  const latestReportWithTargets = await prisma.businessReport.findFirst({
+  // Retrieve targets set for this period
+  const periodTarget = await prisma.periodTarget.findUnique({
     where: {
-      reportDate: { gte: periodStart, lt: periodEnd },
-      OR: [
-        { targetDemandCount: { not: null } },
-        { targetAppointments: { not: null } },
-        { targetSalesAmount: { not: null } }
-      ]
+      period_year_month: {
+        period,
+        year,
+        month: period === "year" ? 0 : month,
+      },
     },
-    orderBy: { reportDate: 'desc' }
   });
 
-  const targetDemandCount = latestReportWithTargets?.targetDemandCount || null;
-  const targetAppointments = latestReportWithTargets?.targetAppointments || null;
-  const targetSalesAmount = latestReportWithTargets?.targetSalesAmount || null;
+  const targetSalesAmount = periodTarget?.targetSalesAmount ?? null;
+  const targetExpenseAmount = periodTarget?.targetExpenseAmount ?? null;
+  const targetDemandCount = periodTarget?.targetDemandCount ?? null;
+  const targetAppointments = periodTarget?.targetAppointments ?? null;
+  const targetNewCustomers = periodTarget?.targetNewCustomers ?? null;
 
   // Pacing calculations
   const msPerDay = 24 * 60 * 60 * 1000;
@@ -178,11 +178,13 @@ export async function GET(req: NextRequest) {
   const closeConversionRate = actualAppointments > 0 ? (closedDeals / actualAppointments) * 100 : null;
 
   const expectedRevenue = targetSalesAmount !== null ? targetSalesAmount * elapsedRatio : null;
+  const expectedExpense = targetExpenseAmount !== null ? targetExpenseAmount * elapsedRatio : null;
   const expectedDemandCount = targetDemandCount !== null ? targetDemandCount * elapsedRatio : null;
   const expectedAppointments = targetAppointments !== null ? targetAppointments * elapsedRatio : null;
+  const expectedNewCustomers = targetNewCustomers !== null ? targetNewCustomers * elapsedRatio : null;
 
   const alerts: {
-    type: 'revenue_target' | 'demand_target' | 'appointments_target';
+    type: 'revenue_target' | 'demand_target' | 'appointments_target' | 'expense_target' | 'customers_target';
     status: 'warning' | 'info';
     message: string;
     actual: number;
@@ -198,6 +200,17 @@ export async function GET(req: NextRequest) {
       actual: totalAmountSold,
       expected: expectedRevenue!,
       target: targetSalesAmount,
+    });
+  }
+
+  if (targetExpenseAmount && totalCost > expectedExpense!) {
+    alerts.push({
+      type: 'expense_target',
+      status: 'warning',
+      message: `Marketing Expense is ahead of budget limit (${elapsedDays} of ${totalDaysInPeriod} days elapsed).`,
+      actual: totalCost,
+      expected: expectedExpense!,
+      target: targetExpenseAmount,
     });
   }
 
@@ -223,15 +236,19 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Weekly Activity
-  const weekStart = new Date(startOfToday);
-  weekStart.setDate(weekStart.getDate() - 6);
-  const groupedRecords = await prisma.demandRecord.groupBy({
-    by: ['createdAt'],
-    where: { createdAt: { gte: weekStart } },
-    _count: { _all: true },
-  });
+  if (targetNewCustomers && totalCustomers < expectedNewCustomers!) {
+    alerts.push({
+      type: 'customers_target',
+      status: 'warning',
+      message: `New customers count is behind pacing target (${elapsedDays} of ${totalDaysInPeriod} days elapsed).`,
+      actual: totalCustomers,
+      expected: expectedNewCustomers!,
+      target: targetNewCustomers,
+    });
+  }
 
+
+  // Demand Activity (period-aware)
   const formatLocalDate = (d: Date) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -239,17 +256,39 @@ export async function GET(req: NextRequest) {
     return `${y}-${m}-${dateVal}`;
   };
 
-  const countsByDay = new Map<string, number>();
-  for (const row of groupedRecords) {
-    const key = formatLocalDate(row.createdAt);
-    countsByDay.set(key, (countsByDay.get(key) ?? 0) + row._count._all);
-  }
-  const weeklyActivity: { date: string; count: number }[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const dayStart = new Date(startOfToday);
-    dayStart.setDate(dayStart.getDate() - i);
-    const key = formatLocalDate(dayStart);
-    weeklyActivity.push({ date: key, count: countsByDay.get(key) ?? 0 });
+  const demandActivityRows = await prisma.demandRecord.groupBy({
+    by: ['createdAt'],
+    where: { createdAt: { gte: periodStart, lt: periodEnd } },
+    _count: { _all: true },
+  });
+
+  let weeklyActivity: { date: string; count: number }[] = [];
+
+  if (period === 'year') {
+    // 12 monthly buckets
+    const countsByMonth = new Map<string, number>();
+    for (const row of demandActivityRows) {
+      const key = `${row.createdAt.getFullYear()}-${String(row.createdAt.getMonth() + 1).padStart(2, '0')}`;
+      countsByMonth.set(key, (countsByMonth.get(key) ?? 0) + row._count._all);
+    }
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(year, i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('en', { month: 'short' });
+      weeklyActivity.push({ date: label, count: countsByMonth.get(key) ?? 0 });
+    }
+  } else {
+    // Daily buckets for the selected month
+    const countsByDay = new Map<string, number>();
+    for (const row of demandActivityRows) {
+      const key = formatLocalDate(row.createdAt);
+      countsByDay.set(key, (countsByDay.get(key) ?? 0) + row._count._all);
+    }
+    for (let i = 0; i < totalDaysInPeriod; i++) {
+      const d = new Date(year, month - 1, i + 1);
+      const key = formatLocalDate(d);
+      weeklyActivity.push({ date: key, count: countsByDay.get(key) ?? 0 });
+    }
   }
 
   // Financial Trend
@@ -420,12 +459,16 @@ export async function GET(req: NextRequest) {
     targetDemandCount,
     targetAppointments,
     targetSalesAmount,
+    targetExpenseAmount,
+    targetNewCustomers,
     actualRevenue: totalAmountSold,
     actualDemandCount,
     actualAppointments,
     expectedRevenue,
+    expectedExpense,
     expectedDemandCount,
     expectedAppointments,
+    expectedNewCustomers,
     elapsedRatio,
     elapsedDays,
     totalDaysInPeriod,

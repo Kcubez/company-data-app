@@ -439,6 +439,9 @@ function BusinessReportsPageContent() {
       totalSalesAmount: r.totalSalesAmount,
       closedDeals: r.closedDeals,
       pendingDeals: r.pendingDeals,
+      targetSalesAmount: r.targetSalesAmount,
+      targetDemandCount: r.targetDemandCount,
+      targetAppointments: r.targetAppointments,
       notes: r.notes ?? '',
     });
   };
@@ -853,6 +856,9 @@ function BusinessReportsPageContent() {
                 { label: 'Total Sales (Ks)', key: 'totalSalesAmount', type: 'number' },
                 { label: 'Closed Deals', key: 'closedDeals', type: 'number' },
                 { label: 'Pending Deals', key: 'pendingDeals', type: 'number' },
+                { label: 'Target Sales (Ks)', key: 'targetSalesAmount', type: 'number' },
+                { label: 'Target Demand Count', key: 'targetDemandCount', type: 'number' },
+                { label: 'Target Appointments', key: 'targetAppointments', type: 'number' },
               ].map(({ label, key, type, colSpan }) => (
                 <div key={key} className={colSpan ? 'col-span-2' : ''}>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>

@@ -376,3 +376,22 @@ model BusinessReport {
   @@index([marketingChannel])
   @@map("business_report")
 }
+
+model PeriodTarget {
+  id                 String   @id @default(cuid())
+  period             String   // "month" | "year"
+  year               Int
+  month              Int?     // null if period is "year"
+  targetSalesAmount  Float?   @map("target_sales_amount")
+  targetExpenseAmount Float?  @map("target_expense_amount")
+  targetDemandCount  Int?     @map("target_demand_count")
+  targetAppointments Int?     @map("target_appointments")
+  targetNewCustomers Int?     @map("target_new_customers")
+
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@unique([period, year, month])
+  @@map("period_targets")
+}
+

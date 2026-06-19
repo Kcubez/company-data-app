@@ -56,7 +56,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
 
   const handleSignOut = async () => {
     await signOut();
-    router.push('/admin/login');
+    router.push('/login');
     router.refresh();
   };
 

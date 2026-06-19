@@ -15,27 +15,109 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
 
-  const allowedFields = ["status", "note", "followUpDate", "recommendedAction", "priority"] as const;
-  const data: Record<string, unknown> = {};
-  for (const field of allowedFields) {
-    if (field in body) {
-      if (field === "followUpDate") {
-        data[field] = body[field] ? new Date(body[field]) : null;
-        data.followUpStatus = analyzeDemandRecord({
-          customerName: null,
-          customerPhone: null,
-          customerCompany: null,
-          serviceName: null,
-          serviceAmount: null,
-          serviceQty: null,
-          followUpDate: data[field] as Date | null,
-          status: typeof body.status === "string" ? body.status : "new",
-          note: typeof body.note === "string" ? body.note : "",
-        }).followUpStatus;
+  const record = await prisma.demandRecord.findUnique({
+    where: { id },
+    include: { customer: true },
+  });
+  if (!record) {
+    return NextResponse.json({ message: "Record not found" }, { status: 404 });
+  }
+
+  // 1. Handle customer creation/update/linking if relevant fields are passed
+  let customerId = record.customerId;
+  const customerName = "customerName" in body ? body.customerName : record.customerName;
+  const customerPhone = "customerPhone" in body ? body.customerPhone : (record.customer?.phone || null);
+  const customerCompany = "customerCompany" in body ? body.customerCompany : (record.customer?.company || null);
+
+  if (
+    customerName !== record.customerName ||
+    customerPhone !== (record.customer?.phone || null) ||
+    customerCompany !== (record.customer?.company || null)
+  ) {
+    if (customerName) {
+      const normalizedName = customerName.toLowerCase().replace(/\s+/g, " ").trim();
+      let customer = await prisma.customer.findFirst({
+        where: {
+          OR: [
+            { nameNormalized: normalizedName },
+            { name: { equals: customerName, mode: "insensitive" } }
+          ]
+        }
+      });
+
+      if (!customer) {
+        customer = await prisma.customer.create({
+          data: {
+            name: customerName,
+            nameNormalized: normalizedName,
+            phone: customerPhone || null,
+            company: customerCompany || null,
+            status: "active"
+          }
+        });
       } else {
-        data[field] = body[field];
+        // Update customer details if they are now provided/changed
+        if (
+          (!customer.phone && customerPhone) ||
+          (!customer.company && customerCompany) ||
+          customer.name !== customerName
+        ) {
+          customer = await prisma.customer.update({
+            where: { id: customer.id },
+            data: {
+              name: customerName,
+              phone: customerPhone || customer.phone || null,
+              company: customerCompany || customer.company || null,
+            }
+          });
+        }
       }
+      customerId = customer.id;
+    } else {
+      customerId = null;
     }
+  }
+
+  // 2. Prepare database update fields
+  const data: Record<string, unknown> = {};
+
+  if ("status" in body) data.status = body.status;
+  if ("note" in body) data.note = body.note;
+  if ("priority" in body) data.priority = body.priority;
+  if ("customerName" in body) data.customerName = body.customerName;
+  if (customerId !== record.customerId) data.customerId = customerId;
+
+  if ("serviceName" in body) data.serviceName = body.serviceName || null;
+  if ("serviceAmount" in body) data.serviceAmount = body.serviceAmount !== null ? Number(body.serviceAmount) : null;
+  if ("serviceQty" in body) data.serviceQty = body.serviceQty !== null ? Number(body.serviceQty) : null;
+
+  if ("followUpDate" in body) {
+    data.followUpDate = body.followUpDate ? new Date(body.followUpDate) : null;
+  }
+
+  // 3. Recalculate analysis
+  const mergedForAnalysis = {
+    customerName: "customerName" in body ? body.customerName : record.customerName,
+    customerPhone: "customerPhone" in body ? body.customerPhone : (record.customer?.phone || null),
+    customerCompany: "customerCompany" in body ? body.customerCompany : (record.customer?.company || null),
+    serviceName: "serviceName" in body ? body.serviceName : record.serviceName,
+    serviceAmount: "serviceAmount" in body ? (body.serviceAmount !== null ? Number(body.serviceAmount) : null) : record.serviceAmount,
+    serviceQty: "serviceQty" in body ? (body.serviceQty !== null ? Number(body.serviceQty) : null) : record.serviceQty,
+    followUpDate: "followUpDate" in body ? (body.followUpDate ? new Date(body.followUpDate) : null) : record.followUpDate,
+    status: "status" in body ? body.status : record.status,
+    note: "note" in body ? body.note : record.note,
+  };
+
+  const analysis = analyzeDemandRecord(mergedForAnalysis);
+  data.followUpStatus = analysis.followUpStatus;
+  data.potentialScore = analysis.potentialScore;
+  data.priorityReason = analysis.priorityReason;
+  data.recommendedAction = analysis.recommendedAction;
+  data.missingFields = analysis.missingFields;
+
+  // If user explicitly sent priority in body, keep it, otherwise use analyzed priority
+  if (!("priority" in body)) {
+    data.priority = analysis.priority;
   }
 
   if (Object.keys(data).length === 0) {
@@ -61,7 +143,27 @@ export async function PATCH(
     }
 
     return NextResponse.json(result);
-  } catch {
+  } catch (error) {
+    console.error("PATCH error:", error);
     return NextResponse.json({ message: "Record not found or update failed" }, { status: 404 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  try {
+    await prisma.demandRecord.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ message: "Record not found or delete failed" }, { status: 404 });
   }
 }

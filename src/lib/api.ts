@@ -230,6 +230,12 @@ export type UpdateDemandRecordPayload = {
   followUpDate?: string | null;
   recommendedAction?: string;
   priority?: "high" | "medium" | "low";
+  customerName?: string;
+  customerPhone?: string | null;
+  customerCompany?: string | null;
+  serviceName?: string | null;
+  serviceAmount?: number | null;
+  serviceQty?: number;
 };
 
 export type DemandImportResponse = {
@@ -257,6 +263,10 @@ export const demandRecordsApi = {
   },
   update: (id: string, data: UpdateDemandRecordPayload) =>
     request<DemandRecord>(`/api/demand-records/${id}`, { method: "PATCH", body: data }),
+  create: (data: Partial<DemandRecord>) =>
+    request<DemandRecord>("/api/demand-records", { method: "POST", body: data }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/api/demand-records/${id}`, { method: "DELETE" }),
   stats: () => request<DemandRecordStats>("/api/demand-records/stats"),
   recommendations: () => request<AIRecommendationsResponse>("/api/demand-records/recommendations"),
   deleteAll: () =>
@@ -420,6 +430,7 @@ export type Customer = {
   createdAt: string;
   updatedAt: string;
   activities: CustomerActivity[];
+  demandRecords?: DemandRecord[];
   _count?: { demandRecords: number };
 };
 
@@ -533,6 +544,9 @@ export type BusinessReport = {
   totalSalesAmount: number | null;
   closedDeals: number | null;
   pendingDeals: number | null;
+  targetSalesAmount: number | null;
+  targetDemandCount: number | null;
+  targetAppointments: number | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;

@@ -36,6 +36,14 @@ export async function GET(req: NextRequest) {
           orderBy: { createdAt: "desc" },
           take: 1,
         },
+        demandRecords: {
+          select: {
+            id: true,
+            serviceName: true,
+            serviceAmount: true,
+            status: true,
+          }
+        },
         _count: {
           select: { demandRecords: true },
         },

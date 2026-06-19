@@ -93,3 +93,134 @@ export async function DELETE(req: NextRequest) {
   const result = await prisma.demandRecord.deleteMany({});
   return NextResponse.json({ success: true, count: result.count });
 }
+
+// POST /api/demand-records — create a single demand record manually (leads dashboard)
+export async function POST(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json();
+  const {
+    customerName,
+    customerPhone,
+    customerCompany,
+    serviceName,
+    serviceAmount,
+    serviceQty,
+    followUpDate,
+    priority = "medium",
+    status = "new",
+    note = "",
+  } = body;
+
+  // 1. Resolve or create customer if raw name is provided
+  let customerId: string | null = null;
+  if (customerName) {
+    const normalizedName = customerName.toLowerCase().replace(/\s+/g, " ").trim();
+    let customer = await prisma.customer.findFirst({
+      where: {
+        OR: [
+          { nameNormalized: normalizedName },
+          { name: { equals: customerName, mode: "insensitive" } }
+        ]
+      }
+    });
+
+    if (!customer) {
+      customer = await prisma.customer.create({
+        data: {
+          name: customerName,
+          nameNormalized: normalizedName,
+          phone: customerPhone || null,
+          company: customerCompany || null,
+          status: "active"
+        }
+      });
+    } else {
+      if ((!customer.phone && customerPhone) || (!customer.company && customerCompany)) {
+        customer = await prisma.customer.update({
+          where: { id: customer.id },
+          data: {
+            phone: customer.phone || customerPhone || null,
+            company: customer.company || customerCompany || null,
+          }
+        });
+      }
+    }
+    customerId = customer.id;
+  }
+
+  // 2. Ensure dashboard system sender exists
+  const sender = await prisma.telegramSender.upsert({
+    where: { telegramUserId: 0 },
+    update: {},
+    create: {
+      telegramUserId: 0,
+      firstName: "Dashboard",
+      lastName: "System",
+      username: "dashboard_system",
+      displayName: "Dashboard System",
+      activeReportType: "none",
+    },
+  });
+
+  // 3. Ensure dashboard placeholder message exists
+  const message = await prisma.telegramMessage.upsert({
+    where: { id: "dashboard_placeholder_msg" },
+    update: {},
+    create: {
+      id: "dashboard_placeholder_msg",
+      telegramMsgId: 0,
+      text: "Dashboard Manual Entry",
+      senderId: sender.id,
+      chatId: 0,
+    },
+  });
+
+  // 4. Run priority analysis using analyzeDemandRecord
+  const { analyzeDemandRecord } = await import("@/lib/demand-analysis");
+  const analysis = analyzeDemandRecord({
+    customerName,
+    customerPhone,
+    customerCompany,
+    serviceName,
+    serviceAmount,
+    serviceQty,
+    followUpDate: followUpDate ? new Date(followUpDate) : null,
+    status,
+    note,
+  });
+
+  // 5. Create the demand record
+  const record = await prisma.demandRecord.create({
+    data: {
+      messageId: message.id,
+      senderId: sender.id,
+      customerId,
+      customerName,
+      category: "general",
+      status,
+      note,
+      serviceName,
+      serviceAmount: serviceAmount ? parseFloat(serviceAmount) : null,
+      serviceQty: serviceQty ? parseInt(serviceQty) : null,
+      followUpDate: followUpDate ? new Date(followUpDate) : null,
+      followUpStatus: analysis.followUpStatus,
+      priority,
+      potentialScore: analysis.potentialScore,
+      priorityReason: analysis.priorityReason,
+      recommendedAction: analysis.recommendedAction,
+      missingFields: analysis.missingFields,
+      confidence: 1.0,
+      aiProvider: "manual",
+    },
+    include: {
+      sender: true,
+      customer: true,
+    }
+  });
+
+  return NextResponse.json(serializeDemandRecord(record as any));
+}

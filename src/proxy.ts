@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 
-const PUBLIC_PATHS = ["/admin/login", "/login", "/api/auth", "/setup", "/api/setup", "/api/telegram"];
+const PUBLIC_PATHS = ["/login", "/api/auth", "/setup", "/api/setup", "/api/telegram"];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -15,7 +15,7 @@ export async function proxy(req: NextRequest) {
   const sessionCookie = getSessionCookie(req);
 
   if (!sessionCookie) {
-    const loginUrl = new URL("/admin/login", req.url);
+    const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }

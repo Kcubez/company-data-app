@@ -80,3 +80,36 @@ export function useImportDemandFile() {
     },
   });
 }
+
+export function useCreateDemandRecord() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: any) => demandRecordsApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["demand-records"] });
+      queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      toast.success("Lead created successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to create lead");
+    },
+  });
+}
+
+export function useDeleteDemandRecord() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => demandRecordsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["demand-records"] });
+      queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });
+      toast.success("Lead deleted successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to delete lead");
+    },
+  });
+}

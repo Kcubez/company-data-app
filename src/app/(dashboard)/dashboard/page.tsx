@@ -1,13 +1,17 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
 import { formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ModalPortal } from '@/components/ui/modal-portal';
+import { toast } from 'sonner';
 import {
   Select,
   SelectContent,
@@ -36,6 +40,8 @@ import {
   BarChart3,
   LineChart,
   Trophy,
+  Target,
+  Loader2,
 } from 'lucide-react';
 
 type WeeklyActivity = {
@@ -108,12 +114,16 @@ type DashboardStats = {
   targetDemandCount: number | null;
   targetAppointments: number | null;
   targetSalesAmount: number | null;
+  targetExpenseAmount: number | null;
+  targetNewCustomers: number | null;
   actualRevenue: number;
   actualDemandCount: number;
   actualAppointments: number;
   expectedRevenue: number | null;
+  expectedExpense: number | null;
   expectedDemandCount: number | null;
   expectedAppointments: number | null;
+  expectedNewCustomers: number | null;
   elapsedRatio: number;
   elapsedDays: number;
   totalDaysInPeriod: number;
@@ -132,7 +142,7 @@ type DashboardStats = {
     dueTodayFollowUps: number;
   };
   alerts: {
-    type: 'revenue_target' | 'demand_target' | 'appointments_target';
+    type: 'revenue_target' | 'demand_target' | 'appointments_target' | 'expense_target' | 'customers_target';
     status: 'warning' | 'info';
     message: string;
     actual: number;
@@ -177,8 +187,10 @@ function useActionRecommendations(period: PeriodMode, month: number, year: numbe
 }
 
 
-function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30 }: { data: any[], valueKey: string, labelKey: string, totalDays?: number }) {
+function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = 'month' }: { data: any[], valueKey: string, labelKey: string, totalDays?: number, period?: string }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const isYearly = period === 'year';
+  const tickCount = isYearly ? 12 : totalDays;
 
   if (!data || data.length === 0) {
     return <div className="text-sm text-muted-foreground py-10 text-center">No data available</div>;
@@ -215,11 +227,13 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30 }: { data: 
     return 1;
   };
 
-  const points = validData.map((d) => {
-    const day = getDay(d[labelKey]);
-    const x = paddingLeft + ((day - 1) / (totalDays - 1 || 1)) * plotWidth;
+  const points = validData.map((d, idx) => {
+    // In yearly mode, use index-based positioning (0..11 for 12 months)
+    // In monthly mode, use day-based positioning
+    const posIndex = isYearly ? idx : getDay(d[labelKey]) - 1;
+    const x = paddingLeft + (posIndex / (tickCount - 1 || 1)) * plotWidth;
     const y = paddingTop + plotHeight - ((Number(d[valueKey]) || 0) / roundedMax) * plotHeight;
-    return { x, y, value: d[valueKey], label: d[labelKey], day };
+    return { x, y, value: d[valueKey], label: d[labelKey], day: isYearly ? d[labelKey] : getDay(d[labelKey]) };
   });
 
   // Create smooth SVG path (cubic bezier for tension like Chart.js tension:0.3)
@@ -244,11 +258,12 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30 }: { data: 
     return { val, y };
   });
 
-  // X axis ticks — 1..totalDays
-  const xTicks = Array.from({ length: totalDays }).map((_, i) => {
-    const day = i + 1;
-    const x = paddingLeft + ((day - 1) / (totalDays - 1 || 1)) * plotWidth;
-    return { x, label: String(day) };
+  // X axis ticks
+  const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const xTicks = Array.from({ length: tickCount }).map((_, i) => {
+    const x = paddingLeft + (i / (tickCount - 1 || 1)) * plotWidth;
+    const label = isYearly ? monthLabels[i] || '' : String(i + 1);
+    return { x, label };
   });
 
   return (
@@ -332,7 +347,7 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30 }: { data: 
           className="fill-slate-500 dark:fill-slate-400"
           style={{ fontSize: '10px', fontWeight: 700, fontFamily: "'Inter', sans-serif" }}
         >
-          Day of Month
+          {isYearly ? 'Month' : 'Day of Month'}
         </text>
 
         {/* Area fill */}
@@ -365,7 +380,7 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30 }: { data: 
 
         {/* Hover detection zones */}
         {points.map((p, idx) => {
-          const zoneWidth = plotWidth / (totalDays - 1 || 1);
+          const zoneWidth = plotWidth / (tickCount - 1 || 1);
           return (
             <rect key={idx} x={p.x - zoneWidth / 2} y={paddingTop} width={zoneWidth} height={plotHeight}
               fill="transparent" className="cursor-pointer"
@@ -387,10 +402,10 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30 }: { data: 
           }}
         >
           <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3 py-2 rounded-md shadow-lg backdrop-blur-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
-            <div className="font-bold mb-1">{points[hoveredIndex].day}</div>
+            <div className="font-bold mb-1">{points[hoveredIndex].label}</div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-sky-400 inline-block" />
-              <span className="text-slate-300">Daily Income (MMK):</span>
+              <span className="text-slate-300">{isYearly ? 'Monthly' : 'Daily'} Income (MMK):</span>
               <span className="font-semibold">{Number(points[hoveredIndex].value).toLocaleString()}</span>
             </div>
           </div>
@@ -400,8 +415,10 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30 }: { data: 
   );
 }
 
-function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30 }: { data: any[], valueKey: string, labelKey: string, totalDays?: number }) {
+function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'month' }: { data: any[], valueKey: string, labelKey: string, totalDays?: number, period?: string }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const isYearly = period === 'year';
+  const tickCount = isYearly ? 12 : totalDays;
 
   if (!data || data.length === 0) {
     return <div className="text-sm text-muted-foreground py-10 text-center">No data available</div>;
@@ -428,18 +445,19 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30 }: { data: a
     return 1;
   };
 
-  // Slot width per day (uniform across all 30 days)
-  const slotWidth = plotWidth / totalDays;
+  // Slot width per tick (uniform across all buckets)
+  const slotWidth = plotWidth / tickCount;
   const barWidth = Math.max(6, slotWidth * 0.65);
 
-  const points = data.map((d) => {
-    const day = getDay(d[labelKey]);
-    // Center bar within its day slot
-    const slotX = paddingLeft + (day - 1) * slotWidth;
+  const points = data.map((d, idx) => {
+    // In yearly mode, use index-based positioning (0..11)
+    // In monthly mode, use day-based positioning
+    const posIndex = isYearly ? idx : getDay(d[labelKey]) - 1;
+    const slotX = paddingLeft + posIndex * slotWidth;
     const x = slotX + (slotWidth - barWidth) / 2;
     const heightVal = ((Number(d[valueKey]) || 0) / roundedMax) * plotHeight;
     const y = paddingTop + plotHeight - heightVal;
-    return { x, y, heightVal, value: d[valueKey], label: d[labelKey], day, slotX };
+    return { x, y, heightVal, value: d[valueKey], label: d[labelKey], day: isYearly ? d[labelKey] : getDay(d[labelKey]), slotX };
   });
 
   // Y axis ticks (6 ticks)
@@ -449,11 +467,12 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30 }: { data: a
     return { val, y };
   });
 
-  // X axis ticks — 1..totalDays
-  const xTicks = Array.from({ length: totalDays }).map((_, i) => {
-    const day = i + 1;
-    const cx = paddingLeft + (day - 1) * slotWidth + slotWidth / 2;
-    return { x: cx, label: String(day) };
+  // X axis ticks
+  const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const xTicks = Array.from({ length: tickCount }).map((_, i) => {
+    const cx = paddingLeft + i * slotWidth + slotWidth / 2;
+    const label = isYearly ? monthLabels[i] || '' : String(i + 1);
+    return { x: cx, label };
   });
 
   return (
@@ -486,7 +505,7 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30 }: { data: a
         {xTicks.map((tick, i) => (
           <text key={i} x={tick.x} y={paddingTop + plotHeight + 15} textAnchor="middle"
             className="fill-slate-500 dark:fill-slate-400"
-            style={{ fontSize: '9px', fontFamily: "'Inter', sans-serif" }}>
+            style={{ fontSize: '8px', fontFamily: "'Inter', sans-serif" }}>
             {tick.label}
           </text>
         ))}
@@ -495,14 +514,13 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30 }: { data: a
         <text x={paddingLeft + plotWidth / 2} y={paddingTop + plotHeight + 30} textAnchor="middle"
           className="fill-slate-500 dark:fill-slate-400"
           style={{ fontSize: '10px', fontWeight: 700, fontFamily: "'Inter', sans-serif" }}>
-          Day of Month
+          {isYearly ? 'Month' : 'Day of Month'}
         </text>
 
         {/* Bars — top-only rounded corners */}
         {points.map((p, idx) => {
           const h = Math.max(1, p.heightVal);
           const r = Math.min(4, barWidth / 2, h);
-          // Path: start bottom-left, go up, round top-left, across top, round top-right, go down, close
           const barPath = `M ${p.x} ${p.y + h} V ${p.y + r} Q ${p.x} ${p.y} ${p.x + r} ${p.y} H ${p.x + barWidth - r} Q ${p.x + barWidth} ${p.y} ${p.x + barWidth} ${p.y + r} V ${p.y + h} Z`;
           return (
             <path key={idx} d={barPath} fill="#8b5cf6"
@@ -532,10 +550,10 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30 }: { data: a
           }}
         >
           <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3 py-2 rounded-md shadow-lg backdrop-blur-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
-            <div className="font-bold mb-1">{points[hoveredIndex].day}</div>
+            <div className="font-bold mb-1">{points[hoveredIndex].label}</div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block" />
-              <span className="text-slate-300">Daily Demands:</span>
+              <span className="text-slate-300">{isYearly ? 'Monthly' : 'Daily'} Demands:</span>
               <span className="font-semibold">{Number(points[hoveredIndex].value).toLocaleString()}</span>
             </div>
           </div>
@@ -631,6 +649,62 @@ function DashboardPageContent() {
   const [localMonth, setLocalMonth] = useState(String(month));
   const [localYear, setLocalYear] = useState(String(year));
 
+  const queryClient = useQueryClient();
+  const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
+  const [isSavingTarget, setIsSavingTarget] = useState(false);
+  const [targetForm, setTargetForm] = useState({
+    targetSalesAmount: '',
+    targetExpenseAmount: '',
+    targetDemandCount: '',
+    targetAppointments: '',
+    targetNewCustomers: '',
+  });
+
+  useEffect(() => {
+    if (stats) {
+      setTargetForm({
+        targetSalesAmount: stats.targetSalesAmount !== null ? String(stats.targetSalesAmount) : '',
+        targetExpenseAmount: stats.targetExpenseAmount !== null ? String(stats.targetExpenseAmount) : '',
+        targetDemandCount: stats.targetDemandCount !== null ? String(stats.targetDemandCount) : '',
+        targetAppointments: stats.targetAppointments !== null ? String(stats.targetAppointments) : '',
+        targetNewCustomers: stats.targetNewCustomers !== null ? String(stats.targetNewCustomers) : '',
+      });
+    }
+  }, [stats]);
+
+  const handleSaveTargets = async () => {
+    setIsSavingTarget(true);
+    try {
+      const res = await fetch('/api/settings/target', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          period,
+          year,
+          month: period === 'year' ? 0 : month,
+          targetSalesAmount: targetForm.targetSalesAmount === '' ? null : Number(targetForm.targetSalesAmount),
+          targetExpenseAmount: targetForm.targetExpenseAmount === '' ? null : Number(targetForm.targetExpenseAmount),
+          targetDemandCount: targetForm.targetDemandCount === '' ? null : Number(targetForm.targetDemandCount),
+          targetAppointments: targetForm.targetAppointments === '' ? null : Number(targetForm.targetAppointments),
+          targetNewCustomers: targetForm.targetNewCustomers === '' ? null : Number(targetForm.targetNewCustomers),
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || 'Failed to save targets');
+      }
+
+      toast.success('Targets updated successfully');
+      setIsTargetModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats', period, month, year] });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save targets');
+    } finally {
+      setIsSavingTarget(false);
+    }
+  };
+
   useEffect(() => {
     setLocalPeriod(period);
     setLocalMonth(String(month));
@@ -685,18 +759,18 @@ function DashboardPageContent() {
   const revenueExpected = stats?.expectedRevenue || 0;
   const revenuePacing = getPacingStatus(revenueValue, revenueExpected);
 
-  const expenseTarget = revenueTarget * 0.5;
+  const expenseTarget = stats?.targetExpenseAmount || (revenueTarget * 0.5);
   const expenseValue = stats?.totalCost || 0;
   const expenseActualPct = (expenseValue / expenseTarget) * 100;
-  const expenseExpected = revenueExpected * 0.5;
+  const expenseExpected = stats?.expectedExpense || (revenueExpected * 0.5);
   const expensePacing = getPacingStatus(expenseValue, expenseExpected, true);
 
-  const profitTarget = revenueTarget * 0.5;
+  const profitTarget = revenueTarget - expenseTarget;
   const profitValue = stats?.profitLoss || 0;
   const profitActualPct = profitTarget > 0 ? (profitValue / profitTarget) * 100 : 0;
-  const profitExpected = revenueExpected * 0.5;
+  const profitExpected = revenueExpected - expenseExpected;
   const profitMarginPercent = revenueValue > 0 ? (profitValue / revenueValue) * 100 : 0;
-  const targetMarginPct = 50;
+  const targetMarginPct = revenueTarget > 0 ? (profitTarget / revenueTarget) * 100 : 50;
   const profitPacing = getPacingStatus(profitMarginPercent, targetMarginPct);
 
   const demandTarget = stats?.targetDemandCount || 10000;
@@ -711,10 +785,10 @@ function DashboardPageContent() {
   const apptExpected = stats?.expectedAppointments || 0;
   const apptPacing = getPacingStatus(apptValue, apptExpected);
 
-  const customerTarget = 80;
+  const customerTarget = stats?.targetNewCustomers || 80;
   const customerValue = stats?.totalCustomers || 0;
   const customerActualPct = (customerValue / customerTarget) * 100;
-  const customerExpected = Math.round(customerTarget * (stats?.elapsedRatio || 0));
+  const customerExpected = stats?.expectedNewCustomers || Math.round(customerTarget * (stats?.elapsedRatio || 0));
   const customerPacing = getPacingStatus(customerValue, customerExpected);
 
   const elapsedDaysText = stats?.elapsedDays ? ` (Day ${stats.elapsedDays})` : '';
@@ -782,6 +856,15 @@ function DashboardPageContent() {
               ))}
             </SelectContent>
           </Select>
+
+          <Button
+            onClick={() => setIsTargetModalOpen(true)}
+            className="h-9 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card hover:bg-slate-50 dark:hover:bg-slate-800/80 text-xs font-bold text-slate-800 dark:text-slate-200 gap-1.5 px-3"
+            variant="outline"
+          >
+            <Target className="w-4 h-4 text-emerald-500 animate-pulse" />
+            Set Targets
+          </Button>
         </div>
       </div>
 
@@ -997,7 +1080,7 @@ function DashboardPageContent() {
                 </span>
             </div>
             {isLoading ? <Skeleton className="h-[280px] w-full bg-card/60 rounded-xl" /> : (
-              <PremiumLineChart data={stats?.financialTrend || []} valueKey="revenue" labelKey="label" totalDays={stats?.totalDaysInPeriod || 30} />
+              <PremiumLineChart data={stats?.financialTrend || []} valueKey="revenue" labelKey="label" totalDays={stats?.totalDaysInPeriod || 30} period={period} />
             )}
         </div>
         
@@ -1005,17 +1088,116 @@ function DashboardPageContent() {
             <div className="flex justify-between items-center mb-6 border-b-2 border-border pb-4">
                 <h3 className="font-bold text-foreground text-sm tracking-wide uppercase flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-sky-500" />
-                  Daily Demands Received
+                  {period === 'year' ? 'Monthly' : 'Daily'} Demands Received
                 </h3>
                 <span className="text-xs font-bold text-muted-foreground border-2 border-border bg-muted px-3 py-1 rounded-full">
                   {period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
                 </span>
             </div>
             {isLoading ? <Skeleton className="h-[280px] w-full bg-card/60 rounded-xl" /> : (
-              <PremiumBarChart data={stats?.weeklyActivity || []} valueKey="count" labelKey="date" totalDays={stats?.totalDaysInPeriod || 30} />
+              <PremiumBarChart data={stats?.weeklyActivity || []} valueKey="count" labelKey="date" totalDays={stats?.totalDaysInPeriod || 30} period={period} />
             )}
         </div>
       </div>
+
+      {/* ─── Targets Settings Modal ────────────────────────────────────── */}
+      {isTargetModalOpen && (
+        <ModalPortal className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-800 bg-card p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div>
+                <h3 className="font-extrabold text-foreground flex items-center gap-2">
+                  <Target className="w-5 h-5 text-emerald-500" />
+                  Set Period Targets
+                </h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5 font-bold uppercase tracking-wide">
+                  For {period === 'year' ? `${year} (Yearly)` : `${new Date(year, month - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' })} (Monthly)`}
+                </p>
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground" onClick={() => setIsTargetModalOpen(false)}>
+                ✕
+              </Button>
+            </div>
+
+            <div className="space-y-4 text-xs font-semibold text-foreground">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">
+                  Target Revenue (Ks)
+                </label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 5000000"
+                  className="h-10 text-xs bg-muted border-border font-bold"
+                  value={targetForm.targetSalesAmount}
+                  onChange={(e) => setTargetForm(prev => ({ ...prev, targetSalesAmount: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">
+                  Target Expense (Ks)
+                </label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 2500000"
+                  className="h-10 text-xs bg-muted border-border font-bold"
+                  value={targetForm.targetExpenseAmount}
+                  onChange={(e) => setTargetForm(prev => ({ ...prev, targetExpenseAmount: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">
+                  Target Demands (Leads)
+                </label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 1000"
+                  className="h-10 text-xs bg-muted border-border font-bold"
+                  value={targetForm.targetDemandCount}
+                  onChange={(e) => setTargetForm(prev => ({ ...prev, targetDemandCount: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">
+                  Target Appointments
+                </label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 200"
+                  className="h-10 text-xs bg-muted border-border font-bold"
+                  value={targetForm.targetAppointments}
+                  onChange={(e) => setTargetForm(prev => ({ ...prev, targetAppointments: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">
+                  Target New Customers
+                </label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 50"
+                  className="h-10 text-xs bg-muted border-border font-bold"
+                  value={targetForm.targetNewCustomers}
+                  onChange={(e) => setTargetForm(prev => ({ ...prev, targetNewCustomers: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <Button variant="outline" size="sm" className="border-border text-foreground rounded-lg" onClick={() => setIsTargetModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" disabled={isSavingTarget} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-4" onClick={handleSaveTargets}>
+                {isSavingTarget && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                Save Targets
+              </Button>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
     </div>
   );
 }

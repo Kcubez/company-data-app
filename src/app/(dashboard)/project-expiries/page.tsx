@@ -635,7 +635,7 @@ export default function ProjectExpiriesPage() {
             <Card key={item.label} className={`bg-card border-2 border-slate-200 shadow-sm ${item.className}`}>
               <CardContent className="p-5">
                 <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">{item.label}</p>
-                {websiteLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-black">{item.value}</div>}
+                {websiteLoading ? <Skeleton className="h-8 w-16" /> : <div className="text-2xl font-bold font-mono">{item.value}</div>}
               </CardContent>
             </Card>
           ))}

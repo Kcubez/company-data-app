@@ -12,7 +12,7 @@ export default async function SetupPage() {
   const userCount = await prisma.user.count();
 
   if (userCount > 0) {
-    redirect('/admin/login');
+    redirect('/login');
   }
 
   return (
