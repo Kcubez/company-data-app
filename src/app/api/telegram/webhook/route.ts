@@ -419,8 +419,62 @@ function getFormatHintFooter(mode: string): string {
     "━━━━━━━━━━━━━━━━━━━━",
     `💡 <i>ပိုပြည့်စုံစေရန် ဖြည့်နိုင်သော အကွက်များ:</i>`,
     `<i>${fields}</i>`,
-    `<i>ပုံစံ အပြည့်အစုံ ကြည့်ရန် /format ၊ ကဏ္ဍ ပြောင်းရန် /menu ကို ပေးပို့ပါ။</i>`,
+    `<i>ပုံစံ အပြည့်အစုံ ကြည့်ရန် /format ၊ ကူးယူရန် တမ်းပလိတ်အတွက် /template ၊ ကဏ္ဍ ပြောင်းရန် /menu ကို ပေးပို့ပါ။</i>`,
   ].join("\n");
+}
+
+function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
+  switch (mode) {
+    case 'demand_report':
+      return [
+        "📋 <b>Demand Sheet (အရောင်းမှတ်တမ်း) Copy-Paste Template</b>",
+        "အောက်ပါစာသားကို နှိပ်၍ Copy ကူးယူပြီး အချက်အလက်များ ဖြည့်စွက်ပေးပို့နိုင်ပါသည် -",
+        "",
+        "<code>• Customer: \n• Phone: \n• Business: \n• Service:  - Amount:  - Qty: \n• Follow-up Date: \n• Note: </code>",
+      ].join("\n");
+    case 'project_expiry':
+      return [
+        "⏰ <b>Project Expiry (သက်တမ်းကုန်ဆုံးမှု) Copy-Paste Template</b>",
+        "အောက်ပါစာသားကို နှိပ်၍ Copy ကူးယူပြီး အချက်အလက်များ ဖြည့်စွက်ပေးပို့နိုင်ပါသည် -",
+        "",
+        "<code>• Project: \n• URL: \n• Package: \n• Domain Provider: \n• Hosting Provider: \n• Hosting Remark: \n• Domain Expiry: \n• Hosting Expiry: \n• Remark: </code>",
+      ].join("\n");
+    case 'website_update':
+      return [
+        "🔧 <b>Website Update (ဝဘ်ဆိုဒ်အပ်ဒိတ်) Copy-Paste Template</b>",
+        "အောက်ပါစာသားကို နှိပ်၍ Copy ကူးယူပြီး အချက်အလက်များ ဖြည့်စွက်ပေးပို့နိုင်ပါသည် -",
+        "",
+        "<code>• Name: \n• URL: \n• Business: \n• Package: \n• Status: \n• Remark: </code>",
+      ].join("\n");
+    case 'business_report':
+      return [
+        "📊 <b>Business Report (လုပ်ငန်းလှုပ်ရှားမှု) Copy-Paste Template</b>",
+        "အောက်ပါစာသားကို နှိပ်၍ Copy ကူးယူပြီး အချက်အလက်များ ဖြည့်စွက်ပေးပို့နိုင်ပါသည် -",
+        "",
+        "<code>• Date: \n• Marketing Budget: \n• Channel: \n• Calls Made: \n• Appointments Made: \n• Appointments Kept: \n• New Leads: \n• Total Demand: \n• Total Sales: \n• Closed Deals: \n• Pending Deals: \n• Notes: </code>",
+      ].join("\n");
+    default:
+      return [
+        "🤖 <b>Q&A သို့မဟုတ် အမျိုးအစားမရွေးချယ်ရသေးသော ကဏ္ဍတွင် ရှိနေပါသည်။</b>",
+        "",
+        "Template ရရှိရန် /menu မှ ကဏ္ဍတစ်ခုခုကို ရွေးချယ်ပြီးနောက် /template ကို ပြန်လည် ပေးပို့ပါ။",
+      ].join("\n");
+  }
+}
+
+function getMyanmarFieldName(field: string): string {
+  switch (field) {
+    case 'customerName':
+      return 'Customer Name (ဝယ်ယူသူအမည်)';
+    case 'phone':
+      return 'Phone Number (ဖုန်းနံပါတ်)';
+    case 'service':
+      return 'Service (ဝန်ဆောင်မှုအမည်)';
+    case 'followUpDate':
+      return 'Follow-up Date (နောက်ဆက်တွဲဆက်သွယ်ရမည့်ရက်)';
+    default:
+      return field;
+  }
 }
 
 
@@ -1476,6 +1530,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    if (message.text === '/template') {
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId,
+        text: getCopyPasteTemplateForMode(sender.activeReportType),
+      });
+      return NextResponse.json({ ok: true });
+    }
+
     if (message.text === '/start' || message.text === '/menu') {
       await sendTelegramMessage({
         botToken: settings?.botToken,
@@ -1492,7 +1555,7 @@ export async function POST(req: NextRequest) {
           "⏰ <b>Project Expiries:</b> သက်တမ်းကုန်ဆုံးမည့်ရက်များ တင်သွင်းရန်။",
           "🔧 <b>Website Updates:</b> အပ်ဒိတ်/ထိန်းသိမ်းမှု အခြေအနေများ တင်သွင်းရန်။",
           "━━━━━━━━━━━━━━━━━━━━",
-          "💡 <i>ကဏ္ဍ ရွေးပြီးနောက် ပုံစံ (format) ပြန်ကြည့်ရန် /format ကို ပေးပို့နိုင်ပါသည်။</i>",
+          "💡 <i>ကဏ္ဍ ရွေးပြီးနောက် ပုံစံများကြည့်ရန် /format သို့မဟုတ် ကူးယူရန် တမ်းပလိတ်အတွက် /template ကို ပေးပို့နိုင်ပါသည်။</i>",
         ].join("\n"),
         replyMarkup: MAIN_MENU_BUTTONS,
       });
@@ -1981,6 +2044,16 @@ export async function POST(req: NextRequest) {
       confirmParts.push("━━━━━━━━━━━━━━━━━━━━");
       confirmParts.push(`📋 <b>မှတ်စု/အကြောင်းအရာ:</b>\n<i>${parsedDemand.note}</i>`);
     }
+
+    if (analysis.missingFields && analysis.missingFields.length > 0) {
+      confirmParts.push("");
+      confirmParts.push("⚠️ <b>သတိပေးချက်: အချက်အလက်မပြည့်စုံပါ</b>");
+      confirmParts.push("စနစ်မှ တွက်ချက်မှုများ ပိုမိုတိကျစေရန် အောက်ပါအချက်အလက်များကို ဖြည့်စွက်ပေးပါရန် -");
+      analysis.missingFields.forEach((field) => {
+        confirmParts.push(`• ${getMyanmarFieldName(field)}`);
+      });
+    }
+
     confirmParts.push(getFormatHintFooter('demand_report'));
 
     await sendTelegramMessage({

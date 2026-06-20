@@ -90,11 +90,17 @@ export async function GET(req: NextRequest) {
   const [qtyAgg, amountAgg, businessAgg, highPriorityLeads, missingPhoneLeads, overdueFollowUps, demandCountPeriod] = await Promise.all([
     prisma.demandRecord.aggregate({
       _sum: { serviceQty: true },
-      where: { createdAt: { gte: periodStart, lt: periodEnd } },
+      where: { 
+        createdAt: { gte: periodStart, lt: periodEnd },
+        status: { in: ['closed', 'completed'] }
+      },
     }),
     prisma.demandRecord.aggregate({
       _sum: { serviceAmount: true },
-      where: { createdAt: { gte: periodStart, lt: periodEnd } },
+      where: { 
+        createdAt: { gte: periodStart, lt: periodEnd },
+        status: { in: ['closed', 'completed'] }
+      },
     }),
     prisma.businessReport.aggregate({
       _sum: { 
@@ -105,7 +111,10 @@ export async function GET(req: NextRequest) {
         totalDemandCount: true,
         closedDeals: true
       },
-      where: { reportDate: { gte: periodStart, lt: periodEnd } },
+      where: { 
+        reportDate: { gte: periodStart, lt: periodEnd },
+        reporterName: { not: "Daily Bot Ingestion" }
+      },
     }),
     prisma.demandRecord.count({
       where: {
@@ -135,7 +144,7 @@ export async function GET(req: NextRequest) {
   const totalQuantitySold = qtyAgg._sum.serviceQty || 0;
   const demandRevenue = amountAgg._sum.serviceAmount || 0;
   const reportRevenue = businessAgg._sum.totalSalesAmount || 0;
-  const totalAmountSold = Math.max(demandRevenue, reportRevenue);
+  const totalAmountSold = reportRevenue;
   const totalCost = businessAgg._sum.marketingBudget || 0;
   const profitLoss = totalAmountSold - totalCost;
   const roi = totalCost > 0 ? (profitLoss / totalCost) * 100 : null;
@@ -433,6 +442,8 @@ export async function GET(req: NextRequest) {
     totalCost,
     profitLoss,
     roi,
+    demandRevenue,
+    reportRevenue,
     period,
     selectedMonth: month,
     selectedYear: year,

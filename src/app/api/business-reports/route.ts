@@ -15,7 +15,9 @@ export async function GET(req: NextRequest) {
   const dateTo = searchParams.get("dateTo") || undefined;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = {};
+  const where: any = {
+    reporterName: { not: "Daily Bot Ingestion" }
+  };
   if (channel) where.marketingChannel = channel;
   if (dateFrom || dateTo) {
     where.reportDate = {};

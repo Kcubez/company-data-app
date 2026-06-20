@@ -160,6 +160,19 @@ function analyzeDemandRecord(record: {
   };
 }
 
+function normalizeServiceName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const n = name.trim();
+  if (n === "Gold Package") return "Website Gold Package";
+  if (n === "Silver Package") return "Website Silver Package";
+  if (n === "Diamond Package") return "Website Diamond Package";
+  if (n === "Website Package" || n === "Project Website" || n === "Website Care") return "Website Silver Package";
+  if (n === "CRM Setup" || n === "POS") return "POS";
+  if (n === "AI Automation" || n === "Support Retainer" || n === "Lead Capture Form" || n === "Social Media Management") return "Other";
+  if (n === "Chatbot Setup") return "Messenger Sale Bot";
+  return n;
+}
+
 async function main() {
   console.log("Starting database seed from typescript...");
 
@@ -224,11 +237,12 @@ async function main() {
 
       // Add a matching closed/won demand record so it lists in their purchased service history
       if (row.purchased_service) {
+        const serviceName = normalizeServiceName(row.purchased_service);
         const analysis = analyzeDemandRecord({
           customerName: row.customer_name,
           customerPhone: row.phone,
           customerCompany: row.company,
-          serviceName: row.purchased_service,
+          serviceName: serviceName,
           serviceAmount: row.purchase_amount_mmk ? parseFloat(row.purchase_amount_mmk) : null,
           serviceQty: 1,
           followUpDate: row.next_follow_up ? new Date(row.next_follow_up) : null,
@@ -245,7 +259,7 @@ async function main() {
             category: "sales",
             status: "closed",
             note: row.last_contact_note || "Milestone completed",
-            serviceName: row.purchased_service,
+            serviceName: serviceName,
             serviceAmount: row.purchase_amount_mmk ? parseFloat(row.purchase_amount_mmk) : null,
             serviceQty: 1,
             followUpDate: row.next_follow_up ? new Date(row.next_follow_up) : null,
@@ -294,6 +308,7 @@ async function main() {
         });
       }
 
+      const serviceName = normalizeServiceName(row.service_name);
       const rawAmount = row.service_amount;
       const parsedAmount = rawAmount ? parseFloat(rawAmount) : null;
       const parsedQty = row.service_qty ? parseInt(row.service_qty) : 1;
@@ -302,13 +317,28 @@ async function main() {
         customerName: row.customer_name,
         customerPhone: row.phone,
         customerCompany: row.company,
-        serviceName: row.service_name,
+        serviceName: serviceName,
         serviceAmount: parsedAmount,
         serviceQty: parsedQty,
         followUpDate: row.follow_up_date ? new Date(row.follow_up_date) : null,
         status: row.lead_stage,
         note: row.note || "",
       });
+
+      // Avoid duplicate closed/won records already seeded from the CS file
+      if (row.lead_stage === "closed") {
+        const existingClosed = await prisma.demandRecord.findFirst({
+          where: {
+            customerId: customer.id,
+            serviceName: serviceName || null,
+            status: "closed",
+          },
+        });
+        if (existingClosed) {
+          console.log(`Skipping duplicate closed demand record for customer ${row.customer_name} (already seeded from CS)`);
+          continue;
+        }
+      }
 
       await prisma.demandRecord.create({
         data: {
@@ -320,7 +350,7 @@ async function main() {
           status: row.lead_stage || "new",
           note: row.note || "",
           sourceType: row.source_channel || "telegram",
-          serviceName: row.service_name || null,
+          serviceName: serviceName || null,
           serviceAmount: parsedAmount,
           serviceQty: parsedQty,
           followUpDate: row.follow_up_date ? new Date(row.follow_up_date) : null,

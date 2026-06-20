@@ -229,64 +229,36 @@ export default function ProjectExpiriesPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Total Projects</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-8 w-16 bg-muted" />
-            ) : (
-              <div className="text-2xl font-bold text-foreground font-mono ">{stats.total}</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card glass-card-hover border-border/70 shadow-sm border-l-4 border-l-red-500/50 cursor-pointer">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold uppercase  text-red-600 dark:text-red-400 flex items-center gap-1.5 font-heading">
-              <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400" /> Expired
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-8 w-16 bg-muted" />
-            ) : (
-              <div className="text-2xl font-bold text-red-600 dark:text-red-400 font-mono ">{stats.expired}</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card glass-card-hover border-border/70 shadow-sm border-l-4 border-l-orange-500/50 cursor-pointer">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold uppercase  text-orange-600 dark:text-orange-400 flex items-center gap-1.5 font-heading">
-              <Clock className="w-4 h-4 text-orange-600 dark:text-orange-400" /> Expiring Soon
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-8 w-16 bg-muted" />
-            ) : (
-              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400 font-mono ">{stats.expiringSoon}</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card glass-card-hover border-border/70 shadow-sm border-l-4 border-l-emerald-500/50 cursor-pointer">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold uppercase  text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 font-heading">
-              <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Active & Safe
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-8 w-16 bg-muted" />
-            ) : (
-              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono ">{stats.active}</div>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: 'Total Projects', value: stats.total, color: 'text-slate-900 dark:text-slate-100', icon: Globe, accent: 'border-l-4 border-l-slate-500' },
+          { label: 'Expired', value: stats.expired, color: 'text-red-600 dark:text-red-400', icon: AlertTriangle, accent: 'border-l-4 border-l-red-500' },
+          { label: 'Expiring Soon', value: stats.expiringSoon, color: 'text-orange-600 dark:text-orange-400', icon: Clock, accent: 'border-l-4 border-l-orange-500' },
+          { label: 'Active & Safe', value: stats.active, color: 'text-emerald-600 dark:text-emerald-400', icon: CheckCircle, accent: 'border-l-4 border-l-emerald-500' },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <Card key={item.label} className={`bg-card border-2 border-slate-200 dark:border-slate-800 shadow-sm rounded-xl cursor-pointer ${item.accent}`}>
+              <CardContent className="p-6 h-32 flex flex-col justify-center">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">{item.label}</p>
+                    {isLoading ? (
+                      <Skeleton className="h-8 w-16 bg-muted" />
+                    ) : (
+                      <h3 className={`text-2xl font-black ${item.color} tracking-tight font-mono`}>
+                        {item.value.toLocaleString()}
+                      </h3>
+                    )}
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400">
+                    <Icon className="w-4 h-4" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

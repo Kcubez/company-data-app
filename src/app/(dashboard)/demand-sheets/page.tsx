@@ -44,6 +44,8 @@ import {
   Loader2,
   PhoneOff,
   Lightbulb,
+  DollarSign,
+  Megaphone,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -80,6 +82,8 @@ type DashboardStats = {
   totalCost: number;
   actualDemandCount?: number;
   actualAppointments?: number;
+  demandRevenue?: number;
+  reportRevenue?: number;
   salesFunnel?: {
     leads: number;
     appointments: number;
@@ -340,96 +344,86 @@ export default function DemandSheetsPage() {
 
       <div className="space-y-6">
           {/* Dashboard KPI cards */}
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
-            <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Total Revenue</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {statsLoading ? (
-                  <Skeleton className="h-8 w-16 bg-muted" />
-                ) : (
-                  <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono ">
-                    {(stats?.totalAmountSold || 0).toLocaleString()}
-                    <span className="text-xs font-sans font-medium text-slate-500 ml-1">Ks</span>
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+            <Card className="bg-card border-2 border-slate-200 dark:border-slate-800 shadow-sm rounded-xl border-l-4 border-l-emerald-500 cursor-pointer">
+              <CardContent className="p-6 flex flex-col justify-center h-32">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Total Sales</p>
+                    {statsLoading ? (
+                      <Skeleton className="h-8 w-16 bg-muted" />
+                    ) : (
+                      <h3 className="flex items-baseline gap-1.5 whitespace-nowrap text-2xl font-black text-slate-900 tracking-tight dark:text-slate-100">
+                        <span>{(stats?.demandRevenue || 0).toLocaleString()}</span>
+                        <span className="text-xs font-bold text-slate-400">MMK</span>
+                      </h3>
+                    )}
                   </div>
-                )}
+                  <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Total Ad Expense</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {statsLoading ? (
-                  <Skeleton className="h-8 w-16 bg-muted" />
-                ) : (
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400 font-mono ">
-                    {(stats?.totalCost || 0).toLocaleString()}
-                    <span className="text-xs font-sans font-medium text-slate-500 ml-1">Ks</span>
+            <Card className="bg-card border-2 border-slate-200 dark:border-slate-800 shadow-sm rounded-xl border-l-4 border-l-red-500 cursor-pointer">
+              <CardContent className="p-6 flex flex-col justify-center h-32">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Total Ad Expense</p>
+                    {statsLoading ? (
+                      <Skeleton className="h-8 w-16 bg-muted" />
+                    ) : (
+                      <h3 className="flex items-baseline gap-1.5 whitespace-nowrap text-2xl font-black text-slate-900 tracking-tight dark:text-slate-100">
+                        <span>{(stats?.totalCost || 0).toLocaleString()}</span>
+                        <span className="text-xs font-bold text-slate-400">MMK</span>
+                      </h3>
+                    )}
                   </div>
-                )}
+                  <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400">
+                    <Megaphone className="w-4 h-4" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">High Priority</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {demandStatsLoading ? (
-                  <Skeleton className="h-8 w-16 bg-muted" />
-                ) : (
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400 font-mono ">
-                    {demandStats?.priority.high || 0}
+            <Card className="bg-card border-2 border-slate-200 dark:border-slate-800 shadow-sm rounded-xl border-l-4 border-l-blue-500 cursor-pointer">
+              <CardContent className="p-6 flex flex-col justify-center h-32">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Demands</p>
+                    {statsLoading ? (
+                      <Skeleton className="h-8 w-16 bg-muted" />
+                    ) : (
+                      <h3 className="flex items-baseline gap-1.5 whitespace-nowrap text-2xl font-black text-slate-900 tracking-tight dark:text-slate-100">
+                        <span>{(stats?.actualDemandCount ?? 0).toLocaleString()}</span>
+                      </h3>
+                    )}
                   </div>
-                )}
+                  <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Demands</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {statsLoading ? (
-                  <Skeleton className="h-8 w-16 bg-muted" />
-                ) : (
-                  <div className="text-2xl font-bold text-foreground font-mono">
-                    {stats?.actualDemandCount ?? 0}
+            <Card className="bg-card border-2 border-slate-200 dark:border-slate-800 shadow-sm rounded-xl border-l-4 border-l-amber-500 cursor-pointer">
+              <CardContent className="p-6 flex flex-col justify-center h-32">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Appointments</p>
+                    {statsLoading ? (
+                      <Skeleton className="h-8 w-16 bg-muted" />
+                    ) : (
+                      <h3 className="flex items-baseline gap-1.5 whitespace-nowrap text-2xl font-black text-slate-900 tracking-tight dark:text-slate-100">
+                        <span>{(stats?.actualAppointments ?? 0).toLocaleString()}</span>
+                      </h3>
+                    )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Appointments</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {statsLoading ? (
-                  <Skeleton className="h-8 w-16 bg-muted" />
-                ) : (
-                  <div className="text-2xl font-bold text-foreground font-mono">
-                    {stats?.actualAppointments ?? 0}
+                  <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400">
+                    <CalendarClock className="w-4 h-4" />
                   </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Sales</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {statsLoading ? (
-                  <Skeleton className="h-8 w-16 bg-muted" />
-                ) : (
-                  <div className="text-2xl font-bold text-foreground font-mono">
-                    {stats?.salesFunnel?.closedDeals ?? 0}
-                  </div>
-                )}
+                </div>
               </CardContent>
             </Card>
           </div>

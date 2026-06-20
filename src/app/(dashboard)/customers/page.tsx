@@ -339,16 +339,6 @@ export default function CustomersPage() {
     ? (dashboardStats?.totalAmountSold / dashboardStats?.totalCustomers) 
     : 0;
 
-  const formatAvgSpending = (val: number) => {
-    if (val >= 1000000) {
-      return `${(val / 1000000).toFixed(1)}M MMK`;
-    }
-    if (val >= 1000) {
-      return `${(val / 1000).toFixed(0)}K MMK`;
-    }
-    return `${val} MMK`;
-  };
-
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Page Header */}
@@ -392,6 +382,42 @@ export default function CustomersPage() {
         </AlertDialog>
       </div>
 
+      {/* Metrics Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Demands', value: totalDemandRecords, color: 'text-slate-900 dark:text-slate-100', loading: demandStatsLoading, icon: MessageSquare, accent: 'border-l-4 border-l-slate-500' },
+          { label: 'High Potential (HPS)', value: highPotential, color: 'text-blue-600 dark:text-blue-400', loading: demandStatsLoading, accent: 'border-l-4 border-l-blue-500', icon: AlertTriangle },
+          { label: 'Total Customers', value: totalCustomers, color: 'text-emerald-600 dark:text-emerald-400', loading: customerLoading, accent: 'border-l-4 border-l-emerald-500', icon: Users },
+          { label: 'Avg Spending Value', value: avgSpending, displayVal: Math.round(avgSpending).toLocaleString(), suffix: 'MMK', color: 'text-slate-900 dark:text-slate-100', loading: !dashboardStats, icon: DollarSign, accent: 'border-l-4 border-l-amber-500' },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <Card key={item.label} className={`bg-card border-2 border-slate-200 dark:border-slate-800 shadow-sm rounded-xl cursor-pointer ${item.accent}`}>
+              <CardContent className="p-6 h-32 flex flex-col justify-center">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">{item.label}</p>
+                    {item.loading ? (
+                      <Skeleton className="h-8 w-16 bg-muted" />
+                    ) : (
+                      <h3 className={`flex items-baseline gap-1.5 text-2xl font-black ${item.color} tracking-tight`}>
+                        <span>{item.displayVal ?? item.value.toLocaleString()}</span>
+                        {item.suffix && (
+                          <span className="text-xs font-bold text-slate-400">{item.suffix}</span>
+                        )}
+                      </h3>
+                    )}
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400">
+                    <Icon className="w-4 h-4" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
       {/* Intelligence Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="bg-white dark:bg-card border-2 border-red-300 border-l-8 border-l-red-500 rounded-xl shadow-sm">
@@ -416,29 +442,6 @@ export default function CustomersPage() {
             </p>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Metrics Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Demands', value: totalDemandRecords, color: 'text-slate-900 dark:text-slate-100', loading: demandStatsLoading },
-          { label: 'High Potential (HPS)', value: highPotential, color: 'text-blue-600 dark:text-blue-400', loading: demandStatsLoading, accent: 'border-l-4 border-l-blue-500' },
-          { label: 'Total Customers', value: totalCustomers, color: 'text-emerald-600 dark:text-emerald-400', loading: customerLoading, accent: 'border-l-4 border-l-emerald-500' },
-          { label: 'Avg Spending Value', value: avgSpending, displayVal: formatAvgSpending(avgSpending), color: 'text-slate-900 dark:text-slate-100', loading: !dashboardStats },
-        ].map((item) => (
-          <Card key={item.label} className={`bg-card border-2 border-slate-200 dark:border-slate-800 shadow-sm rounded-xl ${item.accent ?? ''}`}>
-            <CardContent className="p-6 h-32 flex flex-col justify-center">
-              <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">{item.label}</p>
-              {item.loading ? (
-                <Skeleton className="h-8 w-16 bg-muted" />
-              ) : (
-                <h3 className={`text-2xl font-black ${item.color}`}>
-                  {item.displayVal ?? item.value.toLocaleString()}
-                </h3>
-              )}
-            </CardContent>
-          </Card>
-        ))}
       </div>
 
       {/* 1. Purchased Customers Directory Card */}
