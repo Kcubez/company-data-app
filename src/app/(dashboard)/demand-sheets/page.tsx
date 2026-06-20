@@ -77,6 +77,16 @@ type DashboardStats = {
   };
   totalQuantitySold: number;
   totalAmountSold: number;
+  totalCost: number;
+  actualDemandCount?: number;
+  actualAppointments?: number;
+  salesFunnel?: {
+    leads: number;
+    appointments: number;
+    closedDeals: number;
+    appointmentConversionRate: number | null;
+    closeConversionRate: number | null;
+  };
   weeklyActivity: {
     date: string;
     count: number;
@@ -330,28 +340,7 @@ export default function DemandSheetsPage() {
 
       <div className="space-y-6">
           {/* Dashboard KPI cards */}
-          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-            <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Total Leads</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {statsLoading ? (
-                  <Skeleton className="h-8 w-16 bg-muted" />
-                ) : (
-                  <div className="text-2xl font-bold text-foreground font-mono ">
-                    {stats?.pipeline
-                      ? stats.pipeline.new +
-                        stats.pipeline.contacted +
-                        stats.pipeline.quoted +
-                        stats.pipeline.pending +
-                        stats.pipeline.closed
-                      : 0}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
             <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
               <CardHeader className="pb-2">
                 <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Total Revenue</CardTitle>
@@ -370,18 +359,15 @@ export default function DemandSheetsPage() {
 
             <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
               <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Due Today</CardTitle>
+                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Total Ad Expense</CardTitle>
               </CardHeader>
               <CardContent>
                 {statsLoading ? (
                   <Skeleton className="h-8 w-16 bg-muted" />
                 ) : (
-                  <div
-                    className={`text-2xl font-bold font-mono  ${
-                      stats?.dueTodayFollowUps ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'
-                    }`}
-                  >
-                    {stats?.dueTodayFollowUps || 0}
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400 font-mono ">
+                    {(stats?.totalCost || 0).toLocaleString()}
+                    <span className="text-xs font-sans font-medium text-slate-500 ml-1">Ks</span>
                   </div>
                 )}
               </CardContent>
@@ -397,6 +383,51 @@ export default function DemandSheetsPage() {
                 ) : (
                   <div className="text-2xl font-bold text-red-600 dark:text-red-400 font-mono ">
                     {demandStats?.priority.high || 0}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Demands</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16 bg-muted" />
+                ) : (
+                  <div className="text-2xl font-bold text-foreground font-mono">
+                    {stats?.actualDemandCount ?? 0}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Appointments</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16 bg-muted" />
+                ) : (
+                  <div className="text-2xl font-bold text-foreground font-mono">
+                    {stats?.actualAppointments ?? 0}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card glass-card-hover border-border/70 shadow-sm cursor-pointer">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold uppercase  text-muted-foreground font-heading">Sales</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16 bg-muted" />
+                ) : (
+                  <div className="text-2xl font-bold text-foreground font-mono">
+                    {stats?.salesFunnel?.closedDeals ?? 0}
                   </div>
                 )}
               </CardContent>

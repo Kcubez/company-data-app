@@ -306,7 +306,7 @@ function BusinessReportsPageContent() {
   const [editingRecord, setEditingRecord] = useState<BusinessReport | null>(null);
   const [editForm, setEditForm] = useState<Partial<BusinessReport>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const limit = 20;
+  const limit = 10;
   const period: PeriodMode = searchParams.get('period') === 'year' ? 'year' : 'month';
   const month = Math.min(
     12,
