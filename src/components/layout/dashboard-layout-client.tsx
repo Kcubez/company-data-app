@@ -173,7 +173,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
 
       {/* Desktop Sidebar - MOT Business AI Style */}
       <aside
-        className="hidden md:flex flex-col w-64 bg-[#020617] text-white min-h-screen sticky top-0 shadow-xl"
+        className="hidden md:flex flex-col w-64 shrink-0 bg-[#020617] text-white h-screen sticky top-0 shadow-xl"
         aria-label="Primary"
       >
         {/* Header Section with Branding */}
@@ -232,21 +232,21 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
               render={
                 <Button
                   variant="ghost"
-                  className="w-full justify-start gap-3 h-auto p-2.5 hover:bg-white/8 rounded-lg cursor-pointer text-white"
+                  className="w-full justify-start gap-3 h-auto p-2.5 hover:bg-white/8 rounded-lg cursor-pointer text-white min-w-0"
                 />
               }
             >
-              <Avatar className="h-9 w-9 bg-sky-900 text-sky-300 border-2 border-sky-700">
+              <Avatar className="h-9 w-9 bg-sky-900 text-sky-300 border-2 border-sky-700 shrink-0">
                 <AvatarImage src={session?.user?.image ?? ''} alt={session?.user?.name ?? ''} />
                 <AvatarFallback className="bg-sky-900 text-sky-300 text-sm font-semibold">
                   {session?.user?.name?.[0]?.toUpperCase() ?? 'U'}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex flex-col items-start truncate text-left flex-1 min-w-0">
-                <span className="font-medium text-sm text-white truncate w-full">
+              <div className="flex flex-col items-start text-left flex-1 min-w-0 overflow-hidden">
+                <span className="font-medium text-sm text-white truncate w-full block">
                   {session?.user?.name}
                 </span>
-                <span className="text-[11px] text-sky-400 truncate w-full">
+                <span className="text-[11px] text-sky-400 truncate w-full block">
                   {session?.user?.email}
                 </span>
               </div>
