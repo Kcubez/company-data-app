@@ -819,10 +819,14 @@ export function parseExcelDate(val: any): Date | null {
 }
 
 export function isProjectExpiryHeaders(headers: string[]): boolean {
-  const normalized = headers.map(h => String(h || '').trim().toLowerCase());
+  const normalized = headers.map(h => String(h || '').trim().toLowerCase().replace(/[_-]+/g, ' '));
   return (
     normalized.includes('domain expiration date') ||
     normalized.includes('hosting expiration date') ||
+    normalized.includes('domain expire date') ||
+    normalized.includes('hosting expire date') ||
+    normalized.includes('domain expiration') ||
+    normalized.includes('hosting expiration') ||
     normalized.includes('check list')
   );
 }
@@ -883,11 +887,11 @@ export type ParsedWebsiteUpdate = {
 };
 
 export function isWebsiteUpdateHeaders(headers: string[]): boolean {
-  const normalized = headers.map(h => String(h || '').trim().toLowerCase());
+  const normalized = headers.map(h => String(h || '').trim().toLowerCase().replace(/[_-]+/g, ' '));
   return (
-    (normalized.includes('website link') || normalized.includes('website_link') || normalized.includes('website-link')) &&
-    (normalized.includes('business type') || normalized.includes('business_type') || normalized.includes('business-type') || normalized.includes('business')) &&
-    (normalized.includes('name') || normalized.includes('project name') || normalized.includes('project_name'))
+    (normalized.includes('website link') || normalized.includes('url') || normalized.includes('link')) &&
+    (normalized.includes('business type') || normalized.includes('business') || normalized.includes('business type')) &&
+    (normalized.includes('name') || normalized.includes('project name'))
   );
 }
 

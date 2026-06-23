@@ -423,6 +423,86 @@ function getFormatHintFooter(mode: string): string {
   ].join("\n");
 }
 
+function isFinanceRecordsHeaders(headers: string[]): boolean {
+  const normalized = headers.map(h => String(h || '').trim().toLowerCase());
+  return (
+    normalized.includes('type') &&
+    (normalized.includes('amount_mmk') || normalized.includes('amount (mmk)') || normalized.includes('amount')) &&
+    (normalized.includes('description') || normalized.includes('category'))
+  );
+}
+
+function parseExcelDate(val: any): Date | null {
+  if (!val) return null;
+  if (val instanceof Date) return val;
+  const num = Number(val);
+  if (!isNaN(num) && num > 0) {
+    // Excel base date is Dec 30, 1899 due to 1900 leap year bug
+    return new Date(Math.round((num - 25569) * 86400 * 1000));
+  }
+  const parsed = Date.parse(String(val));
+  return isNaN(parsed) ? null : new Date(parsed);
+}
+
+function parseFinanceRecordsSpreadsheet(fileBuffer: Buffer): any[] {
+  const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+  const allRecords: any[] = [];
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { raw: true });
+    for (const row of rows) {
+      const getVal = (keys: string[]) => {
+        for (const k of keys) {
+          const matchedKey = Object.keys(row).find(
+            rk => rk.toLowerCase().trim() === k.toLowerCase()
+          );
+          if (matchedKey !== undefined) return row[matchedKey];
+        }
+        return null;
+      };
+
+      const dateVal = getVal(['Date', 'date']);
+      const dateObj = parseExcelDate(dateVal) || new Date();
+
+      const desc = String(getVal(['Description', 'description', 'desc']) || '').trim();
+      const category = String(getVal(['Category', 'category', 'cat']) || '').trim();
+      const type = String(getVal(['Type', 'type']) || '').trim();
+      const amountVal = getVal(['Amount (MMK)', 'amount_mmk', 'amount']);
+      
+      let amount = 0;
+      if (amountVal != null) {
+        const clean = String(amountVal).replace(/[\u1040-\u1049]/g, (d) => {
+          const digits: Record<string, string> = {
+            '\u1040': '0', '\u1041': '1', '\u1042': '2', '\u1043': '3', '\u1044': '4',
+            '\u1045': '5', '\u1046': '6', '\u1047': '7', '\u1048': '8', '\u1049': '9',
+          };
+          return digits[d] || d;
+        }).replace(/,/g, '');
+        const n = parseFloat(clean);
+        if (!isNaN(n)) amount = n;
+      }
+
+      const payMethod = String(getVal(['Payment Method', 'payment_method']) || '').trim();
+      const ref = String(getVal(['Reference', 'reference']) || '').trim();
+      const notes = String(getVal(['Notes', 'notes', 'note']) || '').trim();
+
+      if (!type) continue;
+
+      allRecords.push({
+        date: dateObj,
+        description: desc,
+        category,
+        type,
+        amount,
+        paymentMethod: payMethod,
+        reference: ref,
+        notes,
+      });
+    }
+  }
+  return allRecords;
+}
+
 function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
   switch (mode) {
     case 'demand_report':
@@ -940,9 +1020,11 @@ async function processFileInBackground({
   try {
     const isSpreadsheet = fileInfo.mimeType.includes("sheet") ||
       fileInfo.mimeType.includes("excel") ||
+      fileInfo.mimeType.includes("csv") ||
       fileInfo.fileName.endsWith(".xlsx") ||
       fileInfo.fileName.endsWith(".xls") ||
-      fileInfo.fileName.endsWith(".xlsm");
+      fileInfo.fileName.endsWith(".xlsm") ||
+      fileInfo.fileName.endsWith(".csv");
 
     let isExpiryFile = false;
     let parsedExpiryRecords: any[] = [];
@@ -950,6 +1032,8 @@ async function processFileInBackground({
     let parsedWebsiteUpdateRecords: any[] = [];
     let isBusinessReportFile = false;
     let parsedBusinessReportRecords: any[] = [];
+    let isFinanceFile = false;
+    let parsedFinanceRecords: any[] = [];
 
     if (isSpreadsheet) {
       try {
@@ -968,6 +1052,9 @@ async function processFileInBackground({
             } else if (isBusinessReportHeaders(headers)) {
               isBusinessReportFile = true;
               parsedBusinessReportRecords = parseBusinessReportSpreadsheet(downloadedBuffer);
+            } else if (isFinanceRecordsHeaders(headers)) {
+              isFinanceFile = true;
+              parsedFinanceRecords = parseFinanceRecordsSpreadsheet(downloadedBuffer);
             }
           }
         }
@@ -1077,6 +1164,45 @@ async function processFileInBackground({
             "━━━━━━━━━━━━━━━━━━━━",
             `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
             `📊 <b>အရေအတွက်:</b> <code>${creates.length}</code> ရက်/မှတ်တမ်းများကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။`,
+          ].join("\n"),
+        });
+      }
+      return;
+    }
+
+    if (isFinanceFile) {
+      const creates = parsedFinanceRecords.map((rec: any) => {
+        const isIncome = rec.type.toLowerCase() === 'income';
+        return {
+          reportDate: rec.date,
+          senderId: senderId,
+          messageId: telegramMessageId,
+          marketingBudget: isIncome ? 0 : rec.amount,
+          marketingChannel: rec.category || "Service",
+          notes: `${rec.description} (Ref: ${rec.reference}, Method: ${rec.paymentMethod}). ${rec.notes || ""}`,
+          totalSalesAmount: isIncome ? rec.amount : 0,
+          newLeads: isIncome ? 0 : (rec.category === "Marketing" ? 1 : 0),
+          closedDeals: isIncome ? 1 : 0,
+          totalDemandCount: 1,
+          reporterName: "Telegram Upload",
+          createdAt: rec.date,
+        };
+      });
+
+      if (creates.length > 0) {
+        await prisma.businessReport.createMany({ data: creates });
+      }
+
+      if (progressMsgId) {
+        await editTelegramMessage({
+          botToken: settings.botToken,
+          chatId,
+          messageId: progressMsgId,
+          text: [
+            "✅ <b>ဘဏ္ဍာရေး ငွေသွင်း/ငွေထုတ် မှတ်တမ်းများ တင်သွင်းပြီးပါပြီ</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+            `📊 <b>အရေအတွက်:</b> <code>${creates.length}</code> စောင်ကို အောင်မြင်စွာ မှတ်တမ်းတင်ပြီးပါပြီ။`,
           ].join("\n"),
         });
       }

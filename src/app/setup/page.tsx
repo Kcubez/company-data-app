@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { SetupForm } from '@/app/setup/setup-form';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: 'Initial System Setup',
 };

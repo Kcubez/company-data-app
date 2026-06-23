@@ -60,7 +60,7 @@ const stages = ["new", "contacted", "quoted", "pending", "closed"];
 const priorities = ["high", "medium", "low"];
 
 for (let i = 1; i <= 50; i++) {
-  const dateObj = new Date(2026, 5, Math.max(1, i % 29)); // June 2026
+  const dateObj = new Date(2026, 5, Math.max(1, i % 23)); // June 2026 (restricted up to June 23)
   const dateStr = dateObj.toISOString().slice(0, 10);
   
   const clientName = getMyanmarName(i);
@@ -106,7 +106,7 @@ const expenseDescriptions = [
 ];
 
 for (let i = 1; i <= 50; i++) {
-  const dateObj = new Date(2026, 5, Math.max(1, i % 29)); // June 2026
+  const dateObj = new Date(2026, 5, Math.max(1, i % 23)); // June 2026 (restricted up to June 23)
   const dateStr = dateObj.toISOString().slice(0, 10);
   const isIncome = i % 2 === 0;
   
@@ -187,7 +187,7 @@ for (let i = 1; i <= 30; i++) {
   const company = getCompanyName(clientName, i + 3);
   const cleanComp = company.split(' ')[0].toLowerCase();
   
-  const updateDate = new Date(2026, 5, Math.max(1, i % 28));
+  const updateDate = new Date(2026, 5, Math.max(1, i % 23));
   
   updateData.push({
     name: `${company.split(' ')[0]} Storefront`,
@@ -210,7 +210,7 @@ for (let i = 1; i <= 30; i++) {
   const phone = getMyanmarPhone(i + 5);
   const svc = services[i % services.length];
   
-  const purchaseDate = new Date(2026, 5, Math.max(1, i % 25));
+  const purchaseDate = new Date(2026, 5, Math.max(1, i % 23));
   const followUpDate = new Date(purchaseDate);
   followUpDate.setDate(purchaseDate.getDate() + 15);
   
@@ -231,8 +231,8 @@ for (let i = 1; i <= 30; i++) {
 
 // ─── 6. Daily Business Summary Report (30 Rows) ───
 const dailyReportData = [];
-for (let i = 1; i <= 30; i++) {
-  const dateObj = new Date(2026, 5, i); // June 1 to 30, 2026
+for (let i = 1; i <= 23; i++) {
+  const dateObj = new Date(2026, 5, i); // June 1 to 23, 2026
   const dateStr = dateObj.toISOString().slice(0, 10);
   
   const budget = i % 3 === 0 ? Math.floor(100000 + (i * 12345) % 200000) : 0;

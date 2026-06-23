@@ -398,8 +398,8 @@ async function main() {
 
   // 4b. Seed Daily Business Summary Reports (30 Days)
   console.log("Seeding Daily Business Summary Reports for pacing...");
-  for (let i = 1; i <= 30; i++) {
-    const dateObj = new Date(2026, 5, i); // June 1 to 30, 2026
+  for (let i = 1; i <= 23; i++) {
+    const dateObj = new Date(2026, 5, i); // June 1 to 23, 2026
     const dateStr = dateObj.toISOString().slice(0, 10);
     const budget = i % 3 === 0 ? Math.floor(100000 + (i * 12345) % 200000) : 0;
     const sales = i % 2 === 0 ? Math.floor(300000 + (i * 45678) % 1500000) : 0;
