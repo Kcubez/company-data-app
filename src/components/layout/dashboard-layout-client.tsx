@@ -102,7 +102,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
             <Database className="w-4 h-4" aria-hidden />
           </div>
           <span className="font-bold text-base whitespace-nowrap text-white">
-            {process.env.NEXT_PUBLIC_APP_NAME ?? 'MOT Business AI'}
+            {process.env.NEXT_PUBLIC_APP_NAME ?? 'Business AI Integration'}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -131,7 +131,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
                 </div>
                 <div className="min-w-0">
                   <h1 className="font-bold text-sm tracking-tight whitespace-nowrap text-white">
-                    {process.env.NEXT_PUBLIC_APP_NAME ?? 'MOT Business AI'}
+                    {process.env.NEXT_PUBLIC_APP_NAME ?? 'Business AI Integration'}
                   </h1>
                   <p className="text-[10px] text-sky-400 font-medium">Enterprise Edition</p>
                 </div>
@@ -184,7 +184,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
             </div>
             <div className="min-w-0">
               <h1 className="font-bold text-base tracking-tight whitespace-nowrap text-white">
-                {process.env.NEXT_PUBLIC_APP_NAME ?? 'MOT Business AI'}
+                {process.env.NEXT_PUBLIC_APP_NAME ?? 'Business AI Integration'}
               </h1>
               <p className="text-xs text-sky-400 font-medium tracking-wide">Enterprise Edition</p>
             </div>
