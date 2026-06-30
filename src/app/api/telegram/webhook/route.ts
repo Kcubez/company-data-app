@@ -1794,8 +1794,12 @@ export async function POST(req: NextRequest) {
               "  • <i>follow-up လုပ်ရမယ့် customer?</i>",
               "",
               "━━━━━━━━━━━━━━━━━━━━",
-              "↩️ /menu",
             ].join("\n"),
+            replyMarkup: {
+              inline_keyboard: [
+                [{ text: "↩️ Main Menu", callback_data: "action:menu" }]
+              ]
+            }
           });
         }
         return NextResponse.json({ ok: true });
