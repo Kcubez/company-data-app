@@ -465,7 +465,7 @@ function SenderItem({
       </Avatar>
       <div className="flex-1 min-w-0">
         <p className={`text-sm truncate ${isSelected ? 'font-medium' : ''}`}>
-          {sender.displayName}
+          {sender.displayName || 'Awaiting Bot Link'}
         </p>
         {sender.username && (
           <p className="text-xs text-muted-foreground truncate">@{sender.username}</p>

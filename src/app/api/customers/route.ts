@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       sender: a.sender
         ? {
             ...a.sender,
-            telegramUserId: a.sender.telegramUserId.toString(),
+            telegramUserId: a.sender.telegramUserId ? a.sender.telegramUserId.toString() : null,
             lastMessageAt: a.sender.lastMessageAt?.toISOString() ?? null,
             createdAt: a.sender.createdAt.toISOString(),
             updatedAt: a.sender.updatedAt.toISOString(),

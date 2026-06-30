@@ -826,8 +826,8 @@ export default function DemandSheetsPage() {
 
                     <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Send className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate" title={record.sender.displayName}>
-                        {record.sender.displayName}
+                      <span className="truncate" title={record.sender.displayName ?? undefined}>
+                        {record.sender.displayName || 'Unknown'}
                       </span>
                     </p>
                     {record.customer?.company && (

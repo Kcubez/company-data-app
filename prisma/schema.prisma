@@ -32,6 +32,7 @@ model User {
   websiteUpdates     WebsiteUpdate[]
   businessReports    BusinessReport[]
   demandImportBatches DemandImportBatch[]
+  telegramSenders    TelegramSender[]
 
   @@map("user")
 }
@@ -120,16 +121,28 @@ model CustomerActivity {
 
 model TelegramSender {
   id              String   @id @default(cuid())
-  telegramUserId  BigInt   @unique
-  firstName       String
+  telegramUserId  BigInt?  @unique
+  firstName       String?
   lastName        String?
   username        String?
-  displayName     String
+  displayName     String?
   messageCount    Int      @default(0)
   lastMessageAt   DateTime?
   activeReportType String   @default("none")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  // Multi-tenant scoping to the Business Owner's User account
+  userId             String?
+  user               User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Verification & Authorization
+  email              String?
+  isVerified         Boolean          @default(false)
+  otpCode            String?
+  otpExpiresAt       DateTime?
+  isAuthorized       Boolean          @default(false)
+  allowedDepartments String[]         @default([])
 
   messages        TelegramMessage[]
   demandRecords   DemandRecord[]

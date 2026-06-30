@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   // Serialize BigInt fields
   const serialized = senders.map((s) => ({
     ...s,
-    telegramUserId: s.telegramUserId.toString(),
+    telegramUserId: s.telegramUserId ? s.telegramUserId.toString() : null,
     messageCount: s._count.messages, // Use actual count from relation
     _count: undefined,
   }));

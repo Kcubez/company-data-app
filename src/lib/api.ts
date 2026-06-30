@@ -73,15 +73,20 @@ export type UpdateUserPayload = {
 
 export type TelegramSender = {
   id: string;
-  telegramUserId: string;
-  firstName: string;
+  telegramUserId: string | null;
+  firstName: string | null;
   lastName: string | null;
   username: string | null;
-  displayName: string;
+  displayName: string | null;
   messageCount: number;
   lastMessageAt: string | null;
   activeReportType: string;
   createdAt: string;
+  userId?: string | null;
+  email?: string | null;
+  isVerified?: boolean;
+  isAuthorized?: boolean;
+  allowedDepartments?: string[];
 };
 
 export type TelegramMessageItem = {
@@ -136,6 +141,24 @@ export const messagesApi = {
 
 export const sendersApi = {
   list: () => request<{ senders: TelegramSender[] }>("/api/senders"),
+};
+
+export const settingsSendersApi = {
+  list: () => request<{ senders: TelegramSender[] }>("/api/settings/senders"),
+  create: (data: { email: string; allowedDepartments: string[] }) =>
+    request<{ sender: TelegramSender }>("/api/settings/senders", {
+      method: "POST",
+      body: data,
+    }),
+  update: (id: string, data: { isAuthorized?: boolean; allowedDepartments?: string[] }) =>
+    request<{ sender: TelegramSender }>(`/api/settings/senders/${id}`, {
+      method: "PUT",
+      body: data,
+    }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/api/settings/senders/${id}`, {
+      method: "DELETE",
+    }),
 };
 
 // ─── Demand Sheet API ───────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ import {
 } from "@/lib/demand-parser";
 import { analyzeDemandRecord } from "@/lib/demand-analysis";
 import { NextRequest, NextResponse, after } from "next/server";
+import { sendOTPEmail } from "@/lib/email";
 
 function displayNameFromTelegramUser(from: { first_name?: string; last_name?: string }) {
   return [from.first_name, from.last_name].filter(Boolean).join(" ");
@@ -245,6 +246,14 @@ async function upsertSender(from: {
   username?: string;
 }) {
   const displayName = displayNameFromTelegramUser(from);
+  
+  // Find active bot owner to link to this sender
+  const settings = await prisma.botSettings.findFirst({
+    where: { isActive: true },
+    select: { userId: true },
+  });
+  const ownerUserId = settings?.userId || null;
+
   return prisma.telegramSender.upsert({
     where: { telegramUserId: BigInt(from.id) },
     create: {
@@ -256,25 +265,177 @@ async function upsertSender(from: {
       messageCount: 0,
       lastMessageAt: null,
       activeReportType: 'none',
+      userId: ownerUserId,
     },
     update: {
       firstName: from.first_name || undefined,
       lastName: from.last_name || null,
       username: from.username || null,
       displayName: displayName || undefined,
+      ...(ownerUserId ? { userId: ownerUserId } : {}),
     },
   });
 }
 
 const MAIN_MENU_BUTTONS = {
   inline_keyboard: [
-    [{ text: "🤖 Q & A", callback_data: "mode:qa" }],
-    [{ text: "📋 Demand Sheet", callback_data: "mode:demand_report" }],
-    [{ text: "⏰ Project Expiries", callback_data: "mode:project_expiry" }],
-    [{ text: "🔧 Website Updates", callback_data: "mode:website_update" }],
+    [{ text: "🤖 Q&A မေးမြန်း", callback_data: "mode:qa" }, { text: "📋 Demand Sheet", callback_data: "mode:demand_report" }],
+    [{ text: "⏰ Project Expiry", callback_data: "mode:project_expiry" }, { text: "🔧 Website Update", callback_data: "mode:website_update" }],
     [{ text: "📊 Business Report", callback_data: "mode:business_report" }],
   ],
 };
+
+const KEYBOARD_UNLINKED = {
+  keyboard: [
+    [{ text: "/link" }]
+  ],
+  resize_keyboard: true,
+  one_time_keyboard: false
+};
+
+const KEYBOARD_LINKED = {
+  keyboard: [
+    [{ text: "/menu" }],
+    [{ text: "/format" }, { text: "/template" }],
+    [{ text: "/unlink" }]
+  ],
+  resize_keyboard: true,
+  one_time_keyboard: false
+};
+
+function buildMainMenuButtons(allowedDepartments: string[]) {
+  const buttons: { text: string; callback_data: string }[][] = [];
+  const row1: { text: string; callback_data: string }[] = [];
+  const row2: { text: string; callback_data: string }[] = [];
+  const row3: { text: string; callback_data: string }[] = [];
+
+  if (allowedDepartments.includes('QA')) {
+    row1.push({ text: "🤖 Q&A မေးမြန်း", callback_data: "mode:qa" });
+  }
+  if (allowedDepartments.includes('Sales')) {
+    row1.push({ text: "📋 Demand Sheet", callback_data: "mode:demand_report" });
+  }
+  if (allowedDepartments.includes('IT')) {
+    row2.push({ text: "⏰ Project Expiry", callback_data: "mode:project_expiry" });
+    row2.push({ text: "🔧 Website Update", callback_data: "mode:website_update" });
+  }
+  if (allowedDepartments.includes('Finance')) {
+    row3.push({ text: "📊 Business Report", callback_data: "mode:business_report" });
+  }
+
+  if (row1.length) buttons.push(row1);
+  if (row2.length) buttons.push(row2);
+  if (row3.length) buttons.push(row3);
+
+  return { inline_keyboard: buttons };
+}
+
+function getDepartmentForMode(mode: string): string | null {
+  if (mode === 'demand_report') return 'Sales';
+  if (mode === 'project_expiry' || mode === 'website_update') return 'IT';
+  if (mode === 'business_report') return 'Finance';
+  if (mode === 'qa') return 'QA';
+  return null;
+}
+
+function getDepartmentNameBurmese(dep: string): string {
+  if (dep === 'Sales') return 'Sales & Marketing (အရောင်းနှင့်စျေးကွက်)';
+  if (dep === 'IT') return 'IT & Projects (စီမံကိန်းနှင့် အိုင်တီ)';
+  if (dep === 'Finance') return 'Finance & Operations (ဘဏ္ဍာရေးနှင့် လုပ်ငန်းဆောင်ရွက်မှု)';
+  if (dep === 'QA') return 'QA / Support (အမေးအဖြေ)';
+  return dep;
+}
+
+async function sendNoPermissionPrompt(
+  botToken: string | null | undefined,
+  chatId: bigint | number,
+  departmentName: string
+) {
+  await sendTelegramMessage({
+    botToken,
+    chatId,
+    text: [
+      "🚫 ━━━━━━━━━━━━━━━━━━━━",
+      "",
+      `  <b>ဝင်ရောက်ခွင့် မရှိပါ</b>`,
+      "",
+      "━━━━━━━━━━━━━━━━━━━━",
+      "",
+      `📌 <b>ဌာန:</b>  ${getDepartmentNameBurmese(departmentName)}`,
+      "",
+      `သင်သည် ယခုဌာနအတွက် ဒေတာပေးပို့ရန်`,
+      `ခွင့်ပြုချက် မရရှိသေးပါ။`,
+      "",
+      "💡 <i>ကျေးဇူးပြု၍ လုပ်ငန်းတာဝန်ရှိသူ</i>",
+      "<i>(Business Owner) အား ဆက်သွယ်ပါ။</i>",
+      "",
+      "↩️ Menu သို့ ပြန်သွားရန် /menu",
+    ].join("\n"),
+  });
+}
+
+async function checkAuthorization(
+  sender: any,
+  botToken: string | null | undefined,
+  chatId: bigint | number
+): Promise<boolean> {
+  if (sender.isVerified && sender.isAuthorized) {
+    return true;
+  }
+
+  if (!sender.isVerified) {
+    await sendTelegramMessage({
+      botToken,
+      chatId,
+      text: [
+        "👋 ━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "  <b>Business AI Integration</b>",
+        "  <i>စနစ်မှ လှိုက်လှဲစွာ ကြိုဆိုပါသည်</i>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "စနစ်ကို သုံးနိုင်ရန် အီးမေးလ်ဖြင့်",
+        "အကောင့် အရင်ဆုံး ချိတ်ဆက်ရပါမည်။",
+        "",
+        "📝 <b>လုပ်ဆောင်ရန်:</b>",
+        "",
+        "  ① အောက်ခြေရှိ <b>/link</b> ခလုတ်ကို နှိပ်ပါ",
+        "  ② သင့် ဝန်ထမ်းအီးမေးလ်ကို ရိုက်ထည့်ပါ",
+        "  ③ ရရှိလာသော အီးမေးလ် OTP ကုဒ်ကို ရိုက်ထည့်ပါ",
+      ].join("\n"),
+      replyMarkup: KEYBOARD_UNLINKED,
+    });
+    return false;
+  }
+
+  if (!sender.isAuthorized) {
+    await sendTelegramMessage({
+      botToken,
+      chatId,
+      text: [
+        "⏳ ━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "  <b>ခွင့်ပြုချက် စောင့်ဆိုင်းနေပါသည်</b>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        `✅ အီးမေးလ်: <code>${sender.email}</code>`,
+        "   (အတည်ပြုပြီး)",
+        "",
+        "🔄 Business Owner ၏ ခွင့်ပြုချက်ကို",
+        "   စောင့်ဆိုင်းနေပါသည်...",
+        "",
+        "💡 <i>သင့်လုပ်ငန်း တာဝန်ရှိသူအား</i>",
+        "<i>ဆက်သွယ်ပြီး ခွင့်ပြုချက် တောင်းဆိုပါ။</i>",
+      ].join("\n"),
+      replyMarkup: KEYBOARD_UNLINKED, // keep unlinked status or allow unlink
+    });
+    return false;
+  }
+
+  return false;
+}
 
 // Sent when a sender submits data without first picking a report mode.
 // Prevents data from being mis-filed into the wrong report type.
@@ -298,84 +459,117 @@ async function sendPickModePrompt(
 
 function getFormatPrompt(): string {
   return [
-    "📋 <b>ဝယ်လိုအားနှင့် အရောင်းမှတ်တမ်း (Demand Sheet) Mode</b>",
+    "📋 ━━━━━━━━━━━━━━━━━━━━",
     "",
-    "ဤကဏ္ဍတွင် အစီရင်ခံစာ စာသား သို့မဟုတ် သက်ဆိုင်ရာ Excel / CSV ဖိုင်များကို တိုက်ရိုက် ပေးပို့နိုင်ပါသည်။",
+    "  <b>Demand Sheet Mode</b>",
+    "  <i>ဝယ်လိုအားနှင့် အရောင်းမှတ်တမ်း</i>",
     "",
-    "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း ရေးသားပေးပို့နိုင်ပါသည် -</b>",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "📄 စာသား <b>သို့မဟုတ်</b> Excel/CSV",
+    "    ဖိုင်ကို တိုက်ရိုက်ပို့နိုင်ပါသည်",
+    "",
+    "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
-    "• Customer: [Customer နာမည်]",
+    "• Customer: [နာမည်]",
     "• Phone: [ဖုန်းနံပါတ်]",
-    "• Business: [လုပ်ငန်း/ကုမ္ပဏီအမည်]",
-    "• Service: [ဝန်ဆောင်မှုအမည်] - Amount: [ဝင်ငွေ] - Qty: [အရေအတွက်]",
+    "• Business: [ကုမ္ပဏီအမည်]",
+    "• Service: [ဝန်ဆောင်မှု] - Amount: [ငွေ]",
     "• Follow-up Date: [YYYY-MM-DD]",
-    "• Note: [အခြားမှတ်ချက်]",
+    "• Note: [မှတ်ချက်]",
     "</pre>",
-    "💡 <i>အကြံပြုချက်: မလိုအပ်သော စာကြောင်းများကို ချန်လှပ်ထားနိုင်ပါသည်။ Excel/CSV ဖိုင် တင်သွင်းပါကလည်း AI မှ အလိုအလျောက် ဆန်းစစ်ပေးမည် ဖြစ်ပါသည်။</i>",
+    "",
+    "💡 <i>မလိုအပ်သော စာကြောင်းများ ချန်လှပ်ထားနိုင်ပါသည်</i>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "📄 /template  •  ↩️ /menu",
   ].join("\n");
 }
 
 function getProjectExpiryFormatPrompt(): string {
   return [
-    "⏰ <b>ပရောဂျက် သက်တမ်းကုန်ဆုံးမှု မှတ်တမ်း (Project Expiry) Mode</b>",
+    "⏰ ━━━━━━━━━━━━━━━━━━━━",
     "",
-    "ဤကဏ္ဍတွင် စီမံကိန်း သက်တမ်းကုန်ဆုံးရက်စွဲများကို တင်သွင်းရန် စာသား သို့မဟုတ် Excel ဖိုင်ကို ပေးပို့နိုင်ပါသည်။",
+    "  <b>Project Expiry Mode</b>",
+    "  <i>စီမံကိန်း သက်တမ်းကုန်ဆုံးမှု</i>",
     "",
-    "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း ရေးသားပေးပို့နိုင်ပါသည် -</b>",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "📄 စာသား <b>သို့မဟုတ်</b> Excel ဖိုင်",
+    "    ပေးပို့နိုင်ပါသည်",
+    "",
+    "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
     "• Project: [Project အမည်]",
     "• URL: [Website URL]",
-    "• Package: [Package အမည်]",
-    "• Domain Provider: [Domain ဝန်ဆောင်မှုပေးသူ]",
-    "• Hosting Provider: [Hosting ဝန်ဆောင်မှုပေးသူ]",
-    "• Hosting Remark: [Hosting မှတ်ချက်]",
+    "• Package: [Package]",
+    "• Domain Provider: [Provider]",
+    "• Hosting Provider: [Provider]",
     "• Domain Expiry: [YYYY-MM-DD]",
     "• Hosting Expiry: [YYYY-MM-DD]",
-    "• Remark: [အခြားမှတ်ချက်]",
+    "• Remark: [မှတ်ချက်]",
     "</pre>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "📄 /template  •  ↩️ /menu",
   ].join("\n");
 }
 
 function getWebsiteUpdateFormatPrompt(): string {
   return [
-    "🔧 <b>ဝဘ်ဆိုဒ် အပ်ဒိတ်/ထိန်းသိမ်းမှု မှတ်တမ်း (Website Update) Mode</b>",
+    "🔧 ━━━━━━━━━━━━━━━━━━━━",
     "",
-    "ဤကဏ္ဍတွင် ဝဘ်ဆိုဒ်အပ်ဒိတ်နှင့် ထိန်းသိမ်းမှု အခြေအနေများကို တင်သွင်းရန် စာသား သို့မဟုတ် Excel ဖိုင်ကို ပေးပို့နိုင်ပါသည်။",
+    "  <b>Website Update Mode</b>",
+    "  <i>ဝဘ်ဆိုဒ် အပ်ဒိတ်/ထိန်းသိမ်းမှု</i>",
     "",
-    "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း ရေးသားပေးပို့နိုင်ပါသည် -</b>",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "📄 စာသား <b>သို့မဟုတ်</b> Excel ဖိုင်",
+    "    ပေးပို့နိုင်ပါသည်",
+    "",
+    "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
-    "• Name: [ဝဘ်ဆိုဒ်/လုပ်ငန်း အမည်]",
+    "• Name: [ဝဘ်ဆိုဒ်/လုပ်ငန်း]",
     "• URL: [Website URL]",
     "• Business: [လုပ်ငန်းအမျိုးအစား]",
-    "• Package: [Package အမည်]",
-    "• Status: [up_to_date / pending_update / in_progress]",
-    "• Remark: [အခြားမှတ်ချက်]",
+    "• Package: [Package]",
+    "• Status: [up_to_date / pending / in_progress]",
+    "• Remark: [မှတ်ချက်]",
     "</pre>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "📄 /template  •  ↩️ /menu",
   ].join("\n");
 }
 
 function getBusinessReportFormatPrompt(): string {
   return [
-    "📊 <b>လုပ်ငန်းလှုပ်ရှားမှုနေ့စဉ်/အပတ်စဉ် မှတ်တမ်း (Business Report) Mode</b>",
+    "📊 ━━━━━━━━━━━━━━━━━━━━",
     "",
-    "ဤကဏ္ဍတွင် Marketing, Appointments, Sales ဆိုင်ရာ အချက်အလက်များကို တင်သွင်းနိုင်ပါသည်။ စာသား သို့မဟုတ် Excel ဖိုင် ပေးပို့နိုင်ပါသည်။",
+    "  <b>Business Report Mode</b>",
+    "  <i>လုပ်ငန်းလှုပ်ရှားမှု အစီရင်ခံစာ</i>",
     "",
-    "📝 <b>စာသားဖြင့် ပေးပို့လိုပါက အောက်ပါပုံစံအတိုင်း -</b>",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "📄 စာသား <b>သို့မဟုတ်</b> Excel ဖိုင်",
+    "    ပေးပို့နိုင်ပါသည်",
+    "",
+    "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
     "• Date: [YYYY-MM-DD]",
-    "• Marketing Budget: [ကြော်ငြာ ကုန်ကျစရိတ် Ks]",
-    "• Channel: [Facebook / Google / Referral / Walk-in / Telegram]",
-    "• Calls Made: [ဖုန်းခေါ်ဆိုမှုဦးရေ]",
-    "• Appointments Made: [ချိန်းဆိုမှုဦးရေ]",
-    "• Appointments Kept: [ဆုံတွေ့မှုဦးရေ]",
-    "• New Leads: [ဖောက်သည်သစ်ဦးရေ]",
-    "• Total Demand: [Demand မှတ်တမ်းဦးရေ]",
-    "• Total Sales: [ရောင်းရငွေ Ks]",
-    "• Closed Deals: [ပိတ်သိမ်းနိုင်သောကိစ္စရပ်]",
-    "• Pending Deals: [ဆိုင်းငံ့နေသောကိစ္စရပ်]",
+    "• Marketing Budget: [Ks]",
+    "• Channel: [FB / Google / Referral]",
+    "• Calls Made: [ဦးရေ]",
+    "• Appointments Made: [ဦးရေ]",
+    "• Appointments Kept: [ဦးရေ]",
+    "• New Leads: [ဦးရေ]",
+    "• Total Sales: [Ks]",
+    "• Closed Deals: [ဦးရေ]",
     "• Notes: [မှတ်ချက်]",
     "</pre>",
-    "💡 <i>Excel ဖိုင် (Business Report format) တင်သွင်းပါကလည်း AI မှ အလိုအလျောက် ဆန်းစစ်ပေးပါမည်။</i>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "📄 /template  •  ↩️ /menu",
   ].join("\n");
 }
 
@@ -392,10 +586,18 @@ function getFormatPromptForMode(mode: string | null | undefined): string {
       return getFormatPrompt();
     default:
       return [
-        "🤖 <b>Q&A ကဏ္ဍတွင် ရှိနေပါသည်။</b>",
+        "🤖 ━━━━━━━━━━━━━━━━━━━━",
         "",
-        "ဤကဏ္ဍတွင် ပုံစံ (format) မလိုအပ်ပါ — သိရှိလိုသည်များကို တိုက်ရိုက် မေးမြန်းနိုင်ပါသည်။",
-        "အစီရင်ခံစာ တင်သွင်းလိုပါက /menu မှ သက်ဆိုင်ရာ ကဏ္ဍကို ရွေးချယ်ပါ။",
+        "  <b>Q&A Mode</b>",
+        "  <i>AI မေးမြန်းခြင်း</i>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "ပုံစံ (format) မလိုအပ်ပါ",
+        "သိရှိလိုသည်များကို တိုက်ရိုက်မေးပါ",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "↩️ ကဏ္ဍပြောင်းရန် /menu",
       ].join("\n");
   }
 }
@@ -406,20 +608,19 @@ function getFormatPromptForMode(mode: string | null | undefined): string {
 function getFormatHintFooter(mode: string): string {
   let fields = "";
   if (mode === 'demand_report') {
-    fields = "Customer • Phone • Business • Service / Amount / Qty • Follow-up Date • Note";
+    fields = "Customer • Phone • Service • Amount • Follow-up";
   } else if (mode === 'project_expiry') {
-    fields = "Project • URL • Package • Domain / Hosting Provider • Domain / Hosting Expiry • Remark";
+    fields = "Project • URL • Domain/Hosting Expiry";
   } else if (mode === 'website_update') {
-    fields = "Name • URL • Business • Package • Status • Remark";
+    fields = "Name • URL • Package • Status";
   } else if (mode === 'business_report') {
-    fields = "Date • Budget • Channel • Calls • Appointments • Leads • Sales • Closed Deals • Notes";
+    fields = "Date • Budget • Calls • Appointments • Sales";
   }
   return [
     "",
     "━━━━━━━━━━━━━━━━━━━━",
-    `💡 <i>ပိုပြည့်စုံစေရန် ဖြည့်နိုင်သော အကွက်များ:</i>`,
-    `<i>${fields}</i>`,
-    `<i>ပုံစံ အပြည့်အစုံ ကြည့်ရန် /format ၊ ကူးယူရန် တမ်းပလိတ်အတွက် /template ၊ ကဏ္ဍ ပြောင်းရန် /menu ကို ပေးပို့ပါ။</i>`,
+    `💡 <i>${fields}</i>`,
+    "📋 /format  •  📄 /template  •  ↩️ /menu",
   ].join("\n");
 }
 
@@ -507,37 +708,62 @@ function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
   switch (mode) {
     case 'demand_report':
       return [
-        "📋 <b>Demand Sheet (အရောင်းမှတ်တမ်း) Copy-Paste Template</b>",
-        "အောက်ပါစာသားကို နှိပ်၍ Copy ကူးယူပြီး အချက်အလက်များ ဖြည့်စွက်ပေးပို့နိုင်ပါသည် -",
+        "📋 ━━━━━━━━━━━━━━━━━━━━",
         "",
-        "<code>• Customer: \n• Phone: \n• Business: \n• Service:  - Amount:  - Qty: \n• Follow-up Date: \n• Note: </code>",
+        "  <b>Demand Sheet Template</b>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
+        "",
+        "<code>• Customer: \n• Phone: \n• Business: \n• Service:  - Amount: \n• Follow-up Date: \n• Note: </code>",
       ].join("\n");
     case 'project_expiry':
       return [
-        "⏰ <b>Project Expiry (သက်တမ်းကုန်ဆုံးမှု) Copy-Paste Template</b>",
-        "အောက်ပါစာသားကို နှိပ်၍ Copy ကူးယူပြီး အချက်အလက်များ ဖြည့်စွက်ပေးပို့နိုင်ပါသည် -",
+        "⏰ ━━━━━━━━━━━━━━━━━━━━",
         "",
-        "<code>• Project: \n• URL: \n• Package: \n• Domain Provider: \n• Hosting Provider: \n• Hosting Remark: \n• Domain Expiry: \n• Hosting Expiry: \n• Remark: </code>",
+        "  <b>Project Expiry Template</b>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
+        "",
+        "<code>• Project: \n• URL: \n• Package: \n• Domain Provider: \n• Hosting Provider: \n• Domain Expiry: \n• Hosting Expiry: \n• Remark: </code>",
       ].join("\n");
     case 'website_update':
       return [
-        "🔧 <b>Website Update (ဝဘ်ဆိုဒ်အပ်ဒိတ်) Copy-Paste Template</b>",
-        "အောက်ပါစာသားကို နှိပ်၍ Copy ကူးယူပြီး အချက်အလက်များ ဖြည့်စွက်ပေးပို့နိုင်ပါသည် -",
+        "🔧 ━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "  <b>Website Update Template</b>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
         "",
         "<code>• Name: \n• URL: \n• Business: \n• Package: \n• Status: \n• Remark: </code>",
       ].join("\n");
     case 'business_report':
       return [
-        "📊 <b>Business Report (လုပ်ငန်းလှုပ်ရှားမှု) Copy-Paste Template</b>",
-        "အောက်ပါစာသားကို နှိပ်၍ Copy ကူးယူပြီး အချက်အလက်များ ဖြည့်စွက်ပေးပို့နိုင်ပါသည် -",
+        "📊 ━━━━━━━━━━━━━━━━━━━━",
         "",
-        "<code>• Date: \n• Marketing Budget: \n• Channel: \n• Calls Made: \n• Appointments Made: \n• Appointments Kept: \n• New Leads: \n• Total Demand: \n• Total Sales: \n• Closed Deals: \n• Pending Deals: \n• Notes: </code>",
+        "  <b>Business Report Template</b>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
+        "",
+        "<code>• Date: \n• Marketing Budget: \n• Channel: \n• Calls Made: \n• Appointments Made: \n• Appointments Kept: \n• New Leads: \n• Total Sales: \n• Closed Deals: \n• Notes: </code>",
       ].join("\n");
     default:
       return [
-        "🤖 <b>Q&A သို့မဟုတ် အမျိုးအစားမရွေးချယ်ရသေးသော ကဏ္ဍတွင် ရှိနေပါသည်။</b>",
+        "🤖 ━━━━━━━━━━━━━━━━━━━━",
         "",
-        "Template ရရှိရန် /menu မှ ကဏ္ဍတစ်ခုခုကို ရွေးချယ်ပြီးနောက် /template ကို ပြန်လည် ပေးပို့ပါ။",
+        "  <b>အဆင်သင့်မဖြစ်သေးပါ</b>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "Template ရယူရန် ဦးစွာ /menu မှ",
+        "ကဏ္ဍတစ်ခုကို ရွေးချယ်ပေးပါ။",
       ].join("\n");
   }
 }
@@ -1374,6 +1600,13 @@ export async function POST(req: NextRequest) {
       const messageId = callbackQuery.message?.message_id;
       const data = callbackQuery.data;
 
+      // ─── Guard: Check Authorization ─────────────────────────────────
+      const isAuthorized = await checkAuthorization(sender, settings?.botToken, chatId ? BigInt(chatId) : 0);
+      if (!isAuthorized) {
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Unauthorized');
+        return NextResponse.json({ ok: true });
+      }
+
       if (data.startsWith('demand_import_confirm:')) {
         const pendingId = data.replace('demand_import_confirm:', '');
         const pending = await prisma.pendingDemandImport.findUnique({
@@ -1532,24 +1765,30 @@ export async function POST(req: NextRequest) {
           where: { id: sender.id },
           data: { activeReportType: 'qa' },
         });
-        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Q & A mode selected');
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Q&A Mode selected');
         if (chatId && messageId) {
           await editTelegramMessage({
             botToken: settings?.botToken,
             chatId: BigInt(chatId),
             messageId,
             text: [
-              "🤖 <b>Q&A (အမေး/အဖြေ) ကဏ္ဍ</b>",
+              "🤖 ━━━━━━━━━━━━━━━━━━━━",
               "",
-              "စနစ်အတွင်းရှိ လုပ်ငန်းဆိုင်ရာ အချက်အလက်များ (Business Data) ကို အခြေခံ၍ <b>Gemini AI</b> မှ ဆန်းစစ်ဖြေကြားပေးမည် ဖြစ်ပါသည်။ သိရှိလိုသည်များကို မေးမြန်းနိုင်ပါသည်။",
-              "",
-              "💡 <i>ဥပမာမေးခွန်းများ -</i>",
-              "• <code>ဘယ် domain / hosting တွေ ရက်အနီးကပ်ဆုံး သက်တမ်းကုန်တော့မလဲ?</code>",
-              "• <code>update လုပ်ဖို့ ကျန်နေသေးတဲ့ website ဘယ်နှစ်ခု ရှိလဲ?</code>",
-              "• <code>follow-up လုပ်ဖို့ ရှိနေတဲ့ customer တွေက ဘယ်သူတွေလဲ?</code>",
+              "  <b>Q&A Mode — အသက်ဝင်ပါပြီ</b>",
               "",
               "━━━━━━━━━━━━━━━━━━━━",
-              "↩️ <b>အဓิက Menu သို့ ပြန်သွားရန်:</b> /start သို့မဟုတ် /menu ဟု ပေးပို့နိုင်ပါသည်။",
+              "",
+              "Gemini AI မှ လုပ်ငန်းဒေတာကို",
+              "အခြေခံ၍ ဖြေကြားပေးမည်။",
+              "",
+              "💬 <b>ဥပမာများ:</b>",
+              "",
+              "  • <i>domain / hosting ရက်နီးဆုံးများ?</i>",
+              "  • <i>update ကျန်တဲ့ website ရှိလား?</i>",
+              "  • <i>follow-up လုပ်ရမယ့် customer?</i>",
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "↩️ /menu",
             ].join("\n"),
           });
         }
@@ -1561,7 +1800,7 @@ export async function POST(req: NextRequest) {
           where: { id: sender.id },
           data: { activeReportType: 'demand_report' },
         });
-        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Demand Sheet mode selected');
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Demand Sheet selected');
         if (chatId && messageId) {
           await editTelegramMessage({
             botToken: settings?.botToken,
@@ -1578,7 +1817,7 @@ export async function POST(req: NextRequest) {
           where: { id: sender.id },
           data: { activeReportType: 'project_expiry' },
         });
-        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Project Expiry mode selected');
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Project Expiry selected');
         if (chatId && messageId) {
           await editTelegramMessage({
             botToken: settings?.botToken,
@@ -1595,7 +1834,7 @@ export async function POST(req: NextRequest) {
           where: { id: sender.id },
           data: { activeReportType: 'website_update' },
         });
-        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Website Update mode selected');
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Website Update selected');
         if (chatId && messageId) {
           await editTelegramMessage({
             botToken: settings?.botToken,
@@ -1612,7 +1851,7 @@ export async function POST(req: NextRequest) {
           where: { id: sender.id },
           data: { activeReportType: 'business_report' },
         });
-        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Business Report mode selected');
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Business Report selected');
         if (chatId && messageId) {
           await editTelegramMessage({
             botToken: settings?.botToken,
@@ -1647,6 +1886,331 @@ export async function POST(req: NextRequest) {
     const sender = await upsertSender(from);
     const chatId = BigInt(message.chat.id);
 
+    // ─── Handle Auth & OTP Command States (Bypasses general authorization) ──
+    if (message.text) {
+      const text = message.text.trim();
+
+      // 1. Command: /unlink (Unlinks current account)
+      if (text === '/unlink') {
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: {
+            email: null,
+            isVerified: false,
+            isAuthorized: false,
+            activeReportType: 'none',
+            otpCode: null,
+            otpExpiresAt: null,
+          },
+        });
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId,
+          text: [
+            "🔓 ━━━━━━━━━━━━━━━━━━━━",
+            "",
+            "  <b>အကောင့် ချိတ်ဆက်မှု ဖြုတ်ပြီးပါပြီ</b>",
+            "",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "",
+            "ယခု Telegram account ကို စနစ်မှ",
+            "အောင်မြင်စွာ ဖြုတ်လိုက်ပြီး ဖြစ်သည်။",
+          ].join("\n"),
+          replyMarkup: KEYBOARD_UNLINKED,
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // 2. Command: /link (Starts verification process)
+      if (text === '/link') {
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: { activeReportType: 'awaiting_email' },
+        });
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId,
+          text: [
+            "🔐 ━━━━━━━━━━━━━━━━━━━━",
+            "",
+            "  <b>အကောင့် ချိတ်ဆက်ခြင်း</b>",
+            "",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "",
+            "စနစ်တွင် စာရင်းသွင်းထားသော",
+            "သင့်ဝန်ထမ်း အီးမေးလ်ကို ရိုက်ထည့်ပေးပါ။",
+          ].join("\n"),
+          replyMarkup: KEYBOARD_UNLINKED,
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // 3. State: Awaiting Email input
+      if (sender.activeReportType === 'awaiting_email') {
+        const email = text;
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!emailRegex.test(email)) {
+          await sendTelegramMessage({
+            botToken: settings?.botToken,
+            chatId,
+            text: [
+              "⚠️ ━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "  <b>အီးမေးလ် ပုံစံမမှန်ပါ</b>",
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "ကျေးဇူးပြု၍ အီးမေးလ် မှန်ကန်စွာ ရိုက်ထည့်ပါ။",
+              "ဥပမာ: <code>name@company.com</code>",
+            ].join("\n"),
+            replyMarkup: KEYBOARD_UNLINKED,
+          });
+          return NextResponse.json({ ok: true });
+        }
+
+        const normalizedEmail = email.toLowerCase().trim();
+
+        // Find a pre-registered TelegramSender where either:
+        // 1. email matches and telegramUserId is NULL
+        // 2. email matches and telegramUserId matches the sender's telegramUserId
+        const preRegisteredSender = await prisma.telegramSender.findFirst({
+          where: {
+            email: normalizedEmail,
+            OR: [
+              { telegramUserId: null },
+              { telegramUserId: sender.telegramUserId },
+            ],
+          },
+        });
+
+        if (!preRegisteredSender) {
+          await sendTelegramMessage({
+            botToken: settings?.botToken,
+            chatId,
+            text: [
+              "❌ ━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "  <b>ဝင်ရောက်ခွင့်မရှိပါ</b>",
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "",
+              `ဤအီးမေးလ် <code>${email}</code> ကို Staff Bot Access တွင်`,
+              "Business Owner မှ ကြိုတင်ထည့်သွင်းထားခြင်း မရှိပါ။",
+              "",
+              "💡 <i>ကျေးဇူးပြု၍ သင့်လုပ်ငန်းတာဝန်ရှိသူအား</i>",
+              "<i>Staff Bot Access တွင် စာရင်းသွင်းပေးရန် ပြောပါ။</i>",
+            ].join("\n"),
+            replyMarkup: KEYBOARD_UNLINKED,
+          });
+          return NextResponse.json({ ok: true });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: {
+            email: normalizedEmail,
+            otpCode: otp,
+            otpExpiresAt,
+            activeReportType: 'awaiting_otp',
+            isVerified: false,
+          },
+        });
+
+        const emailSent = await sendOTPEmail(email, otp);
+        if (emailSent) {
+          // Mask email for display e.g. kc***@gmail.com
+          const atIndex = email.indexOf('@');
+          let maskedEmail = email;
+          if (atIndex > 2) {
+            maskedEmail = email.slice(0, 2) + '***' + email.slice(atIndex);
+          }
+
+          await sendTelegramMessage({
+            botToken: settings?.botToken,
+            chatId,
+            text: [
+              "📩 ━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "  <b>အတည်ပြုကုဒ် ပို့ပြီးပါပြီ</b>",
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "",
+              `သင့်အီးမေးလ် <code>${maskedEmail}</code> သို့`,
+              "ဂဏန်း ၆ လုံးပါ OTP ပို့ပေးထားပါသည်။",
+              "",
+              "📝 <b>လုပ်ဆောင်ရန်:</b>",
+              "  ရရှိလာသော အတည်ပြုကုဒ်ကို ရိုက်ပို့ပါ။",
+            ].join("\n"),
+            replyMarkup: KEYBOARD_UNLINKED,
+          });
+        } else {
+          await sendTelegramMessage({
+            botToken: settings?.botToken,
+            chatId,
+            text: [
+              "❌ ━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "  <b>အီးမေးလ် မပို့နိုင်ပါ</b>",
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "အီးမေးလ်ပို့ခြင်း မအောင်မြင်ပါ။",
+              "Business Owner အား ဆက်သွယ်ပါ။",
+            ].join("\n"),
+            replyMarkup: KEYBOARD_UNLINKED,
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      // 4. State: Awaiting OTP input
+      if (sender.activeReportType === 'awaiting_otp') {
+        const code = text;
+
+        if (!code || !/^\d{6}$/.test(code)) {
+          await sendTelegramMessage({
+            botToken: settings?.botToken,
+            chatId,
+            text: [
+              "⚠️ ━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "  <b>ကုဒ် ပုံစံမမှန်ပါ</b>",
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "ဂဏန်း ၆ လုံးပါသော OTP ကို ရိုက်ပို့ပါ။",
+            ].join("\n"),
+            replyMarkup: KEYBOARD_UNLINKED,
+          });
+          return NextResponse.json({ ok: true });
+        }
+
+        if (sender.otpCode !== code || !sender.otpExpiresAt || sender.otpExpiresAt < new Date()) {
+          await sendTelegramMessage({
+            botToken: settings?.botToken,
+            chatId,
+            text: [
+              "❌ ━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "  <b>အတည်ပြုခြင်း မအောင်မြင်ပါ</b>",
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "ကုဒ်မှားယွင်းနေပါသည် သို့မဟုတ်",
+              "သက်တမ်းကုန်ဆုံးသွားပါပြီ။",
+            ].join("\n"),
+            replyMarkup: KEYBOARD_UNLINKED,
+          });
+          return NextResponse.json({ ok: true });
+        }
+
+        // Verification Success
+        const preRegistered = await prisma.telegramSender.findFirst({
+          where: {
+            email: sender.email,
+            OR: [
+              { telegramUserId: null },
+              { telegramUserId: sender.telegramUserId },
+            ],
+          },
+        });
+
+        if (preRegistered) {
+          const displayName = displayNameFromTelegramUser(from);
+          if (preRegistered.id !== sender.id) {
+            // Delete the temporary record to free the unique telegramUserId constraint
+            await prisma.telegramSender.delete({
+              where: { id: sender.id },
+            });
+
+            // Update the pre-registered record with the telegram user details!
+            await prisma.telegramSender.update({
+              where: { id: preRegistered.id },
+              data: {
+                telegramUserId: sender.telegramUserId,
+                firstName: from.first_name || "Unknown",
+                lastName: from.last_name || null,
+                username: from.username || null,
+                displayName: displayName || "Unknown",
+                isVerified: true,
+                isAuthorized: true, // Pre-authorized by business owner!
+                activeReportType: 'none',
+                otpCode: null,
+                otpExpiresAt: null,
+              },
+            });
+          } else {
+            // They were already on the same record (e.g. re-linking)
+            await prisma.telegramSender.update({
+              where: { id: sender.id },
+              data: {
+                isVerified: true,
+                isAuthorized: true,
+                activeReportType: 'none',
+                otpCode: null,
+                otpExpiresAt: null,
+              },
+            });
+          }
+        }
+
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId,
+          text: [
+            "✅ ━━━━━━━━━━━━━━━━━━━━",
+            "",
+            "  <b>အကောင့် ချိတ်ဆက်ပြီးပါပြီ</b>",
+            "",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "",
+            `အီးမေးလ်: <code>${sender.email}</code>`,
+            "အတည်ပြု ချိတ်ဆက်ခြင်း အောင်မြင်ပါသည်။",
+            "",
+            "💡 <i>အောက်ခြေရှိ Menu မှတစ်ဆင့်</i>",
+            "<i>လုပ်ငန်းစဉ်များကို စတင်ဆောင်ရွက်နိုင်ပါပြီ။</i>",
+          ].join("\n"),
+          replyMarkup: KEYBOARD_LINKED,
+        });
+        return NextResponse.json({ ok: true });
+      }
+    }
+
+    // ─── Guard: Check General Authorization ───────────────────────────
+    const isAuthorized = await checkAuthorization(sender, settings?.botToken, chatId);
+    if (!isAuthorized) {
+      return NextResponse.json({ ok: true });
+    }
+
+    // Guard: Check if sender has any allowed departments
+    if (!sender.allowedDepartments || sender.allowedDepartments.length === 0) {
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId,
+        text: [
+          "⏳ ━━━━━━━━━━━━━━━━━━━━",
+          "",
+          "  <b>ခွင့်ပြုချက် စောင့်ဆိုင်းနေပါသည်</b>",
+          "",
+          "━━━━━━━━━━━━━━━━━━━━",
+          "",
+          `အီးမေးလ်: <code>${sender.email}</code> (အတည်ပြုပြီး)`,
+          "",
+          "စနစ်ကိုသုံးရန် မည်သည့်ဌာနအတွက်မျှ",
+          "ခွင့်ပြုချက် မရရှိသေးပါ။",
+          "",
+          "💡 <i>ကျေးဇူးပြု၍ Business Owner အား</i>",
+          "<i>ဆက်သွယ်ပြီး ခွင့်ပြုချက် တောင်းဆိုပါ။</i>",
+        ].join("\n"),
+        replyMarkup: KEYBOARD_UNLINKED,
+      });
+      return NextResponse.json({ ok: true });
+    }
+
     if (message.text === '/format') {
       await sendTelegramMessage({
         botToken: settings?.botToken,
@@ -1666,24 +2230,30 @@ export async function POST(req: NextRequest) {
     }
 
     if (message.text === '/start' || message.text === '/menu') {
+      const allowedButtons = buildMainMenuButtons(sender.allowedDepartments);
+      
+      // Send bottom custom keyboard initializer first
       await sendTelegramMessage({
         botToken: settings?.botToken,
         chatId,
         text: [
-          "👋 <b>မင်္ဂလာပါ ခင်ဗျာ/ရှင်။</b>",
+          "👋 ━━━━━━━━━━━━━━━━━━━━",
           "",
-          "<b>Business AI Integration System</b> မှ လှိုက်လှဲစွာ ကြိုဆိုပါသည်။",
-          "လုပ်ဆောင်လိုသည့် လုပ်ငန်းစဉ်အမျိုးအစားကို အောက်ပါ Menu မှ ရွေးချယ်ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
+          `  <b>မင်္ဂလာပါ ${sender.displayName || 'ခင်ဗျာ/ရှင်'}</b>`,
           "",
           "━━━━━━━━━━━━━━━━━━━━",
-          "🤖 <b>Q&A မေးမြန်းရန်:</b> လုပ်ငန်းဆိုင်ရာ အချက်အလက်များကို AI ဖြင့် မေးမြန်းဆန်းစစ်ရန်။",
-          "📋 <b>Demand Sheet:</b> ဝယ်လိုအားနှင့် အရောင်းမှတ်တမ်းများ တင်သွင်းရန်။",
-          "⏰ <b>Project Expiries:</b> သက်တမ်းကုန်ဆုံးမည့်ရက်များ တင်သွင်းရန်။",
-          "🔧 <b>Website Updates:</b> အပ်ဒိတ်/ထိန်းသိမ်းမှု အခြေအနေများ တင်သွင်းရန်။",
-          "━━━━━━━━━━━━━━━━━━━━",
-          "💡 <i>ကဏ္ဍ ရွေးပြီးနောက် ပုံစံများကြည့်ရန် /format သို့မဟုတ် ကူးယူရန် တမ်းပလိတ်အတွက် /template ကို ပေးပို့နိုင်ပါသည်။</i>",
+          "",
+          "<b>Business AI Integration</b> မှ ကြိုဆိုပါသည်",
         ].join("\n"),
-        replyMarkup: MAIN_MENU_BUTTONS,
+        replyMarkup: KEYBOARD_LINKED,
+      });
+
+      // Send inline category keyboard
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId,
+        text: "📂 <b>လုပ်ငန်းစဉ် အမျိုးအစား ရွေးချယ်ပါ:</b>",
+        replyMarkup: allowedButtons,
       });
       return NextResponse.json({ ok: true });
     }
@@ -1700,6 +2270,16 @@ export async function POST(req: NextRequest) {
       });
 
       const activeMode = updatedSender.activeReportType;
+
+      const requiredDep = getDepartmentForMode(activeMode);
+      if (requiredDep && !updatedSender.allowedDepartments.includes(requiredDep)) {
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: { activeReportType: 'none' },
+        });
+        await sendNoPermissionPrompt(settings?.botToken, chatId, requiredDep);
+        return NextResponse.json({ ok: true });
+      }
 
       if (activeMode === 'none') {
         await sendPickModePrompt(settings?.botToken, chatId);
@@ -1832,6 +2412,16 @@ export async function POST(req: NextRequest) {
 
     const isBusinessReport = message.text ? isBusinessReportText(message.text) : false;
     const activeMode = isBusinessReport ? 'business_report' : updatedSender.activeReportType;
+
+    const requiredDep = getDepartmentForMode(activeMode);
+    if (requiredDep && !updatedSender.allowedDepartments.includes(requiredDep)) {
+      await prisma.telegramSender.update({
+        where: { id: sender.id },
+        data: { activeReportType: 'none' },
+      });
+      await sendNoPermissionPrompt(settings?.botToken, chatId, requiredDep);
+      return NextResponse.json({ ok: true });
+    }
 
     // ─── No mode selected yet — prompt the user to pick one first ──────
     if (activeMode === 'none') {
