@@ -377,9 +377,12 @@ async function sendNoPermissionPrompt(
       "",
       "💡 <i>ကျေးဇူးပြု၍ လုပ်ငန်းတာဝန်ရှိသူ</i>",
       "<i>(Business Owner) အား ဆက်သွယ်ပါ။</i>",
-      "",
-      "↩️ Menu သို့ ပြန်သွားရန် /menu",
     ].join("\n"),
+    replyMarkup: {
+      inline_keyboard: [
+        [{ text: "↩️ Main Menu", callback_data: "action:menu" }]
+      ]
+    }
   });
 }
 
@@ -602,7 +605,6 @@ function getFormatPromptForMode(mode: string | null | undefined): string {
         "သိရှိလိုသည်များကို တိုက်ရိုက်မေးပါ",
         "",
         "━━━━━━━━━━━━━━━━━━━━",
-        "↩️ ကဏ္ဍပြောင်းရန် /menu",
       ].join("\n");
   }
 }
@@ -625,7 +627,6 @@ function getFormatHintFooter(mode: string): string {
     "",
     "━━━━━━━━━━━━━━━━━━━━",
     `💡 <i>${fields}</i>`,
-    "📋 /format  •  📄 /template  •  ↩️ /menu",
   ].join("\n");
 }
 
