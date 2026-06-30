@@ -40,6 +40,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Email is required" }, { status: 400 });
   }
 
+  if (!allowedDepartments || !Array.isArray(allowedDepartments) || allowedDepartments.length === 0) {
+    return NextResponse.json({ message: "Please select at least one department" }, { status: 400 });
+  }
+
   const normalizedEmail = email.toLowerCase().trim();
 
   // Check if a sender with this email already exists

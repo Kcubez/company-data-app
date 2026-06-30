@@ -303,6 +303,15 @@ const KEYBOARD_LINKED = {
   one_time_keyboard: false
 };
 
+const FORMAT_INLINE_BUTTONS = {
+  inline_keyboard: [
+    [
+      { text: "📋 Template ကူးယူရန်", callback_data: "action:template" },
+      { text: "↩️ Main Menu", callback_data: "action:menu" }
+    ]
+  ]
+};
+
 function buildMainMenuButtons(allowedDepartments: string[]) {
   const buttons: { text: string; callback_data: string }[][] = [];
   const row1: { text: string; callback_data: string }[] = [];
@@ -482,7 +491,6 @@ function getFormatPrompt(): string {
     "💡 <i>မလိုအပ်သော စာကြောင်းများ ချန်လှပ်ထားနိုင်ပါသည်</i>",
     "",
     "━━━━━━━━━━━━━━━━━━━━",
-    "📄 /template  •  ↩️ /menu",
   ].join("\n");
 }
 
@@ -511,7 +519,6 @@ function getProjectExpiryFormatPrompt(): string {
     "</pre>",
     "",
     "━━━━━━━━━━━━━━━━━━━━",
-    "📄 /template  •  ↩️ /menu",
   ].join("\n");
 }
 
@@ -538,7 +545,6 @@ function getWebsiteUpdateFormatPrompt(): string {
     "</pre>",
     "",
     "━━━━━━━━━━━━━━━━━━━━",
-    "📄 /template  •  ↩️ /menu",
   ].join("\n");
 }
 
@@ -569,7 +575,6 @@ function getBusinessReportFormatPrompt(): string {
     "</pre>",
     "",
     "━━━━━━━━━━━━━━━━━━━━",
-    "📄 /template  •  ↩️ /menu",
   ].join("\n");
 }
 
@@ -1807,6 +1812,7 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: getFormatPrompt(),
+            replyMarkup: FORMAT_INLINE_BUTTONS,
           });
         }
         return NextResponse.json({ ok: true });
@@ -1824,6 +1830,7 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: getProjectExpiryFormatPrompt(),
+            replyMarkup: FORMAT_INLINE_BUTTONS,
           });
         }
         return NextResponse.json({ ok: true });
@@ -1841,6 +1848,7 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: getWebsiteUpdateFormatPrompt(),
+            replyMarkup: FORMAT_INLINE_BUTTONS,
           });
         }
         return NextResponse.json({ ok: true });
@@ -1858,6 +1866,53 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: getBusinessReportFormatPrompt(),
+            replyMarkup: FORMAT_INLINE_BUTTONS,
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      if (data === 'action:template') {
+        const templateText = getCopyPasteTemplateForMode(sender.activeReportType);
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Copy template below');
+        
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId,
+          text: templateText,
+          replyMarkup: {
+            inline_keyboard: [
+              [{ text: "↩️ Back to Menu", callback_data: "action:menu" }]
+            ]
+          }
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      if (data === 'action:menu') {
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: { activeReportType: 'none' },
+        });
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Main Menu');
+        const allowedButtons = buildMainMenuButtons(sender.allowedDepartments);
+        
+        if (chatId && messageId) {
+          await editTelegramMessage({
+            botToken: settings?.botToken,
+            chatId: BigInt(chatId),
+            messageId,
+            text: [
+              "👋 ━━━━━━━━━━━━━━━━━━━━",
+              "",
+              `  <b>မင်္ဂလာပါ ${sender.displayName || 'ခင်ဗျာ/ရှင်'}</b>`,
+              "",
+              "━━━━━━━━━━━━━━━━━━━━",
+              "",
+              "အောက်ပါ Menu မှ လုပ်ဆောင်လိုသည့်",
+              "လုပ်ငန်းစဉ်အမျိုးအစားကို ရွေးချယ်ပါ။",
+            ].join("\n"),
+            replyMarkup: allowedButtons,
           });
         }
         return NextResponse.json({ ok: true });
@@ -2212,19 +2267,29 @@ export async function POST(req: NextRequest) {
     }
 
     if (message.text === '/format') {
+      const showButtons = ['project_expiry', 'website_update', 'business_report', 'demand_report'].includes(sender.activeReportType);
       await sendTelegramMessage({
         botToken: settings?.botToken,
         chatId,
         text: getFormatPromptForMode(sender.activeReportType),
+        ...(showButtons ? { replyMarkup: FORMAT_INLINE_BUTTONS } : {}),
       });
       return NextResponse.json({ ok: true });
     }
 
     if (message.text === '/template') {
+      const showButtons = ['project_expiry', 'website_update', 'business_report', 'demand_report'].includes(sender.activeReportType);
       await sendTelegramMessage({
         botToken: settings?.botToken,
         chatId,
         text: getCopyPasteTemplateForMode(sender.activeReportType),
+        ...(showButtons
+          ? {
+              replyMarkup: {
+                inline_keyboard: [[{ text: "↩️ Back to Menu", callback_data: "action:menu" }]],
+              },
+            }
+          : {}),
       });
       return NextResponse.json({ ok: true });
     }

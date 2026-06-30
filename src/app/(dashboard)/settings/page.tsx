@@ -358,6 +358,10 @@ function TelegramSendersList() {
       toast.error('Email is required');
       return;
     }
+    if (createAllowedDeps.length === 0) {
+      toast.error('Please select at least one department');
+      return;
+    }
     createSender.mutate(
       { email: createEmail, allowedDepartments: createAllowedDeps },
       {
