@@ -81,11 +81,21 @@ export async function GET(req: NextRequest) {
       const insights = [];
       const convRate = totalLeads > 0 ? Math.round((totalClosed / totalLeads) * 100) : 0;
       const roi = totalBudget > 0 ? Math.round(((totalSales - totalBudget) / totalBudget) * 100) : 0;
-      insights.push({ title: "လုပ်ဆောင်ချက် အጠቃmatrix", insight: `ရောင်းအားပြောင်းလဲမှုနှုန်း (Conversion rate)- ${convRate}%၊ ရင်းနှီးမြှုပ်နှံမှုအပေါ် အကျိုးအမြတ် (ROI)- ${roi}%။ အစီရင်ခံစာ ${reports.length} ခုအရ စုစုပေါင်းရောင်းရငွေ- ${totalSales.toLocaleString()} Ks ရှိပါသည်။` });
+      insights.push({
+        title: "လုပ်ဆောင်ချက် အနှစ်ချုပ်",
+        insight: `ရောင်းအားပြောင်းလဲမှုနှုန်း (Conversion rate) ${convRate}% နှင့် ရင်းနှီးမြှုပ်နှံမှုအပေါ် အကျိုးအမြတ် (ROI) ${roi}% ရှိပါသည်။ ဝင်ငွေစုစုပေါင်းသည် ${totalSales.toLocaleString()} Ks ဖြစ်ပါသည်။`,
+        action: "ဘဏ္ဍာရေးမှတ်တမ်းများ စစ်ဆေးရန်",
+        actionType: "view_finance_table"
+      });
 
       const bestChannel = [...channelMap.entries()].sort((a, b) => b[1].sales - a[1].sales)[0];
       if (bestChannel) {
-        insights.push({ title: "အကောင်းဆုံး ချန်နယ်", insight: `${bestChannel[0]} ချန်နယ်မှ စုစုပေါင်းရောင်းရငွေ ${bestChannel[1].sales.toLocaleString()} Ks ရရှိပြီး ရောင်းအားအကောင်းဆုံးဖြစ်ပါသည်။` });
+        insights.push({
+          title: "အရောင်းအကောင်းဆုံး ချန်နယ်",
+          insight: `${bestChannel[0]} ချန်နယ်သည် စုစုပေါင်းရောင်းရငွေ ${bestChannel[1].sales.toLocaleString()} Ks ရရှိပြီး စွမ်းဆောင်ရည်အကောင်းဆုံး ဖြစ်ပါသည်။`,
+          action: "အရောင်းမှတ်တမ်းများ ကြည့်ရှုရန်",
+          actionType: "view_sales_marketing"
+        });
       }
 
       const worstCPL = [...channelMap.entries()]
@@ -93,7 +103,12 @@ export async function GET(req: NextRequest) {
         .map(([ch, v]) => ({ ch, cpl: v.budget / v.leads }))
         .sort((a, b) => b.cpl - a.cpl)[0];
       if (worstCPL) {
-        insights.push({ title: "ကုန်ကျစရိတ် ထိရောက်မှု", insight: `${worstCPL.ch} သည် lead တစ်ခုရရှိရန် ကုန်ကျစရိတ် ${Math.round(worstCPL.cpl).toLocaleString()} Ks ဖြင့် အမြင့်မားဆုံးဖြစ်နေသောကြောင့် ဘတ်ဂျက်ကို ပြန်လည်စိစစ်သင့်ပါသည်။` });
+        insights.push({
+          title: "ကုန်ကျစရိတ် စိစစ်ရန်",
+          insight: `${worstCPL.ch} ချန်နယ်သည် Lead တစ်ခုရရှိရန် ပျမ်းမျှကုန်ကျစရိတ် ${Math.round(worstCPL.cpl).toLocaleString()} Ks ဖြင့် အမြင့်ဆုံး ဖြစ်နေပါသည်။`,
+          action: "မာကတ်တင်းချန်နယ်များ စိစစ်ရန်",
+          actionType: "view_sales_marketing"
+        });
       }
       return insights;
     };
@@ -111,7 +126,7 @@ export async function GET(req: NextRequest) {
     ).join("\n");
 
     const prompt = `You are a business performance analyst. Analyze the following marketing and sales data and give 4-5 concise, actionable insights.
-CRITICAL: The "title" and "insight" fields must be written in Burmese (Myanmar language) so they are easy for local staff to read.
+CRITICAL: The "title", "insight" and "action" fields must be written in Burmese (Myanmar language) so they are easy for local staff to read.
 
 === CHANNEL PERFORMANCE SUMMARY ===
 ${channelSummary}
@@ -123,7 +138,21 @@ ${recentSummary}
 Total Sales: ${totalSales.toLocaleString()} Ks | Total Budget: ${totalBudget.toLocaleString()} Ks | Total Leads: ${totalLeads} | Total Closed: ${totalClosed}
 Conversion Rate: ${totalLeads > 0 ? Math.round((totalClosed / totalLeads) * 100) : 0}% | ROI: ${totalBudget > 0 ? Math.round(((totalSales - totalBudget) / totalBudget) * 100) : 0}%
 
-Output ONLY a JSON array. Each element: { "title": string, "insight": string }.
+"actionType" must be selected strictly from these English enums:
+- "view_sales_marketing": if recommending following up on leads, checking ad/leads channels, improving close rate, or managing quoted/pending deals
+- "view_customer_service": if recommending checking customer follow-up actions, overdue, or due follow-ups
+- "view_finance_table": if recommending reviewing overall ROI, budgets, expenses, or detailed business report records
+- "general_dashboard": for general overall business analysis or health checks
+
+"action" is a short Burmese call-to-action button label (e.g. "အသေးစိတ်ကြည့်ရန်", "Follow-up လုပ်ဆောင်ရန်", "ဘတ်ဂျက်စစ်ဆေးရန်") that matches the recommended action.
+
+Output ONLY a JSON array. Each element:
+{ 
+  "title": string, 
+  "insight": string,
+  "action": string,
+  "actionType": "view_sales_marketing" | "view_customer_service" | "view_finance_table" | "general_dashboard"
+}.
 No markdown, no extra text. Max 5 items. Be specific and actionable.`;
 
     const genAI = new GoogleGenAI({ apiKey: settings.geminiApiKey });

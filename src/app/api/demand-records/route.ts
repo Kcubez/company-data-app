@@ -43,13 +43,33 @@ export async function GET(req: NextRequest) {
   const category = searchParams.get("category") || "";
   const senderId = searchParams.get("senderId") || "";
   const priority = searchParams.get("priority") || "";
+  const dateFrom = searchParams.get("dateFrom") || "";
+  const dateTo = searchParams.get("dateTo") || "";
+  const followUpStatus = searchParams.get("followUpStatus") || "";
+  const missingField = searchParams.get("missingField") || "";
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, any> = {};
 
-  if (status) where.status = status;
+  if (status) {
+    where.status = status;
+  } else if (followUpStatus === "overdue" || followUpStatus === "due") {
+    where.status = { notIn: ["closed", "completed"] };
+  }
   if (category) where.category = category;
   if (senderId) where.senderId = senderId;
   if (priority) where.priority = priority;
+  if (followUpStatus) where.followUpStatus = followUpStatus;
+  if (missingField) where.missingFields = { has: missingField };
+
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) {
+      where.createdAt.gte = new Date(dateFrom);
+    }
+    if (dateTo) {
+      where.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+    }
+  }
 
   if (search) {
     where.OR = [

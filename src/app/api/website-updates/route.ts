@@ -20,8 +20,16 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20")));
   const search = searchParams.get("search") || "";
   const filterStatus = searchParams.get("status") || "all"; // "all" | "up_to_date" | "pending_update" | "in_progress"
+  const dateFrom = searchParams.get("dateFrom") || "";
+  const dateTo = searchParams.get("dateTo") || "";
 
   const where: any = {};
+
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+    if (dateTo) where.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+  }
 
   if (search) {
     where.OR = [
@@ -49,7 +57,15 @@ export async function GET(req: NextRequest) {
     }),
     prisma.websiteUpdate.count({ where }),
     prisma.$transaction(async (tx) => {
+      const statsWhere: any = {};
+      if (dateFrom || dateTo) {
+        statsWhere.createdAt = {};
+        if (dateFrom) statsWhere.createdAt.gte = new Date(dateFrom);
+        if (dateTo) statsWhere.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+      }
+
       const all = await tx.websiteUpdate.findMany({
+        where: statsWhere,
         select: { status: true },
       });
 

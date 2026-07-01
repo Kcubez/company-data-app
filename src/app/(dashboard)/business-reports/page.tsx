@@ -1,8 +1,9 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useDateFilter, type PeriodMode } from '@/hooks/use-date-filter';
 import {
   useBusinessReports,
   useBusinessReportStats,
@@ -93,25 +94,7 @@ function inferFinanceDescription(record: BusinessReport, type: 'Income' | 'Expen
   return type === 'Income' ? `${owner} revenue` : `${inferFinanceCategory(record, 'Expense')} expense`;
 }
 
-type PeriodMode = 'month' | 'year';
 type FinanceType = 'All' | 'Income' | 'Expense';
-
-function getPeriodRange(period: PeriodMode, month: number, year: number) {
-  if (period === 'year') {
-    return {
-      dateFrom: `${year}-01-01`,
-      dateTo: `${year}-12-31`,
-    };
-  }
-
-  const start = new Date(Date.UTC(year, month - 1, 1));
-  const end = new Date(Date.UTC(year, month, 0));
-
-  return {
-    dateFrom: start.toISOString().slice(0, 10),
-    dateTo: end.toISOString().slice(0, 10),
-  };
-}
 
 function FinanceKpiCard({
   label,
@@ -295,10 +278,23 @@ function ExpenseDonutChart({
 }
 
 function BusinessReportsPageContent() {
-  const now = new Date();
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const {
+    period,
+    month,
+    year,
+    dateFrom,
+    dateTo,
+    localPeriod,
+    localMonth,
+    localYear,
+    setLocalPeriod,
+    setLocalMonth,
+    setLocalYear,
+    updatePeriod,
+    years,
+  } = useDateFilter('finance_filter');
+
   const [page, setPage] = useState(1);
   const [channelFilter, setChannelFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState<FinanceType>('All');
@@ -307,23 +303,10 @@ function BusinessReportsPageContent() {
   const [editForm, setEditForm] = useState<Partial<BusinessReport>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const limit = 10;
-  const period: PeriodMode = searchParams.get('period') === 'year' ? 'year' : 'month';
-  const month = Math.min(
-    12,
-    Math.max(1, Number(searchParams.get('month') || now.getMonth() + 1)),
-  );
-  const year = Number(searchParams.get('year') || now.getFullYear());
-  const years = Array.from({ length: 5 }).map((_, index) => now.getFullYear() - 2 + index);
-  const { dateFrom, dateTo } = getPeriodRange(period, month, year);
 
-  const updatePeriod = (next: { period?: PeriodMode; month?: number; year?: number }) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('period', next.period ?? period);
-    params.set('month', String(next.month ?? month));
-    params.set('year', String(next.year ?? year));
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  useEffect(() => {
     setPage(1);
-  };
+  }, [period, month, year]);
 
   const listParams = {
     page,
@@ -420,8 +403,14 @@ function BusinessReportsPageContent() {
         tone: index === 0 ? 'success' : 'warning',
         title: rec.title,
         insight: rec.insight,
+        action: rec.action,
+        actionType: rec.actionType,
       }))
-    : computedFinanceInsights);
+    : computedFinanceInsights.map((rec) => ({
+        ...rec,
+        action: rec.tone === 'success' ? 'မှတ်တမ်းများကြည့်ရန်' : 'ဘတ်ဂျက်စစ်ဆေးရန်',
+        actionType: 'view_finance_table' as const,
+      })));
 
   // Edit helpers
   const openEdit = (r: BusinessReport) => {
@@ -598,14 +587,45 @@ function BusinessReportsPageContent() {
           return (
             <Card
               key={`${insight.title}-${index}`}
-              className={`bg-card border-2 ${isSuccess ? 'border-emerald-300 border-l-8 border-l-emerald-500' : 'border-amber-300 border-l-8 border-l-amber-500'} rounded-xl shadow-sm`}
+              className={`bg-card border-2 ${isSuccess ? 'border-emerald-300 border-l-8 border-l-emerald-500' : 'border-amber-300 border-l-8 border-l-amber-500'} rounded-xl shadow-sm flex flex-col justify-between`}
             >
-              <CardContent className="p-5">
-                <div className="mb-2 flex items-center gap-3">
-                  <Icon className={`h-5 w-5 ${isSuccess ? 'text-emerald-600' : 'text-amber-600'}`} />
-                  <h4 className="font-bold text-slate-900 dark:text-slate-100">{insight.title}</h4>
+              <CardContent className="p-5 flex flex-col h-full justify-between">
+                <div>
+                  <div className="mb-2 flex items-center gap-3">
+                    <Icon className={`h-5 w-5 ${isSuccess ? 'text-emerald-600' : 'text-amber-600'}`} />
+                    <h4 className="font-bold text-slate-900 dark:text-slate-100">{insight.title}</h4>
+                  </div>
+                  <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{insight.insight}</p>
                 </div>
-                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{insight.insight}</p>
+                {insight.action && (
+                  <div className="mt-4">
+                    <Button
+                      variant={isSuccess ? 'outline' : 'destructive'}
+                      size="sm"
+                      onClick={() => {
+                        if (insight.actionType === 'view_sales_marketing') {
+                          router.push('/sales-marketing#report-table-section');
+                        } else if (insight.actionType === 'view_customer_service') {
+                          router.push('/customer-service#demand-leads-section');
+                        } else if (insight.actionType === 'view_finance_table') {
+                          const el = document.getElementById('finance-records-table');
+                          if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        } else {
+                          router.push('/dashboard');
+                        }
+                      }}
+                      className={`${
+                        isSuccess
+                          ? 'border-emerald-250 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800'
+                          : 'bg-amber-600 hover:bg-amber-700 text-white border-none'
+                      } text-xs font-bold transition shadow-sm rounded-lg px-4 h-9 cursor-pointer`}
+                    >
+                      {insight.action}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           );
@@ -613,7 +633,7 @@ function BusinessReportsPageContent() {
       </div>
 
       {/* ─── Finance Records ────────────────────────────────────────── */}
-      <Card className="overflow-hidden rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
+      <Card id="finance-records-table" className="overflow-hidden rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
         <CardHeader className="border-b-2 border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-950/40">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>

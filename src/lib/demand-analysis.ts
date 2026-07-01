@@ -144,43 +144,49 @@ export function buildBusinessInsights(records: Array<DemandAnalysisInput & Deman
     {
       type: "sales",
       severity: highPriority.length > 0 ? "urgent" : "info",
-      title: "High potential leads",
+      title: "ဝယ်လိုအား အလားအလာကောင်းသည့် Leads များ",
       message:
         highPriority.length > 0
-          ? `${highPriority.length} high-priority lead(s) should be handled before general follow-up.`
-          : "No high-priority open lead is detected from current demand data.",
+          ? `ဝယ်လိုအားမြင့်မားပြီး အလားအလာကောင်းသော Leads (${highPriority.length}) ခုအား ဦးစားပေး ကိုင်တွယ်ရန် လိုအပ်နေပါသည်။`
+          : "လတ်တလော ဉီးစားပေးကိုင်တွယ်ရန် လိုအပ်သော ဝယ်လိုအားမြင့် Leads များ မတွေ့ရပါ။",
       recommendedAction:
         highPriority.length > 0
-          ? "Assign the top high-priority customers to sales today."
-          : "Keep importing demand data and review medium-priority leads.",
+          ? "အမြန်ဆုံး အရောင်းပိတ်နိုင်ရန် အလားအလာအကောင်းဆုံး Leads များကို အရောင်းဝန်ထမ်းများထံ ယနေ့ ချက်ချင်း တာဝန်ပေးအပ်လိုက်ပါ။"
+          : "နောက်ဆက်တွဲ Leads အသစ်များကို စောင့်ကြည့်ပြီး ပုံမှန် Leads များကို ဆက်လက်လုပ်ဆောင်ပါ။",
+      action: highPriority.length > 0 ? "High-Priority Leads ကြည့်ရန်" : "Leads စာရင်းကြည့်ရန်",
+      actionType: "view_high_priority" as const,
     },
     {
       type: "marketing",
       severity: missingPhone.length > 0 ? "warning" : "info",
-      title: "Phone capture quality",
+      title: "ဖုန်းနံပါတ် စုဆောင်းမှု အရည်အသွေး",
       message:
         missingPhone.length > 0
-          ? `${missingPhone.length} open lead(s) do not have phone numbers.`
-          : "Phone numbers are available for all open leads.",
+          ? `ပွင့်နေဆဲ Leads စုစုပေါင်းထဲမှ (${missingPhone.length}) ခုတွင် ဆက်သွယ်ရန် ဖုန်းနံပါတ် မပါရှိသေးပါ။`
+          : "လတ်တလော Leads များအားလုံးတွင် ဆက်သွယ်ရန် ဖုန်းနံပါတ်များ ပြည့်စုံစွာ ပါရှိပါသည်။",
       recommendedAction:
         missingPhone.length > 0
-          ? "Ask marketing to improve phone collection before pushing these leads to sales."
-          : "Continue the current lead capture format.",
+          ? "ဖုန်းခေါ်ဆို၍ အရောင်းမလိုက်မီ ဖုန်းနံပါတ် စုံစမ်းမေးမြန်းမှုများ၌ ဖုန်းစုဆောင်းမှုကို မြှင့်တင်ပါ။"
+          : "လက်ရှိ Leads စုဆောင်းမှုပုံစံအတိုင်း ဆက်လက်ဆောင်ရွက်ပါ။",
+      action: missingPhone.length > 0 ? "ဖုန်းမပါသော Leads စစ်ဆေးရန်" : "Leads စစ်ဆေးရန်",
+      actionType: "view_missing_phone" as const,
     },
     {
       type: "sales",
       severity: overdue.length > 0 ? "urgent" : dueToday.length > 0 ? "warning" : "info",
-      title: "Follow-up pressure",
+      title: "Follow-up နောက်ဆက်တွဲ ဆက်သွယ်မှု",
       message:
         overdue.length > 0
-          ? `${overdue.length} follow-up(s) are overdue.`
+          ? `သတ်မှတ်ရက်ကျော်လွန်နေသော CS Follow-up (${overdue.length}) ခု ရှိနေပါသည်။`
           : dueToday.length > 0
-            ? `${dueToday.length} follow-up(s) are due today.`
-            : "No urgent follow-up pressure is detected.",
+            ? `ယနေ့ ဆက်သွယ်ရန် သတ်မှတ်ထားသော CS Follow-up (${dueToday.length}) ခု ရှိနေပါသည်။`
+            : "အရေးတကြီး လုပ်ဆောင်ရန်လိုအပ်သော follow-up ဆက်သွယ်မှုများ မရှိသေးပါ။",
       recommendedAction:
         overdue.length > 0 || dueToday.length > 0
-          ? "Work this list first and update statuses after calls."
-          : "Schedule follow-up dates for leads that still have no next action.",
+          ? "သတ်မှတ်ရက်ကျော်လွန်နေသော အဆက်အသွယ်များကို အရင်ဆုံး ဖုန်းခေါ်ဆိုပြီး status ကို အပ်ဒိတ်လုပ်ပါ။"
+          : "နောက်ဆက်တွဲ လုပ်ဆောင်ရန်မရှိသေးသည့် Leads များအတွက် follow-up ရက်စွဲများ သတ်မှတ်ပေးပါ။",
+      action: overdue.length > 0 ? "သက်တမ်းကျော် Follow-up ကြည့်ရန်" : dueToday.length > 0 ? "ယနေ့ Follow-up ကြည့်ရန်" : "Follow-up Calendar ကြည့်ရန်",
+      actionType: overdue.length > 0 ? "view_overdue" as const : "view_due_today" as const,
     },
   ];
 }

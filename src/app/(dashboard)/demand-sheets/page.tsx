@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useDateFilter } from '@/hooks/use-date-filter';
 import { formatDistanceToNow, format } from 'date-fns';
 import { DemandRecord } from '@/lib/api';
 import {
@@ -46,6 +48,8 @@ import {
   Lightbulb,
   DollarSign,
   Megaphone,
+  X,
+  Filter,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -69,6 +73,7 @@ type DashboardStats = {
   dueTodayFollowUps: number;
   pendingDemandRecords: number;
   totalCustomers: number;
+  newCustomers: number;
   botActive: boolean;
   pipeline: {
     new: number;
@@ -98,11 +103,11 @@ type DashboardStats = {
   upcomingRecords: UpcomingRecord[];
 };
 
-function useDashboardStats() {
+function useDashboardStats(period: string, month: number, year: number) {
   return useQuery({
-    queryKey: ['dashboard-stats'],
+    queryKey: ['dashboard-stats', period, month, year],
     queryFn: async (): Promise<DashboardStats> => {
-      const res = await fetch('/api/dashboard/stats');
+      const res = await fetch(`/api/dashboard/stats?period=${period}&month=${month}&year=${year}`);
       if (!res.ok) throw new Error('Failed to fetch');
       return res.json();
     },
@@ -211,12 +216,37 @@ const priorityLabels: Record<string, string> = {
   low: 'Low',
 };
 
-export default function DemandSheetsPage() {
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+function DemandSheetsPageContent() {
+  const router = useRouter();
+  const {
+    period,
+    month,
+    year,
+    dateFrom,
+    dateTo,
+    localPeriod,
+    localMonth,
+    localYear,
+    setLocalPeriod,
+    setLocalMonth,
+    setLocalYear,
+    updatePeriod,
+    years,
+  } = useDateFilter('sales_filter');
+
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get('search') || '';
+  const initialStatus = searchParams.get('status') || 'all';
+  const initialCategory = searchParams.get('category') || 'all';
+  const initialPriority = searchParams.get('priority') || 'all';
+  const initialMissingField = searchParams.get('missingField') || '';
+
+  const [search, setSearch] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
+  const [categoryFilter, setCategoryFilter] = useState<string>(initialCategory);
+  const [priorityFilter, setPriorityFilter] = useState<string>(initialPriority);
+  const [missingField, setMissingField] = useState<string>(initialMissingField);
   const [page, setPage] = useState(1);
   const [insightPage, setInsightPage] = useState(1);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -227,6 +257,37 @@ export default function DemandSheetsPage() {
   const insightPageSize = 5;
 
   useEffect(() => {
+    const priority = searchParams.get('priority') || 'all';
+    const status = searchParams.get('status') || 'all';
+    const category = searchParams.get('category') || 'all';
+    const searchVal = searchParams.get('search') || '';
+    const missing = searchParams.get('missingField') || '';
+
+    setPriorityFilter(priority);
+    setStatusFilter(status);
+    setCategoryFilter(category);
+    setSearch(searchVal);
+    setDebouncedSearch(searchVal);
+    setMissingField(missing);
+    setPage(1);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const priority = searchParams.get('priority');
+    const missing = searchParams.get('missingField');
+    const searchVal = searchParams.get('search');
+    if ((priority && priority !== 'all') || missing || searchVal) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById('report-table-section');
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
       setPage(1);
@@ -234,8 +295,12 @@ export default function DemandSheetsPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data: stats, isLoading: statsLoading } = useDashboardStats();
-  const { data: demandStats, isLoading: demandStatsLoading } = useDemandRecordStats();
+  useEffect(() => {
+    setPage(1);
+  }, [period, month, year]);
+
+  const { data: stats, isLoading: statsLoading } = useDashboardStats(period, month, year);
+  const { data: demandStats, isLoading: demandStatsLoading } = useDemandRecordStats({ dateFrom, dateTo });
   const {
     data: recsData,
     isLoading: recsLoading,
@@ -281,10 +346,15 @@ export default function DemandSheetsPage() {
     status: statusFilter === 'all' ? undefined : statusFilter,
     category: categoryFilter === 'all' ? undefined : categoryFilter,
     priority: priorityFilter === 'all' ? undefined : priorityFilter,
+    dateFrom,
+    dateTo,
+    missingField: missingField || undefined,
   });
   const { data: chartRecordsData, isLoading: chartRecordsLoading } = useDemandRecords({
     page: 1,
     limit: 100,
+    dateFrom,
+    dateTo,
   });
   const monthlyDemandData = (() => {
     const now = new Date();
@@ -328,13 +398,64 @@ export default function DemandSheetsPage() {
             Marketing demand, lead quality, follow-up pipeline, and conversion records.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          <Select value={localPeriod} onValueChange={(value) => {
+            if (value === 'month' || value === 'year') {
+              setLocalPeriod(value);
+              updatePeriod({ period: value });
+            }
+          }}>
+            <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              {localPeriod === 'year' ? 'Yearly' : 'Monthly'}
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border text-foreground rounded-lg">
+              <SelectItem value="month">Monthly</SelectItem>
+              <SelectItem value="year">Yearly</SelectItem>
+            </SelectContent>
+          </Select>
+          {localPeriod === 'month' ? (
+            <Select value={localMonth} onValueChange={(value) => {
+              if (value) {
+                setLocalMonth(value);
+                updatePeriod({ month: Number(value) });
+              }
+            }}>
+              <SelectTrigger className="h-9 w-32 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+                {new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long' })}
+              </SelectTrigger>
+              <SelectContent className="bg-card border-border text-foreground rounded-lg">
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <SelectItem key={index + 1} value={String(index + 1)}>
+                    {new Date(Number(localYear), index, 1).toLocaleString('en', { month: 'long' })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          <Select value={localYear} onValueChange={(value) => {
+            if (value) {
+              setLocalYear(value);
+              updatePeriod({ year: Number(value) });
+            }
+          }}>
+            <SelectTrigger className="h-9 w-24 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              {localYear}
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border text-foreground rounded-lg">
+              {years.map((itemYear) => (
+                <SelectItem key={itemYear} value={String(itemYear)}>
+                  {itemYear}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={!data?.total || deleteAllMutation.isPending}
-            className="bg-red-950/20 border-red-900/50 text-red-700 dark:text-red-800 hover:bg-red-900/40 hover:text-red-800 dark:hover:text-red-200 dark:text-red-800 shrink-0 cursor-pointer"
+            className="bg-red-950/20 border-red-900/50 text-red-700 dark:text-red-800 hover:bg-red-900/40 hover:text-red-800 dark:hover:text-red-200 h-9 rounded-lg shrink-0 cursor-pointer"
           >
             <Trash2 className="w-4 h-4 mr-1.5" />
             Delete All
@@ -456,6 +577,36 @@ export default function DemandSheetsPage() {
                   <CardContent className="space-y-2">
                     <p className="text-xs leading-relaxed text-muted-foreground">{insight.message}</p>
                     <p className="text-xs font-semibold leading-relaxed text-foreground">{insight.recommendedAction}</p>
+                    {insight.action && (
+                      <div className="pt-1">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (insight.actionType === 'view_high_priority') {
+                              router.push('/sales-marketing?priority=high#report-table-section');
+                            } else if (insight.actionType === 'view_missing_phone') {
+                              router.push('/sales-marketing?missingField=phone#report-table-section');
+                            } else if (insight.actionType === 'view_overdue') {
+                              router.push('/customer-service?followUpStatus=overdue#demand-leads-section');
+                            } else if (insight.actionType === 'view_due_today') {
+                              router.push('/customer-service?followUpStatus=due#demand-leads-section');
+                            } else {
+                              const el = document.getElementById('report-table-section');
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }}
+                          className={`${
+                            insight.severity === 'urgent'
+                              ? 'bg-red-600 hover:bg-red-700 text-white'
+                              : insight.severity === 'warning'
+                              ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                              : 'bg-sky-600 hover:bg-sky-700 text-white'
+                          } text-xs font-bold rounded-lg px-4 h-8 cursor-pointer transition shadow-sm`}
+                        >
+                          {insight.action}
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -579,6 +730,7 @@ export default function DemandSheetsPage() {
                       {visibleInsights.map((rec, idx) => (
                         <div
                           key={`${rec.customerName}-${idx}`}
+                          onClick={() => setSearch(rec.customerName)}
                           className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border/60 hover:border-border hover:bg-muted/40 transition-colors cursor-pointer"
                         >
                           <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5 animate-pulse">
@@ -711,6 +863,7 @@ export default function DemandSheetsPage() {
                     onValueChange={val => {
                       setStatusFilter(val || 'all');
                       setPage(1);
+                      if (missingField) setMissingField('');
                     }}
                   >
                     <SelectTrigger className="bg-muted/40 border-border text-foreground min-w-32.5 rounded-lg h-10">
@@ -733,6 +886,7 @@ export default function DemandSheetsPage() {
                     onValueChange={val => {
                       setPriorityFilter(val || 'all');
                       setPage(1);
+                      if (missingField) setMissingField('');
                     }}
                   >
                     <SelectTrigger className="bg-muted/40 border-border text-foreground min-w-32.5 rounded-lg h-10">
@@ -753,6 +907,7 @@ export default function DemandSheetsPage() {
                     onValueChange={val => {
                       setCategoryFilter(val || 'all');
                       setPage(1);
+                      if (missingField) setMissingField('');
                     }}
                   >
                     <SelectTrigger className="bg-muted/40 border-border text-foreground min-w-37.5 rounded-lg h-10">
@@ -768,11 +923,40 @@ export default function DemandSheetsPage() {
                   </Select>
                 </div>
               </div>
+
+              {/* Active filter badges */}
+              {missingField === 'phone' && (
+                <div className="flex items-center gap-2 pt-1">
+                  <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-muted-foreground">Active filter:</span>
+                  <span
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700"
+                  >
+                    <PhoneOff className="w-3 h-3" />
+                    Missing Phone
+                    <button
+                      onClick={() => {
+                        setMissingField('');
+                        setPage(1);
+                      }}
+                      className="ml-0.5 rounded-full p-0.5 hover:bg-red-200 dark:hover:bg-red-800 transition-colors cursor-pointer"
+                      aria-label="Clear missing phone filter"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                  {data?.total === 0 && (
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                      ✓ All leads have phone numbers
+                    </span>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
           {/* Report Records Table */}
-          <div className="overflow-hidden rounded-lg border border-border bg-card/20 backdrop-blur-md shadow-sm">
+          <div id="report-table-section" className="overflow-hidden rounded-lg border border-border bg-card/20 backdrop-blur-md shadow-sm">
             <div className="hidden md:grid grid-cols-12 gap-3 border-b border-border px-6 py-4.5 text-xs font-semibold uppercase  text-slate-500 bg-muted/40">
               <div className="col-span-1">Date</div>
               <div className="col-span-2">Customer</div>
@@ -1069,5 +1253,13 @@ export default function DemandSheetsPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function DemandSheetsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-500 animate-pulse">Loading Demand Sheets...</div>}>
+      <DemandSheetsPageContent />
+    </Suspense>
   );
 }

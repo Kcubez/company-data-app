@@ -225,6 +225,8 @@ export type DemandRecordStats = {
     title: string;
     message: string;
     recommendedAction: string;
+    action?: string;
+    actionType?: "view_high_priority" | "view_missing_phone" | "view_overdue" | "view_due_today";
   }[];
 };
 
@@ -236,6 +238,10 @@ export type DemandRecordsParams = {
   category?: string;
   senderId?: string;
   priority?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  followUpStatus?: string;
+  missingField?: string;
 };
 
 export type AIRecommendation = {
@@ -281,6 +287,10 @@ export const demandRecordsApi = {
     if (params.category) searchParams.set("category", params.category);
     if (params.senderId) searchParams.set("senderId", params.senderId);
     if (params.priority) searchParams.set("priority", params.priority);
+    if (params.dateFrom) searchParams.set("dateFrom", params.dateFrom);
+    if (params.dateTo) searchParams.set("dateTo", params.dateTo);
+    if (params.followUpStatus) searchParams.set("followUpStatus", params.followUpStatus);
+    if (params.missingField) searchParams.set("missingField", params.missingField);
     const qs = searchParams.toString();
     return request<DemandRecordsResponse>(`/api/demand-records${qs ? `?${qs}` : ""}`);
   },
@@ -290,7 +300,13 @@ export const demandRecordsApi = {
     request<DemandRecord>("/api/demand-records", { method: "POST", body: data }),
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/demand-records/${id}`, { method: "DELETE" }),
-  stats: () => request<DemandRecordStats>("/api/demand-records/stats"),
+  stats: (params: { dateFrom?: string; dateTo?: string } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
+    if (params.dateTo) sp.set("dateTo", params.dateTo);
+    const qs = sp.toString();
+    return request<DemandRecordStats>(`/api/demand-records/stats${qs ? `?${qs}` : ""}`);
+  },
   recommendations: () => request<AIRecommendationsResponse>("/api/demand-records/recommendations"),
   deleteAll: () =>
     request<{ success: boolean; count: number }>("/api/demand-records", { method: "DELETE" }),
@@ -344,6 +360,8 @@ export type ProjectExpiriesParams = {
   limit?: number;
   search?: string;
   filter?: "all" | "expired" | "expiring_soon" | "active";
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 export type UpdateProjectExpiryPayload = {
@@ -365,6 +383,8 @@ export const projectExpiriesApi = {
     if (params.limit) searchParams.set("limit", String(params.limit));
     if (params.search) searchParams.set("search", params.search);
     if (params.filter) searchParams.set("filter", params.filter);
+    if (params.dateFrom) searchParams.set("dateFrom", params.dateFrom);
+    if (params.dateTo) searchParams.set("dateTo", params.dateTo);
     const qs = searchParams.toString();
     return request<ProjectExpiriesResponse>(`/api/project-expiries${qs ? `?${qs}` : ""}`);
   },
@@ -413,6 +433,8 @@ export type WebsiteUpdatesParams = {
   limit?: number;
   search?: string;
   status?: "all" | "up_to_date" | "pending_update" | "in_progress";
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 export const websiteUpdatesApi = {
@@ -422,6 +444,8 @@ export const websiteUpdatesApi = {
     if (params.limit) searchParams.set("limit", String(params.limit));
     if (params.search) searchParams.set("search", params.search);
     if (params.status) searchParams.set("status", params.status);
+    if (params.dateFrom) searchParams.set("dateFrom", params.dateFrom);
+    if (params.dateTo) searchParams.set("dateTo", params.dateTo);
     const qs = searchParams.toString();
     return request<WebsiteUpdatesResponse>(`/api/website-updates${qs ? `?${qs}` : ""}`);
   },
@@ -545,7 +569,13 @@ export const dailyReportApi = {
 };
 
 export const customerFollowupsApi = {
-  stats: () => request<CustomerFollowupStats>("/api/customer-followups/stats"),
+  stats: (params: { dateFrom?: string; dateTo?: string } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
+    if (params.dateTo) sp.set("dateTo", params.dateTo);
+    const qs = sp.toString();
+    return request<CustomerFollowupStats>(`/api/customer-followups/stats${qs ? `?${qs}` : ""}`);
+  },
 };
 
 // ─── Business Reports API ─────────────────────────────────────────────────────
@@ -604,6 +634,12 @@ export type BusinessReportStats = {
 export type BusinessReportRecommendation = {
   title: string;
   insight: string;
+  action?: string;
+  actionType?:
+    | 'view_sales_marketing'
+    | 'view_customer_service'
+    | 'view_finance_table'
+    | 'general_dashboard';
 };
 
 export type BusinessReportsParams = {

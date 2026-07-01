@@ -1,8 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDateFilter } from '@/hooks/use-date-filter';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@/components/ui/select';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -80,18 +88,68 @@ function useCustomers(params: { search?: string; page?: number; limit?: number; 
   });
 }
 
-export default function CustomersPage() {
+function CustomersPageContent() {
+  const router = useRouter();
   const queryClient = useQueryClient();
 
+  const {
+    period,
+    month,
+    year,
+    dateFrom,
+    dateTo,
+    localPeriod,
+    localMonth,
+    localYear,
+    setLocalPeriod,
+    setLocalMonth,
+    setLocalYear,
+    updatePeriod,
+    years,
+  } = useDateFilter('customer_filter');
+
+  const searchParams = useSearchParams();
+  const initialCustomerSearch = searchParams.get('customerSearch') || '';
+  const initialDemandSearch = searchParams.get('search') || searchParams.get('demandSearch') || '';
+  const initialFollowUpStatus = searchParams.get('followUpStatus') || 'all';
+
   // Purchased Customers Pagination and Search
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [debouncedCustomerSearch, setDebouncedCustomerSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState(initialCustomerSearch);
+  const [debouncedCustomerSearch, setDebouncedCustomerSearch] = useState(initialCustomerSearch);
   const [customerPage, setCustomerPage] = useState(1);
 
   // Demand Leads Pagination and Search
-  const [demandSearch, setDemandSearch] = useState('');
-  const [debouncedDemandSearch, setDebouncedDemandSearch] = useState('');
+  const [demandSearch, setDemandSearch] = useState(initialDemandSearch);
+  const [debouncedDemandSearch, setDebouncedDemandSearch] = useState(initialDemandSearch);
+  const [followUpFilter, setFollowUpFilter] = useState<string>(initialFollowUpStatus);
   const [demandPage, setDemandPage] = useState(1);
+
+  useEffect(() => {
+    const custSearch = searchParams.get('customerSearch') || '';
+    const demSearch = searchParams.get('search') || searchParams.get('demandSearch') || '';
+    const followUp = searchParams.get('followUpStatus') || 'all';
+
+    setCustomerSearch(custSearch);
+    setDebouncedCustomerSearch(custSearch);
+    setDemandSearch(demSearch);
+    setDebouncedDemandSearch(demSearch);
+    setFollowUpFilter(followUp);
+    setCustomerPage(1);
+    setDemandPage(1);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const followUp = searchParams.get('followUpStatus');
+    if (followUp && followUp !== 'all') {
+      const timer = setTimeout(() => {
+        const element = document.getElementById('demand-leads-section');
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
 
   // Modals Open/Prefill State
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -142,6 +200,11 @@ export default function CustomersPage() {
     return () => clearTimeout(timer);
   }, [demandSearch]);
 
+  useEffect(() => {
+    setCustomerPage(1);
+    setDemandPage(1);
+  }, [period, month, year]);
+
   // Queries
   const { data: customerData, isLoading: customerLoading } = useCustomers({
     search: debouncedCustomerSearch,
@@ -149,18 +212,21 @@ export default function CustomersPage() {
     limit: PAGE_SIZE,
   });
 
-  const { data: demandStats, isLoading: demandStatsLoading } = useDemandRecordStats();
+  const { data: demandStats, isLoading: demandStatsLoading } = useDemandRecordStats({ dateFrom, dateTo });
 
   const { data: demandData, isLoading: demandLoading } = useDemandRecords({
     page: demandPage,
     limit: PAGE_SIZE,
     search: debouncedDemandSearch || undefined,
+    dateFrom,
+    dateTo,
+    followUpStatus: followUpFilter === 'all' ? undefined : followUpFilter,
   });
 
   const { data: dashboardStats } = useQuery({
-    queryKey: ['dashboard-stats-cs'],
+    queryKey: ['dashboard-stats-cs', period, month, year],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard/stats?period=month`);
+      const res = await fetch(`/api/dashboard/stats?period=${period}&month=${month}&year=${year}`);
       if (!res.ok) throw new Error('Failed to fetch');
       return res.json();
     },
@@ -342,23 +408,75 @@ export default function CustomersPage() {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
         <div>
           <h1 className="text-3xl font-bold text-foreground font-heading">Customer Service</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Customer directory, demand leads, and satisfaction metrics.
           </p>
         </div>
-        <AlertDialog open={isDeleteAllOpen} onOpenChange={setIsDeleteAllOpen}>
-          <button
-            type="button"
-            disabled={!customerData?.customers?.length}
-            onClick={() => setIsDeleteAllOpen(true)}
-            className="inline-flex items-center gap-2 px-3 h-9 rounded-md text-sm border border-red-500/30 text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-bold"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete All Clients
-          </button>
+        <div className="flex flex-wrap gap-2 items-center">
+          <Select value={localPeriod} onValueChange={(value) => {
+            if (value === 'month' || value === 'year') {
+              setLocalPeriod(value);
+              updatePeriod({ period: value });
+            }
+          }}>
+            <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              {localPeriod === 'year' ? 'Yearly' : 'Monthly'}
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border text-foreground rounded-lg">
+              <SelectItem value="month">Monthly</SelectItem>
+              <SelectItem value="year">Yearly</SelectItem>
+            </SelectContent>
+          </Select>
+          {localPeriod === 'month' ? (
+            <Select value={localMonth} onValueChange={(value) => {
+              if (value) {
+                setLocalMonth(value);
+                updatePeriod({ month: Number(value) });
+              }
+            }}>
+              <SelectTrigger className="h-9 w-32 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+                {new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long' })}
+              </SelectTrigger>
+              <SelectContent className="bg-card border-border text-foreground rounded-lg">
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <SelectItem key={index + 1} value={String(index + 1)}>
+                    {new Date(Number(localYear), index, 1).toLocaleString('en', { month: 'long' })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          <Select value={localYear} onValueChange={(value) => {
+            if (value) {
+              setLocalYear(value);
+              updatePeriod({ year: Number(value) });
+            }
+          }}>
+            <SelectTrigger className="h-9 w-24 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              {localYear}
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border text-foreground rounded-lg">
+              {years.map((itemYear) => (
+                <SelectItem key={itemYear} value={String(itemYear)}>
+                  {itemYear}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <AlertDialog open={isDeleteAllOpen} onOpenChange={setIsDeleteAllOpen}>
+            <button
+              type="button"
+              disabled={!customerData?.customers?.length}
+              onClick={() => setIsDeleteAllOpen(true)}
+              className="inline-flex items-center gap-2 px-3 h-9 rounded-md text-sm border border-red-500/30 text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-bold shrink-0 cursor-pointer animate-none"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete All Clients
+            </button>
           <AlertDialogContent className="bg-card border-border text-foreground">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete all customers?</AlertDialogTitle>
@@ -380,6 +498,7 @@ export default function CustomersPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        </div>
       </div>
 
       {/* Metrics Cards Grid */}
@@ -420,28 +539,103 @@ export default function CustomersPage() {
 
       {/* Intelligence Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="bg-white dark:bg-card border-2 border-red-300 border-l-8 border-l-red-500 rounded-xl shadow-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-3 mb-2">
-              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
-              <h4 className="font-bold text-slate-900 dark:text-slate-100">Critical Phone Missing Alert</h4>
-            </div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              14 High Potential leads are missing phone numbers. Immediate action required by chat reps to capture contact data.
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="bg-white dark:bg-card border-2 border-emerald-300 border-l-8 border-l-emerald-500 rounded-xl shadow-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center gap-3 mb-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-              <h4 className="font-bold text-slate-900 dark:text-slate-100">CSAT Target Exceeded</h4>
-            </div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Customer Satisfaction Score hit 96% this week. Service delivery times are well within acceptable SLAs.
-            </p>
-          </CardContent>
-        </Card>
+        {demandStatsLoading ? (
+          <>
+            <Skeleton className="h-32 rounded-xl animate-pulse" />
+            <Skeleton className="h-32 rounded-xl animate-pulse" />
+          </>
+        ) : (
+          (() => {
+            const followUp = demandStats?.insights?.find(ins => ins.title.includes("Follow-up") || ins.actionType === "view_overdue" || ins.actionType === "view_due_today") || {
+              type: "sales",
+              severity: "info",
+              title: "Follow-up နောက်ဆက်တွဲ ဆက်သွယ်မှု",
+              message: "လတ်တလော လုပ်ဆောင်ရန်လိုအပ်သော follow-up နောက်ဆက်တွဲ ဖုန်းခေါ်ဆိုမှုများ မရှိသေးပါ။",
+              recommendedAction: "နောက်ဆက်တွဲ လုပ်ဆောင်ရန်မရှိသေးသည့် Leads များအတွက် follow-up ရက်စွဲများ သတ်မှတ်ပေးပါ။",
+              action: "Follow-up စစ်ဆေးရန်",
+              actionType: "view_overdue"
+            };
+
+            const csat = {
+              type: "csat",
+              severity: "success",
+              title: "ဝန်ဆောင်မှု စိတ်ကျေနပ်မှုရလဒ် (CSAT)",
+              message: "ယခုအပတ်အတွင်း သုံးစွဲသူစိတ်ကျေနပ်မှု (CSAT Score) သည် ၉၆% အထိ ရှိခဲ့ပြီး သတ်မှတ်ချက်ထက် ကျော်လွန်အောင်မြင်ခဲ့သည်။",
+              recommendedAction: "ဝန်ဆောင်မှုပေးရသည့်ကြာချိန်များသည် SLA သတ်မှတ်ချက် ဘောင်အတွင်း ကောင်းမွန်စွာ တည်ရှိနေပါသည်။",
+              action: "Overview သွားရန်",
+              actionType: "general_dashboard"
+            };
+
+            return [followUp, csat].map((insight) => {
+              const isUrgent = insight.severity === 'urgent';
+              const isWarning = insight.severity === 'warning';
+              const isSuccess = insight.severity === 'success';
+              const CS_Icon = isUrgent ? AlertTriangle : isWarning ? Phone : CheckCircle2;
+              return (
+                <Card
+                  key={insight.title}
+                  className={`bg-white dark:bg-card border-2 rounded-xl shadow-sm flex flex-col justify-between ${
+                    isUrgent
+                      ? 'border-red-300 border-l-8 border-l-red-500'
+                      : isWarning
+                      ? 'border-amber-300 border-l-8 border-l-amber-500'
+                      : isSuccess
+                      ? 'border-emerald-300 border-l-8 border-l-emerald-500'
+                      : 'border-sky-300 border-l-8 border-l-sky-500'
+                  }`}
+                >
+                  <CardContent className="p-5 flex flex-col h-full justify-between">
+                    <div>
+                      <div className="flex items-center gap-3 mb-2">
+                        <CS_Icon className={`w-5 h-5 shrink-0 ${isUrgent ? 'text-red-600' : isWarning ? 'text-amber-600' : isSuccess ? 'text-emerald-600' : 'text-sky-650'}`} />
+                        <h4 className="font-bold text-slate-900 dark:text-slate-100">{insight.title}</h4>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mb-1 leading-relaxed">
+                        {insight.message}
+                      </p>
+                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-300 leading-relaxed">
+                        {insight.recommendedAction}
+                      </p>
+                    </div>
+                    {insight.action && (
+                      <div className="mt-3.5">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (insight.actionType === 'view_high_priority') {
+                              router.push('/sales-marketing?priority=high#report-table-section');
+                            } else if (insight.actionType === 'view_missing_phone') {
+                              router.push('/sales-marketing?missingField=phone#report-table-section');
+                            } else if (insight.actionType === 'view_overdue' || insight.actionType === 'view_due_today') {
+                              const el = document.getElementById('demand-leads-section');
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            } else if (insight.actionType === 'general_dashboard') {
+                              router.push('/dashboard');
+                            } else {
+                              const el = document.getElementById('demand-leads-section');
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }}
+                          className={`${
+                            isUrgent
+                              ? 'bg-red-600 hover:bg-red-700 text-white'
+                              : isWarning
+                              ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                              : isSuccess
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : 'bg-sky-600 hover:bg-sky-700 text-white'
+                          } text-xs font-bold rounded-lg px-4 h-8 cursor-pointer transition shadow-sm border-none`}
+                        >
+                          {insight.action}
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            });
+          })()
+        )}
       </div>
 
       {/* 1. Purchased Customers Directory Card */}
@@ -599,12 +793,22 @@ export default function CustomersPage() {
       </Card>
 
       {/* 2. Demand Leads Data Card */}
-      <Card className="bg-card border-2 border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+      <Card id="demand-leads-section" className="bg-card border-2 border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <CardTitle className="text-lg font-extrabold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
             2. Demand Leads Data
           </CardTitle>
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+            <Select value={followUpFilter} onValueChange={(val) => setFollowUpFilter(val || 'all')}>
+              <SelectTrigger className="h-10 w-40 rounded-lg border border-border bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+                {followUpFilter === 'overdue' ? 'Overdue Follow-ups' : followUpFilter === 'due' ? 'Due Today' : 'All Follow-ups'}
+              </SelectTrigger>
+              <SelectContent className="bg-card border-border text-foreground rounded-lg">
+                <SelectItem value="all">All Follow-ups</SelectItem>
+                <SelectItem value="overdue">Overdue Follow-ups</SelectItem>
+                <SelectItem value="due">Due Today</SelectItem>
+              </SelectContent>
+            </Select>
             <div className="relative flex-1 sm:flex-initial">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
@@ -1084,5 +1288,13 @@ export default function CustomersPage() {
         </AlertDialog>
       )}
     </div>
+  );
+}
+
+export default function CustomersPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-500 animate-pulse">Loading Customers...</div>}>
+      <CustomersPageContent />
+    </Suspense>
   );
 }

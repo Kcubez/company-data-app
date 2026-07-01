@@ -10,10 +10,10 @@ export function useDemandRecords(params: DemandRecordsParams = {}) {
   });
 }
 
-export function useDemandRecordStats() {
+export function useDemandRecordStats(params: { dateFrom?: string; dateTo?: string } = {}) {
   return useQuery({
-    queryKey: ["demand-record-stats"],
-    queryFn: () => demandRecordsApi.stats(),
+    queryKey: ["demand-record-stats", params.dateFrom, params.dateTo],
+    queryFn: () => demandRecordsApi.stats(params),
     refetchInterval: 10000,
   });
 }

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
+import { useDateFilter, type PeriodMode } from '@/hooks/use-date-filter';
 import { formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -74,7 +75,6 @@ type DueTodayRecord = {
   followUpDate: string | null;
 };
 
-type PeriodMode = 'month' | 'year';
 
 type DashboardStats = {
   totalMessages: number;
@@ -85,6 +85,7 @@ type DashboardStats = {
   dueTodayFollowUps: number;
   pendingDemandRecords: number;
   totalCustomers: number;
+  newCustomers: number;
   botActive: boolean;
   recentMessages: {
     id: string;
@@ -169,6 +170,16 @@ type ActionRecommendation = {
   title: string;
   insight: string;
   action: string;
+  actionType:
+    | 'view_quoted_deals'
+    | 'view_pending_deals'
+    | 'view_all_deals'
+    | 'view_overdue_followups'
+    | 'view_due_followups'
+    | 'view_missing_phone'
+    | 'set_target_modal'
+    | 'view_finance'
+    | 'general_dashboard';
 };
 
 function useActionRecommendations(period: PeriodMode, month: number, year: number) {
@@ -633,21 +644,93 @@ function getPacingStatus(actual: number, expected: number, isInverse = false): {
 
 function DashboardPageContent() {
   const { data: session } = useSession();
-  const now = new Date();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const period: PeriodMode = searchParams.get('period') === 'year' ? 'year' : 'month';
-  const month = Math.min(
-    12,
-    Math.max(1, Number(searchParams.get('month') || now.getMonth() + 1)),
-  );
-  const year = Number(searchParams.get('year') || now.getFullYear());
+  const {
+    period,
+    month,
+    year,
+    localPeriod,
+    localMonth,
+    localYear,
+    setLocalPeriod,
+    setLocalMonth,
+    setLocalYear,
+    updatePeriod,
+    years,
+  } = useDateFilter('dashboard_filter');
+
   const { data: stats, isLoading } = useDashboardStats(period, month, year);
   const { data: recsData, isLoading: recsLoading } = useActionRecommendations(period, month, year);
-  const [localPeriod, setLocalPeriod] = useState<PeriodMode>(period);
-  const [localMonth, setLocalMonth] = useState(String(month));
-  const [localYear, setLocalYear] = useState(String(year));
+  const router = useRouter();
+
+  const getActionLink = (rec: ActionRecommendation) => {
+    // 1. Prioritize actionType if present
+    if (rec.actionType) {
+      switch (rec.actionType) {
+        case 'view_quoted_deals':
+          return "/sales-marketing?status=quoted#report-table-section";
+        case 'view_pending_deals':
+          return "/sales-marketing?status=pending#report-table-section";
+        case 'view_all_deals':
+          return "/sales-marketing#report-table-section";
+        case 'view_overdue_followups':
+          return "/customer-service?followUpStatus=overdue#demand-leads-section";
+        case 'view_due_followups':
+          return "/customer-service?followUpStatus=due#demand-leads-section";
+        case 'view_missing_phone':
+          return "/sales-marketing?missingField=phone#report-table-section";
+        case 'view_finance':
+          return "/finance";
+        case 'set_target_modal':
+          return "/dashboard";
+        case 'general_dashboard':
+        default:
+          return "/dashboard";
+      }
+    }
+
+    // 2. Heuristic fallback (old keyword check) in case actionType is not populated
+    const searchStr = `${rec.title} ${rec.action} ${rec.insight}`.toLowerCase();
+
+    // 1. High-Potential Leads
+    if (searchStr.includes("high-potential") || searchStr.includes("priority")) {
+      return "/sales-marketing?priority=high#report-table-section";
+    }
+    // 2. Overdue or due followups
+    if (searchStr.includes("follow-up") || searchStr.includes("သက်တမ်းကျော်")) {
+      return "/customer-service?followUpStatus=overdue#demand-leads-section";
+    }
+    if (searchStr.includes("ယနေ့ follow-up") || searchStr.includes("ယနေ့")) {
+      return "/customer-service?followUpStatus=due#demand-leads-section";
+    }
+    // 3. Missing Phone Number
+    if (searchStr.includes("ဖုန်းနံပါတ်") || searchStr.includes("phone")) {
+      return "/sales-marketing?missingField=phone#report-table-section";
+    }
+    // 4. Closeable/Pending Deals
+    if (searchStr.includes("deal") || searchStr.includes("ပိတ်နိုင်") || searchStr.includes("ပိတ်ဆင်း")) {
+      if (searchStr.includes("pending") || searchStr.includes("ဆိုင်းငံ့")) {
+        return "/sales-marketing?status=pending#report-table-section";
+      }
+      return "/sales-marketing?status=quoted#report-table-section";
+    }
+    // 5. Sales activity / Daily workflow
+    if (
+      searchStr.includes("လုပ်ဆောင်ချက်") || 
+      searchStr.includes("စွမ်းဆောင်ရည်") || 
+      searchStr.includes("workflow") || 
+      searchStr.includes("activity")
+    ) {
+      return "/finance";
+    }
+    // 6. Revenue target gap
+    if (searchStr.includes("အရောင်းဝင်ငွေ") || searchStr.includes("sales") || searchStr.includes("revenue")) {
+      return "/finance";
+    }
+    // Fallbacks
+    if (rec.area === "sales" || rec.area === "marketing") return "/sales-marketing";
+    if (rec.area === "appointments") return "/customer-service";
+    return "/dashboard";
+  };
 
   const queryClient = useQueryClient();
   const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
@@ -705,51 +788,6 @@ function DashboardPageContent() {
     }
   };
 
-  useEffect(() => {
-    setLocalPeriod(period);
-    setLocalMonth(String(month));
-    setLocalYear(String(year));
-  }, [period, month, year]);
-
-  const user = session?.user;
-  const years = Array.from({ length: 5 }).map((_, index) => now.getFullYear() - 2 + index);
-
-  const updatePeriod = (next: { period?: PeriodMode; month?: number; year?: number }) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('period', next.period ?? period);
-    params.set('month', String(next.month ?? month));
-    params.set('year', String(next.year ?? year));
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  };
-
-  useEffect(() => {
-    const hasPeriod = searchParams.has('period');
-    const hasMonth = searchParams.has('month');
-    const hasYear = searchParams.has('year');
-
-    if (!hasPeriod || !hasMonth || !hasYear) {
-      const storedPeriod = localStorage.getItem('dashboard_filter_period') as PeriodMode | null;
-      const storedMonth = localStorage.getItem('dashboard_filter_month');
-      const storedYear = localStorage.getItem('dashboard_filter_year');
-
-      if ((storedPeriod === 'month' || storedPeriod === 'year') && storedMonth && storedYear) {
-        const params = new URLSearchParams(searchParams.toString());
-        params.set('period', storedPeriod);
-        params.set('month', storedMonth);
-        params.set('year', storedYear);
-        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-      } else {
-        localStorage.setItem('dashboard_filter_period', period);
-        localStorage.setItem('dashboard_filter_month', String(month));
-        localStorage.setItem('dashboard_filter_year', String(year));
-      }
-    } else {
-      localStorage.setItem('dashboard_filter_period', period);
-      localStorage.setItem('dashboard_filter_month', String(month));
-      localStorage.setItem('dashboard_filter_year', String(year));
-    }
-  }, [searchParams, pathname, router, period, month, year]);
-
   const timePct = stats?.elapsedRatio ? stats.elapsedRatio * 100 : 0;
   
   // Calculations for cards
@@ -786,7 +824,7 @@ function DashboardPageContent() {
   const apptPacing = getPacingStatus(apptValue, apptExpected);
 
   const customerTarget = stats?.targetNewCustomers || 80;
-  const customerValue = stats?.totalCustomers || 0;
+  const customerValue = stats?.newCustomers || 0;
   const customerActualPct = (customerValue / customerTarget) * 100;
   const customerExpected = stats?.expectedNewCustomers || Math.round(customerTarget * (stats?.elapsedRatio || 0));
   const customerPacing = getPacingStatus(customerValue, customerExpected);
@@ -984,11 +1022,20 @@ function DashboardPageContent() {
                 <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{rec.insight}</p>
                 {rec.action && (
                   <div className="mt-3">
-                    <button className={`${
-                      isAlert
-                        ? 'bg-red-600 hover:bg-red-700 text-white'
-                        : 'bg-background border-2 border-slate-300 dark:border-slate-700 text-foreground hover:bg-muted'
-                    } px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm`}>
+                    <button
+                      onClick={() => {
+                        if (rec.actionType === 'set_target_modal' || (rec.title.includes("ပစ်မှတ်") && (rec.title.includes("သတ်မှတ်") || rec.title.includes("လိုအပ်")))) {
+                          setIsTargetModalOpen(true);
+                        } else {
+                          router.push(getActionLink(rec));
+                        }
+                      }}
+                      className={`${
+                        isAlert
+                          ? 'bg-red-600 hover:bg-red-700 text-white'
+                          : 'bg-background border-2 border-slate-300 dark:border-slate-700 text-foreground hover:bg-muted'
+                      } px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer`}
+                    >
                       {rec.action}
                     </button>
                   </div>

@@ -41,6 +41,16 @@ export type ActionRecommendation = {
   title: string;
   insight: string;
   action: string;
+  actionType:
+    | "view_quoted_deals"
+    | "view_pending_deals"
+    | "view_all_deals"
+    | "view_overdue_followups"
+    | "view_due_followups"
+    | "view_missing_phone"
+    | "set_target_modal"
+    | "view_finance"
+    | "general_dashboard";
 };
 
 // Heuristic fallback — always runs when Gemini is unavailable (Burmese output)
@@ -51,6 +61,7 @@ function buildHeuristicRecommendations(data: {
   dueToday: number;
   closedDeals: number;
   pendingDeals: number;
+  quotedDeals: number;
   newLeads: number;
   appointmentsMade: number;
   appointmentsKept: number;
@@ -58,7 +69,7 @@ function buildHeuristicRecommendations(data: {
   totalSalesAmount: number;
   targetSalesAmount: number | null;
   elapsedRatio: number;
-}): ActionRecommendation[] {
+  }): ActionRecommendation[] {
   const recs: ActionRecommendation[] = [];
 
   // Revenue pacing check
@@ -73,6 +84,7 @@ function buildHeuristicRecommendations(data: {
         title: "အရောင်းဝင်ငွေ နှောင့်နှေးနေသည်",
         insight: `ဝင်ငွေသည် မျှော်မှန်းထားသောနှုန်း၏ ${pct}% သာရှိသေးသည်။ ${Math.round(gap).toLocaleString()} Ks ကွာဟချက် ပြည့်မီရန် လိုနေသည်။`,
         action: "ဤကာလအတွင်း High-Potential Lead တွေနဲ့ Pending Deal တွေကို Sales Team ကို အာရုံစိုက်ပြီး ပိတ်ရန် အလျင်အမြန်ဆောင်ရွက်ပါ။",
+        actionType: "view_all_deals",
       });
     }
   }
@@ -85,6 +97,7 @@ function buildHeuristicRecommendations(data: {
       title: `High-Potential Lead ${data.highPriority} ခု အာရုံစိုက်ရန် လိုသည်`,
       insight: `ဦးစားပေးရမည့် Open Lead ${data.highPriority} ခု ရှိနေသည်။ နောက်ကျလေ Close Rate ကျလေ ဖြစ်သည်။`,
       action: "ယနေ့ပင် High-Priority Lead တွေကို Sales Rep တွေ တာဝန်ပေးပြီး Demand Sheet မှာ ရလဒ်မှတ်ပါ။",
+      actionType: "view_all_deals",
     });
   }
 
@@ -96,6 +109,7 @@ function buildHeuristicRecommendations(data: {
       title: "Lead ဖမ်းဆည်းမှု အရည်အသွေး တိုးတက်ရန် လိုသည်",
       insight: `ဖုန်းနံပါတ် မပါသော Open Lead ${data.missingPhone} ခု ရှိသဖြင့် ဆက်သွယ်မရနိုင်ပါ။`,
       action: "Marketing Team ကို Lead ကို Sales သို့ မပို့မီ ဖုန်းနံပါတ် ရယူရန် တာဝန်ပေးပါ။",
+      actionType: "view_missing_phone",
     });
   }
 
@@ -107,6 +121,7 @@ function buildHeuristicRecommendations(data: {
       title: `Follow-up ${data.overdue} ခု သက်တမ်းကျော်နေပြီ`,
       insight: "သက်တမ်းကျော် Follow-up ရှိနေခြင်းသည် Lead လက်ဆင့်ကမ်းမှုတွင် ချို့ယွင်းနေကြောင်း ညွှန်ပြသည်။",
       action: "သက်တမ်းကျော်နေသော List ကို အရင်ဆုံး ဆောင်ရွက်ပြီး ဖုန်းဆက်ပြီးတိုင်း Status အပ်ဒိတ်ပါ။",
+      actionType: "view_overdue_followups",
     });
   } else if (data.dueToday > 0) {
     recs.push({
@@ -115,6 +130,7 @@ function buildHeuristicRecommendations(data: {
       title: `ယနေ့ Follow-up လုပ်ရမည့်အရာ ${data.dueToday} ခု ရှိသည်`,
       insight: "ယနေ့ Follow-up တွေ Dashboard မှာ ရှိနေသည်။ ညနေမရောက်မီ ဆောင်ရွက်ပါ။",
       action: "ယနေ့ Follow-up ဖုန်းဆက်မှုများ ပြီးဆုံးပြီး ရလဒ်ကို Record တစ်ခုချင်းမှာ မှတ်တမ်းတင်ပါ။",
+      actionType: "view_due_followups",
     });
   }
 
@@ -127,6 +143,7 @@ function buildHeuristicRecommendations(data: {
       title: "Appointment လာရောက်နှုန်း နည်းနေသည်",
       insight: `Appointment ${data.appointmentsMade} ခုထဲမှ ${data.appointmentsKept} ခုသာ လာရောက်သည် (${showRate}%)။ Lead အရည်အသွေး ညံ့နေနိုင်သည်။`,
       action: "Lead Source ကို ပြန်စစ်ပြီး Appointment မချိန်းမီ Lead Qualify ကို ပိုတင်းကျပ်စွာ လုပ်ပါ။",
+      actionType: "view_finance",
     });
   }
 
@@ -138,6 +155,7 @@ function buildHeuristicRecommendations(data: {
       title: "Lead ထုတ်လုပ်နှုန်း နည်းနေသည်",
       insight: `ဖုန်းဆက် ${data.callsMade} ကြိမ်မှ New Lead ${data.newLeads} ခုသာ ရသည်။ Targeting ပြန်ပြင်ရန် လိုနိုင်သည်။`,
       action: "Outreach Lead အရည်အသွေး တိုးတက်ရန် Channel ကိုပြောင်း သို့မဟုတ် Message Angle အသစ် စမ်းကြည့်ပါ။",
+      actionType: "view_finance",
     });
   }
 
@@ -149,6 +167,7 @@ function buildHeuristicRecommendations(data: {
       title: "လုပ်ငန်းလည်ပတ်မှု ကောင်းနေသည်",
       insight: "လက်ရှိ Data များအရ အရေးပေါ် Bottleneck မတွေ့ရပါ။",
       action: "Demand Data ဆက်တင်သွင်းပြီး Follow-up တိုင်းတွင် ရက်ချိန်း သတ်မှတ်ထားရန် သေချာပါ။",
+      actionType: "general_dashboard",
     });
   }
 
@@ -180,6 +199,9 @@ export async function GET(req: NextRequest) {
       missingPhoneCount,
       overdueCount,
       dueTodayCount,
+      dbClosedCount,
+      dbQuotedCount,
+      dbPendingCount,
       businessAgg,
       demandAgg,
       latestTargets,
@@ -214,6 +236,24 @@ export async function GET(req: NextRequest) {
           createdAt: { gte: periodStart, lt: periodEnd },
         },
       }),
+      prisma.demandRecord.count({
+        where: {
+          status: "closed",
+          createdAt: { gte: periodStart, lt: periodEnd },
+        },
+      }),
+      prisma.demandRecord.count({
+        where: {
+          status: "quoted",
+          createdAt: { gte: periodStart, lt: periodEnd },
+        },
+      }),
+      prisma.demandRecord.count({
+        where: {
+          status: "pending",
+          createdAt: { gte: periodStart, lt: periodEnd },
+        },
+      }),
       prisma.businessReport.aggregate({
         _sum: {
           totalSalesAmount: true,
@@ -230,13 +270,14 @@ export async function GET(req: NextRequest) {
         _sum: { serviceAmount: true },
         where: { createdAt: { gte: periodStart, lt: periodEnd } },
       }),
-      prisma.businessReport.findFirst({
+      prisma.periodTarget.findUnique({
         where: {
-          reportDate: { gte: periodStart, lt: periodEnd },
-          OR: [{ targetSalesAmount: { not: null } }],
+          period_year_month: {
+            period,
+            year,
+            month: period === "year" ? 0 : month,
+          },
         },
-        orderBy: { reportDate: "desc" },
-        select: { targetSalesAmount: true },
       }),
     ]);
 
@@ -262,8 +303,9 @@ export async function GET(req: NextRequest) {
       missingPhone: missingPhoneCount,
       overdue: overdueCount,
       dueToday: dueTodayCount,
-      closedDeals: businessAgg._sum.closedDeals ?? 0,
-      pendingDeals: businessAgg._sum.pendingDeals ?? 0,
+      closedDeals: dbClosedCount,
+      quotedDeals: dbQuotedCount,
+      pendingDeals: dbPendingCount,
       newLeads: businessAgg._sum.newLeads ?? 0,
       appointmentsMade: businessAgg._sum.appointmentsMade ?? 0,
       appointmentsKept: businessAgg._sum.appointmentsKept ?? 0,
@@ -291,12 +333,23 @@ export async function GET(req: NextRequest) {
 - Appointment ချိန်းဆိုမှု: ${inputData.appointmentsMade}
 - Appointment တကယ်လာရောက်မှု: ${inputData.appointmentsKept}
 - New Lead အရေအတွက်: ${inputData.newLeads}
-- ပိတ်ဆင်းနိုင်သော Deal: ${inputData.closedDeals}
-- ဆိုင်းငံ့နေသော Deal: ${inputData.pendingDeals}
+- အောင်မြင်စွာ ပိတ်သိမ်းပြီးသော Deal (Closed): ${inputData.closedDeals}
+- ဈေးနှုန်းကမ်းလှမ်းထားဆဲ Deal (Quoted): ${inputData.quotedDeals}
+- ဆိုင်းငံ့နေဆဲ Deal (Pending): ${inputData.pendingDeals}
 
 Bottleneck သည် ဘယ်နေရာမှာရှိသည်ကို ဖော်ထုတ်ပါ — Marketing (Lead ထုတ်လုပ်မှု/အရည်အသွေး)၊ Sales (Follow-up/Close Rate)၊ Appointments (လာရောက်နှုန်း/အရည်အသွေး) — ထဲမှ ဖော်ထုတ်ပြီး ဆောင်ရွက်ရမည့်အကြံဉာဏ်ပေးပါ။
 
 အရေးကြီး — "title"၊ "insight"၊ "action" ၃ ခုလုံးကို မြန်မာဘာသာ (Burmese) ဖြင့်သာ ရေးပါ။ ပြင်ပဆောင်ရွက်ချက် ရှိသမျှကိုလည်း မြန်မာဘာသာနဲ့ ဖော်ပြပါ။
+"actionType" ကတော့ အောက်ဖော်ပြပါ အင်္ဂလိပ်လို Enum တန်ဖိုးများထဲမှသာ ရွေးချယ်ပေးရမည်:
+- "set_target_modal": အရောင်းပစ်မှတ် သတ်မှတ်ရန် သို့မဟုတ် ပြင်ဆင်ရန် အကြံပြုပါက
+- "view_quoted_deals": ဈေးနှုန်းကမ်းလှမ်းထားသော (Quoted) Deal များအား ပိတ်သိမ်းရန် သို့မဟုတ် ဆက်သွယ်ရန် အကြံပြုပါက
+- "view_pending_deals": ဆိုင်းငံ့နေသော (Pending) Deal များအား ပိတ်သိမ်းရန် သို့မဟုတ် ဆက်သွယ်ရန် အကြံပြုပါက
+- "view_all_deals": Deal နှစ်မျိုးလုံး သို့မဟုတ် ယေဘုယျ အရောင်း Deal များနှင့် ပတ်သက်၍ အကြံပြုပါက
+- "view_overdue_followups": သက်တမ်းကျော်လွန်နေသော Follow-up များအား ဖြေရှင်းရန် အကြံပြုပါက
+- "view_due_followups": ယနေ့ လုပ်ဆောင်ရမည့် Follow-up များအား ဆောင်ရွက်ရန် အကြံပြုပါက
+- "view_missing_phone": ဖုန်းနံပါတ်မပါသော Open Lead များကို ဖုန်းနံပါတ် ပြန်တောင်းရန် အကြံပြုပါက
+- "view_finance": ဘဏ္ဍာရေး သို့မဟုတ် လုပ်ငန်း Bottlenecks များကို စစ်ဆေးရန် အကြံပြုပါက
+- "general_dashboard": ယေဘုယျ လုပ်ငန်းလည်ပတ်မှု ကောင်းမွန်သဖြင့် ပုံမှန်အတိုင်း ဆက်လုပ်ရန် အကြံပြုပါက
 
 JSON Array (markdown မပါ၊ ရှင်းလင်းချက် မပါ) ကိုသာ ထုတ်ပေးပါ:
 [
@@ -305,7 +358,8 @@ JSON Array (markdown မပါ၊ ရှင်းလင်းချက် မပ
     "severity": "urgent" | "warning" | "info",
     "title": "မြန်မာဘာသာဖြင့် အကြောင်းအရာ အတိုချုပ် (စကားလုံး ၈ ခုအောက်)",
     "insight": "ဘာဖြစ်နေသည်နှင့် ဘာကြောင့် အရေးကြီးသည် ကို မြန်မာဘာသာဖြင့် ၁-၂ ကြောင်း ရှင်းပြပါ",
-    "action": "Team အတွက် ဆောင်ရွက်ရမည့်အကြံဉာဏ်ကို မြန်မာဘာသာဖြင့် ၁ ကြောင်း ဖော်ပြပါ"
+    "action": "Team အတွက် ဆောင်ရွက်ရမည့်အကြံဉာဏ်ကို မြန်မာဘာသာဖြင့် ၁ ကြောင်း ဖော်ပြပါ",
+    "actionType": "set_target_modal" | "view_quoted_deals" | "view_pending_deals" | "view_all_deals" | "view_overdue_followups" | "view_due_followups" | "view_missing_phone" | "view_finance" | "general_dashboard"
   }
 ]`;
 

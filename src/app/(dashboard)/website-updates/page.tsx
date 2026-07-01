@@ -275,7 +275,8 @@ export default function WebsiteUpdatesPage() {
               {visibleInsights.map((rec, idx) => (
                 <div
                   key={`${rec.websiteName}-${idx}`}
-                  className="flex items-start gap-3 p-3 rounded-lg bg-muted/40 border border-border/70 hover:border-border transition-colors"
+                  onClick={() => setSearch(rec.websiteName)}
+                  className="flex items-start gap-3 p-3 rounded-lg bg-muted/40 border border-border/70 hover:border-border transition-colors cursor-pointer"
                 >
                   <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
                     <Bot className="w-4 h-4" />

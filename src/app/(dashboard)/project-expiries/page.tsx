@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, Suspense } from 'react';
 import Link from 'next/link';
-import { format, differenceInDays } from 'date-fns';
+import { useSearchParams } from 'next/navigation';
+import { format, differenceInDays, formatDistanceToNow } from 'date-fns';
+import { useDateFilter } from '@/hooks/use-date-filter';
 import { useProjectExpiries } from '@/hooks/use-project-expiries';
 import { ProjectExpiration, WebsiteUpdate } from '@/lib/api';
-import { useWebsiteUpdates } from '@/hooks/use-website-updates';
+import { useWebsiteUpdates, useUpdateWebsiteUpdate, useWebsiteUpdateRecommendations, useDeleteAllWebsiteUpdates } from '@/hooks/use-website-updates';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +33,10 @@ import {
   ExternalLink,
   CalendarDays,
   CheckCircle,
+  CheckCircle2,
+  AlertCircle,
+  MessageSquare,
+  RefreshCw,
   FileSpreadsheet,
   Bot,
   Trash2,
@@ -40,12 +46,38 @@ import {
 } from 'lucide-react';
 import { useProjectExpiryRecommendations, useDeleteAllProjectExpiries, useUpdateProjectExpiry } from '@/hooks/use-project-expiries';
 
-export default function ProjectExpiriesPage() {
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+function ProjectExpiriesPageContent() {
+  const {
+    period,
+    month,
+    year,
+    dateFrom,
+    dateTo,
+    localPeriod,
+    localMonth,
+    localYear,
+    setLocalPeriod,
+    setLocalMonth,
+    setLocalYear,
+    updatePeriod,
+    years,
+  } = useDateFilter('projects_filter');
+
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get('search') || '';
+
+  const [search, setSearch] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [filter, setFilter] = useState<'all' | 'expired' | 'expiring_soon' | 'active'>('all');
   const [page, setPage] = useState(1);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  useEffect(() => {
+    const searchVal = searchParams.get('search') || '';
+    setSearch(searchVal);
+    setDebouncedSearch(searchVal);
+    setPage(1);
+  }, [searchParams]);
   // Edit state
   const [editingRecord, setEditingRecord] = useState<ProjectExpiration | null>(null);
   const [editDomainExpiry, setEditDomainExpiry] = useState('');
@@ -53,6 +85,29 @@ export default function ProjectExpiriesPage() {
   const [editRemark, setEditRemark] = useState('');
   const [editPackageName, setEditPackageName] = useState('');
   const limit = 10;
+
+  // Website Updates States
+  const [websiteSearch, setWebsiteSearch] = useState('');
+  const [debouncedWebsiteSearch, setDebouncedWebsiteSearch] = useState('');
+  const [websiteStatusFilter, setWebsiteStatusFilter] = useState<'all' | 'up_to_date' | 'pending_update' | 'in_progress'>('all');
+  const [websitePage, setWebsitePage] = useState(1);
+  const [websiteInsightPage, setWebsiteInsightPage] = useState(1);
+  const websiteLimit = 10;
+  const websiteInsightPageSize = 5;
+
+  // Editing state for updating status/remark of website updates
+  const [editingWebsiteRecord, setEditingWebsiteRecord] = useState<WebsiteUpdate | null>(null);
+  const [editWebsiteStatus, setEditWebsiteStatus] = useState<string>('up_to_date');
+  const [editWebsiteRemark, setEditWebsiteRemark] = useState<string>('');
+  const [showWebsiteDeleteConfirm, setShowWebsiteDeleteConfirm] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedWebsiteSearch(websiteSearch);
+      setWebsitePage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [websiteSearch]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -62,19 +117,68 @@ export default function ProjectExpiriesPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  useEffect(() => {
+    setPage(1);
+    setWebsitePage(1);
+  }, [period, month, year]);
+
   const { data, isLoading } = useProjectExpiries({
     page,
     limit,
     search: debouncedSearch || undefined,
     filter: filter === 'all' ? undefined : filter,
+    dateFrom,
+    dateTo,
   });
+
   const { data: websiteData, isLoading: websiteLoading } = useWebsiteUpdates({
-    page: 1,
-    limit: 10,
+    page: websitePage,
+    limit: websiteLimit,
+    search: debouncedWebsiteSearch || undefined,
+    status: websiteStatusFilter === 'all' ? undefined : websiteStatusFilter,
+    dateFrom,
+    dateTo,
   });
 
   const { data: recsData, isLoading: recsLoading, refetch: recsRefetch, isFetching: recsFetching } = useProjectExpiryRecommendations();
   const insightTotal = recsData?.recommendations.length || 0;
+
+  // Website Update Hooks & Mutations
+  const updateWebsiteMutation = useUpdateWebsiteUpdate();
+  const { data: websiteRecsData, isLoading: websiteRecsLoading, refetch: websiteRecsRefetch, isFetching: websiteRecsFetching } = useWebsiteUpdateRecommendations();
+  const websiteInsightTotal = websiteRecsData?.recommendations.length || 0;
+  const websiteInsightTotalPages = Math.max(1, Math.ceil(websiteInsightTotal / websiteInsightPageSize));
+  const visibleWebsiteInsights = websiteRecsData?.recommendations.slice(
+    (websiteInsightPage - 1) * websiteInsightPageSize,
+    websiteInsightPage * websiteInsightPageSize,
+  ) || [];
+
+  useEffect(() => {
+    setWebsiteInsightPage(1);
+  }, [websiteInsightTotal]);
+
+  const deleteWebsiteAllMutation = useDeleteAllWebsiteUpdates();
+
+  const handleWebsiteDeleteAll = async () => {
+    await deleteWebsiteAllMutation.mutateAsync();
+    setShowWebsiteDeleteConfirm(false);
+  };
+
+  const handleWebsiteEditClick = (record: WebsiteUpdate) => {
+    setEditingWebsiteRecord(record);
+    setEditWebsiteStatus(record.status);
+    setEditWebsiteRemark(record.remark || '');
+  };
+
+  const handleWebsiteSaveEdit = async () => {
+    if (!editingWebsiteRecord) return;
+    await updateWebsiteMutation.mutateAsync({
+      id: editingWebsiteRecord.id,
+      status: editWebsiteStatus,
+      remark: editWebsiteRemark || null,
+    });
+    setEditingWebsiteRecord(null);
+  };
 
   const deleteAllMutation = useDeleteAllProjectExpiries();
   const updateMutation = useUpdateProjectExpiry();
@@ -105,7 +209,6 @@ export default function ProjectExpiriesPage() {
   };
 
   // Auto-refresh AI insights once whenever the underlying record count changes
-  // (e.g. new data arrives via Telegram). Bounded — fires only on change, not on a timer.
   const prevTotalRef = useRef<number | null>(null);
   useEffect(() => {
     const total = data?.stats?.total;
@@ -115,6 +218,17 @@ export default function ProjectExpiriesPage() {
     }
     prevTotalRef.current = total;
   }, [data?.stats?.total, recsRefetch]);
+
+  // Auto-refresh Website AI insights once whenever the underlying record count changes
+  const prevWebsiteTotalRef = useRef<number | null>(null);
+  useEffect(() => {
+    const total = websiteData?.stats?.total;
+    if (total === undefined) return;
+    if (prevWebsiteTotalRef.current !== null && total !== prevWebsiteTotalRef.current) {
+      websiteRecsRefetch();
+    }
+    prevWebsiteTotalRef.current = total;
+  }, [websiteData?.stats?.total, websiteRecsRefetch]);
 
   const stats = data?.stats || { total: 0, expired: 0, expiringSoon: 0, active: 0 };
   const records = data?.records || [];
@@ -207,7 +321,7 @@ export default function ProjectExpiriesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-5">
         <div className="flex flex-col gap-1">
           <h1 className="text-3xl font-bold  text-foreground font-heading">
             Project Expiries
@@ -216,16 +330,69 @@ export default function ProjectExpiriesPage() {
             Track and manage domain names, hosting servers, and active website subscription packages.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={!records.length || deleteAllMutation.isPending}
-          className="bg-red-950/20 border-red-900/50 text-red-700 dark:text-red-300 hover:bg-red-900/40 hover:text-red-800 dark:hover:text-red-200 dark:text-red-800 shrink-0 cursor-pointer"
-        >
-          <Trash2 className="w-4 h-4 mr-1.5" />
-          Delete All
-        </Button>
+        <div className="flex flex-wrap gap-2 items-center">
+          <Select value={localPeriod} onValueChange={(value) => {
+            if (value === 'month' || value === 'year') {
+              setLocalPeriod(value);
+              updatePeriod({ period: value });
+            }
+          }}>
+            <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              {localPeriod === 'year' ? 'Yearly' : 'Monthly'}
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border text-foreground rounded-lg">
+              <SelectItem value="month">Monthly</SelectItem>
+              <SelectItem value="year">Yearly</SelectItem>
+            </SelectContent>
+          </Select>
+          {localPeriod === 'month' ? (
+            <Select value={localMonth} onValueChange={(value) => {
+              if (value) {
+                setLocalMonth(value);
+                updatePeriod({ month: Number(value) });
+              }
+            }}>
+              <SelectTrigger className="h-9 w-32 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+                {new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long' })}
+              </SelectTrigger>
+              <SelectContent className="bg-card border-border text-foreground rounded-lg">
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <SelectItem key={index + 1} value={String(index + 1)}>
+                    {new Date(Number(localYear), index, 1).toLocaleString('en', { month: 'long' })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          <Select value={localYear} onValueChange={(value) => {
+            if (value) {
+              setLocalYear(value);
+              updatePeriod({ year: Number(value) });
+            }
+          }}>
+            <SelectTrigger className="h-9 w-24 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              {localYear}
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border text-foreground rounded-lg">
+              {years.map((itemYear) => (
+                <SelectItem key={itemYear} value={String(itemYear)}>
+                  {itemYear}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={!records.length || deleteAllMutation.isPending}
+            className="bg-red-950/20 border-red-900/50 text-red-700 dark:text-red-300 hover:bg-red-900/40 hover:text-red-800 dark:hover:text-red-200 h-9 rounded-lg shrink-0 cursor-pointer"
+          >
+            <Trash2 className="w-4 h-4 mr-1.5" />
+            Delete All
+          </Button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -262,32 +429,88 @@ export default function ProjectExpiriesPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="bg-white dark:bg-card border-2 border-red-300 border-l-8 border-l-red-500 rounded-xl shadow-sm">
-          <CardContent className="p-5">
+        <Card className="bg-white dark:bg-card border-2 border-red-300 border-l-8 border-l-red-500 rounded-xl shadow-sm flex flex-col justify-between">
+          <CardContent className="p-5 flex flex-col h-full justify-between">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">Renewal Risk Summary</h4>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  {stats.expired} expired and {stats.expiringSoon} expiring-soon records need owner review before service interruption.
+                <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">ဝဘ်ဆိုက် သက်တမ်းတိုးရန် ကျန်ရှိမှု အနှစ်ချုပ်</h4>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  သက်တမ်းကုန်ဆုံးသွားသော ပရောဂျက် (${stats.expired}) ခုနှင့် သက်တမ်းကုန်ဆုံးရန် နီးကပ်နေသော ပရောဂျက် (${stats.expiringSoon}) ခု ရှိနေပါသည်။ ဝဘ်ဆိုက်ပြတ်တောက်မှု မဖြစ်စေရန် ချက်ချင်းစစ်ဆေးလုပ်ဆောင်ပါ။
                 </p>
               </div>
               <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0" />
             </div>
+            {(stats.expired > 0 || stats.expiringSoon > 0) && (
+              <div className="mt-4">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const el = document.getElementById('project-listing-table');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                  className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg px-4 h-8 cursor-pointer transition shadow-sm border-none"
+                >
+                  သက်တမ်းကုန်/ကုန်လုနီးများ စစ်ဆေးရန်
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card className="bg-white dark:bg-card border-2 border-amber-300 border-l-8 border-l-amber-500 rounded-xl shadow-sm">
           <CardContent className="p-5">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">AI Action Summary</h4>
+              <div className="flex-1">
+                <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">AI လုပ်ဆောင်ရန် အကြံပြုချက်များ</h4>
                 {recsLoading || recsFetching ? (
-                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full animate-pulse" />
                 ) : (
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    {insightTotal > 0
-                      ? `${insightTotal} renewal recommendation${insightTotal === 1 ? '' : 's'} found. Prioritize the highest-risk domains and hosting renewals first.`
-                      : 'No urgent AI renewal actions found for the current project list.'}
-                  </p>
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      {insightTotal > 0
+                        ? `သက်တမ်းတိုးရန် အကြံပြုချက် (${insightTotal}) ခု တွေ့ရှိရပါသည်။ အန္တရာယ်အရှိဆုံးနှင့် သက်တမ်းကုန်ဆုံးရန် နီးကပ်နေသော domain များနှင့် hosting များကို ဦးစားပေး သက်တမ်းတိုးပါ။`
+                        : 'လတ်တလော သက်တမ်းတိုးရန် အရေးကြီးသည့် ဝဘ်ဆိုက်/ပရောဂျက်များ မရှိသေးပါ။'}
+                    </p>
+                    {insightTotal > 0 && recsData?.recommendations && (
+                      <div className="space-y-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                        {recsData.recommendations.slice(0, 3).map((rec, idx) => (
+                          <div
+                            key={`${rec.projectName}-${idx}`}
+                            onClick={() => {
+                              setSearch(rec.projectName);
+                              const el = document.getElementById('project-listing-table');
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }}
+                            className="flex items-start gap-2.5 p-2.5 rounded-lg bg-muted/40 border border-border/70 hover:border-border transition-colors cursor-pointer text-xs"
+                          >
+                            <div className="p-1 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+                              <Bot className="w-3.5 h-3.5 animate-pulse" />
+                            </div>
+                            <div className="flex-1 flex flex-col justify-between">
+                              <div>
+                                <span className="font-bold text-foreground/80 block">{rec.projectName}</span>
+                                <span className="text-[11px] text-muted-foreground leading-relaxed block mt-0.5">{rec.insight}</span>
+                              </div>
+                              <div className="mt-2 self-start">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-[10px] font-bold border-amber-250 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg px-2.5 cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSearch(rec.projectName);
+                                    const el = document.getElementById('project-listing-table');
+                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                  }}
+                                >
+                                  ပရောဂျက်ကို ရှာဖွေရန်
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
               <Bot className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -353,7 +576,7 @@ export default function ProjectExpiriesPage() {
       )}
 
       {/* Main Table Card */}
-      <Card className="glass-card border-border/70 shadow-sm">
+      <Card id="project-listing-table" className="glass-card border-border/70 shadow-sm">
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
             <div>
@@ -585,18 +808,26 @@ export default function ProjectExpiriesPage() {
         )}
       </Card>
 
-      {/* Website Updates merged into Projects / Infra */}
-      <div className="space-y-4 pt-2">
+      {/* Website Updates section */}
+      <div className="space-y-6 pt-4 border-t-2 border-slate-100">
         <div className="flex items-center justify-between border-b-2 border-slate-200 pb-4">
           <div>
-            <h2 className="text-xl font-bold text-foreground uppercase tracking-wide">Website Updates</h2>
-            <p className="text-xs text-muted-foreground mt-1">Maintenance status is grouped under Projects / Infra.</p>
+            <h2 className="text-xl font-bold text-foreground uppercase tracking-wide">Website Updates & Maintenance</h2>
+            <p className="text-xs text-muted-foreground mt-1">Monitor package subscriptions, business types, and change update status for active websites.</p>
           </div>
-          <Link href="/website-updates" className="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
-            Open full view <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowWebsiteDeleteConfirm(true)}
+            disabled={!websiteRecords.length || deleteWebsiteAllMutation.isPending}
+            className="bg-red-950/30 border-red-900/50 text-red-700 dark:text-red-300 hover:bg-red-900/40 hover:text-red-800 dark:hover:text-red-200 dark:text-red-800 shrink-0 cursor-pointer h-9 px-3.5 rounded-lg"
+          >
+            <Trash2 className="w-4 h-4 mr-1.5" />
+            Delete All
+          </Button>
         </div>
 
+        {/* Website updates KPI cards */}
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           {[
             { label: 'Total Websites', value: websiteStats.total, className: '' },
@@ -612,56 +843,394 @@ export default function ProjectExpiriesPage() {
             </Card>
           ))}
         </div>
+      
+        {/* Website Maintenance Alerts */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card
+            className={`bg-white dark:bg-card border-2 rounded-xl shadow-sm flex flex-col justify-between ${
+              websiteStats.pendingUpdate > 0
+                ? 'border-red-300 border-l-8 border-l-red-500'
+                : 'border-emerald-300 border-l-8 border-l-emerald-500'
+            }`}
+          >
+            <CardContent className="p-5 flex flex-col h-full justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <AlertCircle className={`w-5 h-5 shrink-0 ${websiteStats.pendingUpdate > 0 ? 'text-red-600' : 'text-emerald-600'}`} />
+                  <h4 className="font-bold text-slate-900 dark:text-slate-100">ဝဘ်ဆိုက် အပ်ဒိတ်လုပ်ရန် ကျန်ရှိမှု</h4>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mb-1 leading-relaxed">
+                  ဝဘ်ဆိုက် (${websiteStats.pendingUpdate}) ခုသည် နောက်ဆုံးရ အပ်ဒိတ်လုပ်ရန် ကျန်ရှိနေပါသည်။ သုံးစွဲသူအတွေ့အကြုံ ကောင်းမွန်စေရန် အမြန်ဆုံး အပ်ဒိတ်လုပ်ရန် လိုအပ်သည်။
+                </p>
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-300 leading-relaxed">
+                  {websiteStats.pendingUpdate > 0
+                    ? "ပြုပြင်ထိန်းသိမ်းမှု အခြေအနေများကို စစ်ဆေးပြီး အပ်ဒိတ်လုပ်ရန် ကျန်ရှိသည်များကို ဆောင်ရွက်ပါ။"
+                    : "ဝဘ်ဆိုက်များအားလုံး အပ်ဒိတ်များ နောက်ဆုံးပေါ် ဖြစ်နေပါသည်။"}
+                </p>
+              </div>
+              {websiteStats.pendingUpdate > 0 && (
+                <div className="mt-4">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setWebsiteStatusFilter('pending_update');
+                      setWebsitePage(1);
+                      const el = document.getElementById('website-maintenance-table');
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                    className={`${
+                      websiteStats.pendingUpdate > 0
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    } text-xs font-bold rounded-lg px-4 h-8 cursor-pointer transition shadow-sm border-none`}
+                  >
+                    အပ်ဒိတ်လုပ်ရန် ကျန်သည်များ စစ်ဆေးရန်
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-        <Card className="overflow-hidden rounded-xl border-2 border-slate-200 bg-card shadow-sm">
-          <div className="bg-slate-50 p-5 border-b-2 border-slate-200 flex items-center gap-2">
-            <Wrench className="h-4 w-4 text-sky-600" />
-            <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">Website Maintenance Records</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-white text-slate-500 uppercase text-[10px] tracking-wider font-extrabold border-b-2 border-slate-200">
-                <tr>
-                  <th className="px-6 py-4">Website</th>
-                  <th className="px-6 py-4">Business Type</th>
-                  <th className="px-6 py-4">Package</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Remark</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y-2 divide-slate-100">
-                {websiteLoading ? (
-                  Array.from({ length: 5 }).map((_, index) => (
-                    <tr key={index}>
-                      {Array.from({ length: 5 }).map((__, cellIndex) => (
-                        <td key={cellIndex} className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
-                      ))}
-                    </tr>
-                  ))
-                ) : websiteRecords.length ? (
-                  websiteRecords.map((record) => (
-                    <tr key={record.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-4 font-bold text-slate-800">
-                        {record.url ? (
-                          <a href={record.url.startsWith('http') ? record.url : `https://${record.url}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline">
-                            {record.name} <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : record.name}
-                      </td>
-                      <td className="px-6 py-4 text-slate-600 font-semibold">{record.businessType || '—'}</td>
-                      <td className="px-6 py-4 text-slate-600 font-semibold">{record.packageName || '—'}</td>
-                      <td className="px-6 py-4">{getWebsiteStatusBadge(record.status)}</td>
-                      <td className="px-6 py-4 text-slate-500 max-w-xs truncate">{record.remark || '—'}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-10 text-center text-slate-500">No website update records yet.</td>
-                  </tr>
+          <Card
+            className={`bg-white dark:bg-card border-2 rounded-xl shadow-sm flex flex-col justify-between ${
+              websiteStats.inProgress > 0
+                ? 'border-amber-300 border-l-8 border-l-amber-500'
+                : 'border-sky-300 border-l-8 border-l-sky-500'
+            }`}
+          >
+            <CardContent className="p-5 flex flex-col h-full justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <Wrench className={`w-5 h-5 shrink-0 ${websiteStats.inProgress > 0 ? 'text-amber-600' : 'text-sky-650'}`} />
+                  <h4 className="font-bold text-slate-900 dark:text-slate-100">ဝဘ်ဆိုက် ပြုပြင်ထိန်းသိမ်းမှု (In Progress)</h4>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mb-1 leading-relaxed">
+                  လက်ရှိအချိန်တွင် ဝဘ်ဆိုက် (${websiteStats.inProgress}) ခုအား ပြုပြင်ထိန်းသိမ်းမှု (In Progress) လုပ်ဆောင်နေပါသည်။
+                </p>
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-300 leading-relaxed">
+                  {websiteStats.inProgress > 0
+                    ? "လုပ်ဆောင်ဆဲပရောဂျက်၏ အဆင်ပြေချောမွေ့စွာ ပြီးစီးနိုင်ရေးကို စောင့်ကြည့်စစ်ဆေးပါ။"
+                    : "လတ်တလော ပြုပြင်ထိန်းသိမ်းမှု လုပ်ဆောင်နေသည့် ဝဘ်ဆိုက်မရှိပါ။"}
+                </p>
+              </div>
+              {websiteStats.inProgress > 0 && (
+                <div className="mt-4">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setWebsiteStatusFilter('in_progress');
+                      setWebsitePage(1);
+                      const el = document.getElementById('website-maintenance-table');
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                    className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg px-4 h-8 cursor-pointer transition shadow-sm border-none"
+                  >
+                    လုပ်ဆောင်ဆဲ မှတ်တမ်းကြည့်ရန်
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Website updates AI Insights Card */}
+        <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm">
+          <CardHeader className="p-5 border-b border-slate-200">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-foreground text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+                  <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-pulse" />
+                  ဝဘ်ဆိုက် ပြုပြင်ထိန်းသိမ်းမှု အကြံပြုချက်များ
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground mt-1">
+                  မွမ်းမံပြင်ဆင်ရန် ကျန်ရှိနေသည့် ဝဘ်ဆိုက်များအတွက် AI ၏ အကြံပြုချက်များ
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => websiteRecsRefetch()}
+                disabled={websiteRecsFetching}
+                className="bg-card border-border text-foreground hover:bg-muted/50 shrink-0 cursor-pointer h-9 px-3 rounded-lg"
+              >
+                <RefreshCw className={`w-4 h-4 mr-1.5 ${websiteRecsFetching ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-5">
+            {websiteRecsLoading || websiteRecsFetching ? (
+              <div className="space-y-3">
+                <Skeleton className="h-12 w-full bg-muted rounded-lg animate-pulse" />
+                <Skeleton className="h-12 w-full bg-muted rounded-lg animate-pulse" />
+                <Skeleton className="h-12 w-full bg-muted rounded-lg animate-pulse" />
+              </div>
+            ) : websiteRecsData?.recommendations && websiteRecsData.recommendations.length > 0 ? (
+              <div className="space-y-3">
+                {visibleWebsiteInsights.map((rec, idx) => (
+                  <div
+                    key={`${rec.websiteName}-${idx}`}
+                    onClick={() => {
+                      setWebsiteSearch(rec.websiteName);
+                      const el = document.getElementById('website-maintenance-table');
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                    className="flex items-start gap-3 p-3.5 rounded-lg bg-slate-50 border border-slate-200 hover:border-slate-300 transition-colors cursor-pointer"
+                  >
+                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 shrink-0 mt-0.5">
+                      <Bot className="w-4 h-4 animate-pulse" />
+                    </div>
+                    <div className="flex-1 flex flex-col justify-between sm:flex-row sm:items-center gap-3">
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">{rec.websiteName}</p>
+                        <p className="text-xs text-slate-600 mt-1 leading-relaxed">{rec.insight}</p>
+                      </div>
+                      <div className="shrink-0 self-start sm:self-center">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs font-bold border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg px-3 cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setWebsiteSearch(rec.websiteName);
+                            const el = document.getElementById('website-maintenance-table');
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }}
+                        >
+                          မှတ်တမ်း ရှာဖွေရန်
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {websiteInsightTotalPages > 1 && (
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-4">
+                    <p className="text-[11px] font-mono text-muted-foreground">
+                      Page {websiteInsightPage} of {websiteInsightTotalPages} · {websiteInsightTotal} insights
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={websiteInsightPage === 1}
+                        onClick={() => setWebsiteInsightPage((current) => Math.max(1, current - 1))}
+                        className="h-8 rounded-lg border-slate-200 bg-card px-2.5 text-xs text-foreground hover:bg-muted/50 disabled:opacity-50 cursor-pointer"
+                      >
+                        <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                        Prev
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={websiteInsightPage === websiteInsightTotalPages}
+                        onClick={() => setWebsiteInsightPage((current) => Math.min(websiteInsightTotalPages, current + 1))}
+                        className="h-8 rounded-lg border-slate-200 bg-card px-2.5 text-xs text-foreground hover:bg-muted/50 disabled:opacity-50 cursor-pointer"
+                      >
+                        Next
+                        <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-500">
+                <Bot className="w-8 h-8 text-slate-450 mx-auto mb-2" />
+                <p className="text-sm font-semibold">No pending maintenance actions</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                  AI insights appear only for sites marked <span className="text-amber-600 font-semibold">Pending Update</span> or <span className="text-amber-600 font-semibold">In Progress</span>. Set a status via the edit button to get recommendations.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Website updates list directory card */}
+        <Card id="website-maintenance-table" className="bg-card border-2 border-slate-200 shadow-sm rounded-xl overflow-hidden">
+          <CardHeader className="p-5 border-b-2 border-slate-200">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+              <div>
+                <CardTitle className="text-foreground text-sm font-bold uppercase tracking-wide">Website Maintenance Directory</CardTitle>
+                <CardDescription className="text-xs text-muted-foreground mt-1">
+                  Filter by maintenance status, search by domain, or manage update actions.
+                </CardDescription>
+              </div>
+
+              {/* Filter controls */}
+              <div className="flex flex-wrap gap-3 w-full sm:w-auto">
+                <div className="relative flex-1 sm:flex-initial">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-450" />
+                  <Input
+                    placeholder="Search project, URL, package..."
+                    value={websiteSearch}
+                    onChange={(e) => {
+                      setWebsiteSearch(e.target.value);
+                      setWebsitePage(1);
+                    }}
+                    className="pl-9 bg-muted/50 border-slate-250 text-foreground placeholder:text-muted-foreground focus-visible:ring-blue-500 w-full sm:w-64 text-xs h-9"
+                  />
+                </div>
+
+                <div>
+                  <Select
+                    value={websiteStatusFilter}
+                    onValueChange={(val) => {
+                      setWebsiteStatusFilter((val as any) || 'all');
+                      setWebsitePage(1);
+                    }}
+                  >
+                    <SelectTrigger className="bg-muted/50 border-slate-250 text-foreground min-w-40 text-xs h-9">
+                      <SelectValue placeholder="All Statuses" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border text-foreground">
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="up_to_date">Up to Date</SelectItem>
+                      <SelectItem value="pending_update">Pending Update</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider font-extrabold border-b-2 border-slate-200">
+                  <tr>
+                    <th className="px-6 py-4">Name / Business Type</th>
+                    <th className="px-6 py-4">Website Link</th>
+                    <th className="px-6 py-4">Package</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Remarks & Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y-2 divide-slate-100">
+                  {websiteLoading ? (
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <tr key={index}>
+                        {Array.from({ length: 5 }).map((__, cellIndex) => (
+                          <td key={cellIndex} className="px-6 py-4"><Skeleton className="h-4 w-24 animate-pulse" /></td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : websiteRecords.length ? (
+                    websiteRecords.map((record) => {
+                      return (
+                        <tr key={record.id} className="hover:bg-slate-50 transition-colors">
+                          {/* Name / Business Type */}
+                          <td className="px-6 py-4 font-bold text-slate-800">
+                            <span className="block truncate max-w-[200px]" title={record.name}>
+                              {record.name}
+                            </span>
+                            {record.businessType ? (
+                              <span className="text-[10px] text-slate-500 font-semibold block mt-0.5 truncate max-w-[200px]" title={record.businessType}>
+                                {record.businessType}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] text-slate-400 block mt-0.5 italic">No Business Type</span>
+                            )}
+                          </td>
+
+                          {/* Website Link */}
+                          <td className="px-6 py-4">
+                            {record.url ? (
+                              <a
+                                href={record.url.startsWith('http') ? record.url : `https://${record.url}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 font-semibold inline-flex items-center gap-1 hover:underline truncate max-w-[200px]"
+                              >
+                                <span className="truncate">{record.url}</span>
+                                <ExternalLink className="w-3 h-3 shrink-0" />
+                              </a>
+                            ) : (
+                              <span className="text-slate-400 italic">No URL</span>
+                            )}
+                          </td>
+
+                          {/* Package Name */}
+                          <td className="px-6 py-4 text-slate-600 font-semibold">
+                            {record.packageName ? (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] font-bold">
+                                {record.packageName}
+                              </Badge>
+                            ) : (
+                              <span className="text-slate-400 italic">—</span>
+                            )}
+                          </td>
+
+                          {/* Status */}
+                          <td className="px-6 py-4">
+                            {getWebsiteStatusBadge(record.status)}
+                            <span className="text-[9px] text-slate-400 block mt-1">
+                              Updated: {formatDistanceToNow(new Date(record.updatedAt), { addSuffix: true })}
+                            </span>
+                          </td>
+
+                          {/* Remarks & Actions */}
+                          <td className="px-6 py-4 max-w-xs">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="truncate flex-1 font-semibold text-slate-650" title={record.remark || undefined}>
+                                {record.remark || '—'}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleWebsiteEditClick(record)}
+                                className="h-8 w-8 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg shrink-0 cursor-pointer"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-10 text-center text-slate-500 font-semibold">
+                        No website updates found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+
+          {/* Pagination Footer */}
+          {websiteData && websiteData.totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4">
+              <div className="text-xs text-muted-foreground font-mono">
+                Showing Page <span className="text-slate-850 font-semibold">{websitePage}</span> of{' '}
+                <span className="text-slate-850 font-semibold">{websiteData.totalPages}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={websitePage === 1}
+                  onClick={() => setWebsitePage(p => Math.max(1, p - 1))}
+                  className="bg-card border-slate-200 text-foreground hover:bg-slate-50 disabled:opacity-50 cursor-pointer h-9 px-3.5 rounded-lg"
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={websitePage === websiteData.totalPages}
+                  onClick={() => setWebsitePage(p => Math.min(websiteData.totalPages, p + 1))}
+                  className="bg-card border-slate-200 text-foreground hover:bg-slate-50 disabled:opacity-50 cursor-pointer h-9 px-3.5 rounded-lg"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       </div>
 
@@ -752,6 +1321,104 @@ export default function ProjectExpiriesPage() {
           onConfirm={handleDeleteAll}
         />
       )}
+
+      {/* Edit Website Update Dialog */}
+      {editingWebsiteRecord && (
+        <ModalPortal className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200 p-4">
+          <div className="bg-card border border-border w-full max-w-lg rounded-lg overflow-hidden shadow-lg animate-in zoom-in-95 duration-200 p-6 space-y-4 text-foreground backdrop-blur-xl">
+            <div className="flex justify-between items-center border-b border-border pb-3">
+              <div>
+                <h3 className="text-base font-bold text-foreground font-heading">Manage Website Maintenance</h3>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{editingWebsiteRecord.name}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setEditingWebsiteRecord(null)} className="text-muted-foreground hover:text-foreground cursor-pointer">
+                ✕
+              </Button>
+            </div>
+
+            {/* Status Selection */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-muted-foreground">
+                Update Status
+              </label>
+              <Select
+                value={editWebsiteStatus}
+                onValueChange={(val) => setEditWebsiteStatus(val || 'up_to_date')}
+              >
+                <SelectTrigger className="bg-muted/50 border border-border text-foreground focus-visible:ring-blue-500 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border text-foreground">
+                  <SelectItem value="up_to_date">Up to Date</SelectItem>
+                  <SelectItem value="pending_update">Pending Update</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Remarks Input */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-muted-foreground">
+                Maintenance Notes / Remarks
+              </label>
+              <textarea
+                value={editWebsiteRemark}
+                onChange={(e) => setEditWebsiteRemark(e.target.value)}
+                placeholder="Enter update tasks, details, or issues..."
+                className="w-full h-24 bg-muted/50 border border-border rounded-lg p-3.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder:text-muted-foreground transition-all duration-200"
+              />
+            </div>
+
+            {/* Save Buttons */}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setEditingWebsiteRecord(null)}
+                className="bg-muted/50 border-border text-foreground hover:bg-card cursor-pointer rounded-lg h-10 px-4"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleWebsiteSaveEdit}
+                disabled={updateWebsiteMutation.isPending}
+                className="bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 cursor-pointer rounded-lg h-10 px-4"
+              >
+                {updateWebsiteMutation.isPending && (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin shrink-0" />
+                )}
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {/* Delete All Website Records Confirmation Modal */}
+      {showWebsiteDeleteConfirm && (
+        <DestructiveConfirmDialog
+          title="Delete all website records?"
+          description={
+            <>
+              This permanently removes{' '}
+              <span className="font-semibold text-red-700 dark:text-red-300">
+                all {websiteStats.total} website record(s)
+              </span>
+              . This action cannot be undone. Use it only when clearing test data before re-uploading.
+            </>
+          }
+          isPending={deleteWebsiteAllMutation.isPending}
+          onCancel={() => setShowWebsiteDeleteConfirm(false)}
+          onConfirm={handleWebsiteDeleteAll}
+        />
+      )}
     </div>
+  );
+}
+
+export default function ProjectExpiriesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-500 animate-pulse">Loading Project Expiries...</div>}>
+      <ProjectExpiriesPageContent />
+    </Suspense>
   );
 }

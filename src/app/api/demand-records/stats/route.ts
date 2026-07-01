@@ -9,6 +9,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
+  const { searchParams } = req.nextUrl;
+  const dateFrom = searchParams.get("dateFrom") || "";
+  const dateTo = searchParams.get("dateTo") || "";
+
+  const rangeWhere: Record<string, any> = {};
+  if (dateFrom || dateTo) {
+    rangeWhere.createdAt = {};
+    if (dateFrom) rangeWhere.createdAt.gte = new Date(dateFrom);
+    if (dateTo) rangeWhere.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+  }
+
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -36,11 +47,14 @@ export async function GET(req: NextRequest) {
     priorityGroups,
     analysisRecords,
   ] = await Promise.all([
-    prisma.demandRecord.count(),
+    prisma.demandRecord.count({ where: rangeWhere }),
     prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday } } }),
     prisma.demandRecord.groupBy({
       by: ['serviceName'],
-      where: { serviceName: { not: null } },
+      where: {
+        serviceName: { not: null },
+        ...rangeWhere,
+      },
       _count: { _all: true },
       _sum: {
         serviceQty: true,
@@ -49,11 +63,17 @@ export async function GET(req: NextRequest) {
     }),
     prisma.demandRecord.groupBy({
       by: ['priority'],
-      where: { status: { notIn: ['closed', 'completed'] } },
+      where: {
+        status: { notIn: ['closed', 'completed'] },
+        ...rangeWhere,
+      },
       _count: { _all: true },
     }),
     prisma.demandRecord.findMany({
-      where: { status: { notIn: ['closed', 'completed'] } },
+      where: {
+        status: { notIn: ['closed', 'completed'] },
+        ...rangeWhere,
+      },
       orderBy: [{ priority: 'asc' }, { potentialScore: 'desc' }],
       take: 200,
       select: {

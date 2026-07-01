@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     totalSenders,
     weekMessages,
     totalCustomers,
+    newCustomers,
     botSettings,
     todayDemandRecords,
     pendingDemandRecords,
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
     prisma.telegramSender.count(),
     prisma.telegramMessage.count({ where: { receivedAt: { gte: sevenDaysAgo } } }),
     prisma.customer.count(),
+    prisma.customer.count({ where: { createdAt: { gte: periodStart, lt: periodEnd } } }),
     prisma.botSettings.findFirst({ where: { isActive: true } }),
     prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday } } }),
     prisma.demandRecord.count({ where: { status: { notIn: ['closed', 'completed'] } } }),
@@ -71,6 +73,7 @@ export async function GET(req: NextRequest) {
   const pipelineCounts = await prisma.demandRecord.groupBy({
     by: ['status'],
     _count: { _all: true },
+    where: { createdAt: { gte: periodStart, lt: periodEnd } },
   });
   const pipeline = {
     new: 0,
@@ -245,12 +248,12 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  if (targetNewCustomers && totalCustomers < expectedNewCustomers!) {
+  if (targetNewCustomers && newCustomers < expectedNewCustomers!) {
     alerts.push({
       type: 'customers_target',
       status: 'warning',
       message: `New customers count is behind pacing target (${elapsedDays} of ${totalDaysInPeriod} days elapsed).`,
-      actual: totalCustomers,
+      actual: newCustomers,
       expected: expectedNewCustomers!,
       target: targetNewCustomers,
     });
@@ -432,6 +435,7 @@ export async function GET(req: NextRequest) {
     dueTodayFollowUps,
     pendingDemandRecords,
     totalCustomers,
+    newCustomers,
     botActive: !!botSettings,
     recentMessages,
     isAdmin,
