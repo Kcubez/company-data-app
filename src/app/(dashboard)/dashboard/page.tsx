@@ -1004,7 +1004,7 @@ function DashboardPageContent() {
       )}
 
       {/* AI Global Overview Alerts (Relocated under KPI Cards Grid) */}
-      {!recsLoading && recsData?.recommendations && recsData.recommendations.length > 0 && (
+      {!recsLoading && !isLoading && stats && !(stats.actualDemandCount === 0 && stats.totalAmountSold === 0 && stats.totalCost === 0) && recsData?.recommendations && recsData.recommendations.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
           {recsData.recommendations.slice(0, 4).map((rec, i) => {
              const isAlert = rec.severity === 'urgent' || rec.severity === 'warning';
