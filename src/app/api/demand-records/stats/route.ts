@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
     serviceGroups,
     priorityGroups,
     analysisRecords,
+    uniqueCustomerRows,
   ] = await Promise.all([
     prisma.demandRecord.count({ where: rangeWhere }),
     prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday } } }),
@@ -92,6 +93,11 @@ export async function GET(req: NextRequest) {
         missingFields: true,
         customer: { select: { phone: true, company: true } },
       },
+    }),
+    prisma.demandRecord.findMany({
+      where: { customerId: { not: null }, ...rangeWhere },
+      select: { customerId: true },
+      distinct: ['customerId'],
     }),
   ]);
 
@@ -159,5 +165,6 @@ export async function GET(req: NextRequest) {
     services: servicesStats,
     priority,
     insights: buildBusinessInsights(insightRecords),
+    uniqueCustomers: uniqueCustomerRows.length,
   });
 }

@@ -575,62 +575,64 @@ function BusinessReportsPageContent() {
       </div>
 
       {/* ─── AI Insights ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {recsLoading || recsFetching ? (
-          <>
-            <Skeleton className="h-32 rounded-xl" />
-            <Skeleton className="h-32 rounded-xl" />
-          </>
-        ) : financeInsights.map((insight, index) => {
-          const isSuccess = insight.tone === 'success';
-          const Icon = isSuccess ? TrendingUp : CircleAlert;
-          return (
-            <Card
-              key={`${insight.title}-${index}`}
-              className={`bg-card border-2 ${isSuccess ? 'border-emerald-300 border-l-8 border-l-emerald-500' : 'border-amber-300 border-l-8 border-l-amber-500'} rounded-xl shadow-sm flex flex-col justify-between`}
-            >
-              <CardContent className="p-5 flex flex-col h-full justify-between">
-                <div>
-                  <div className="mb-2 flex items-center gap-3">
-                    <Icon className={`h-5 w-5 ${isSuccess ? 'text-emerald-600' : 'text-amber-600'}`} />
-                    <h4 className="font-bold text-slate-900 dark:text-slate-100">{insight.title}</h4>
+      {!(totalRevenue === 0 && totalExpense === 0) && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {recsLoading || recsFetching ? (
+            <>
+              <Skeleton className="h-32 rounded-xl" />
+              <Skeleton className="h-32 rounded-xl" />
+            </>
+          ) : financeInsights.map((insight, index) => {
+            const isSuccess = insight.tone === 'success';
+            const Icon = isSuccess ? TrendingUp : CircleAlert;
+            return (
+              <Card
+                key={`${insight.title}-${index}`}
+                className={`bg-card border-2 ${isSuccess ? 'border-emerald-300 border-l-8 border-l-emerald-500' : 'border-amber-300 border-l-8 border-l-amber-500'} rounded-xl shadow-sm flex flex-col justify-between`}
+              >
+                <CardContent className="p-5 flex flex-col h-full justify-between">
+                  <div>
+                    <div className="mb-2 flex items-center gap-3">
+                      <Icon className={`h-5 w-5 ${isSuccess ? 'text-emerald-600' : 'text-amber-600'}`} />
+                      <h4 className="font-bold text-slate-900 dark:text-slate-100">{insight.title}</h4>
+                    </div>
+                    <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{insight.insight}</p>
                   </div>
-                  <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{insight.insight}</p>
-                </div>
-                {insight.action && (
-                  <div className="mt-4">
-                    <Button
-                      variant={isSuccess ? 'outline' : 'destructive'}
-                      size="sm"
-                      onClick={() => {
-                        if (insight.actionType === 'view_sales_marketing') {
-                          router.push('/sales-marketing#report-table-section');
-                        } else if (insight.actionType === 'view_customer_service') {
-                          router.push('/customer-service#demand-leads-section');
-                        } else if (insight.actionType === 'view_finance_table') {
-                          const el = document.getElementById('finance-records-table');
-                          if (el) {
-                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  {insight.action && (
+                    <div className="mt-4">
+                      <Button
+                        variant={isSuccess ? 'outline' : 'destructive'}
+                        size="sm"
+                        onClick={() => {
+                          if (insight.actionType === 'view_sales_marketing') {
+                            router.push('/sales-marketing#report-table-section');
+                          } else if (insight.actionType === 'view_customer_service') {
+                            router.push('/customer-service#demand-leads-section');
+                          } else if (insight.actionType === 'view_finance_table') {
+                            const el = document.getElementById('finance-records-table');
+                            if (el) {
+                              el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          } else {
+                            router.push('/dashboard');
                           }
-                        } else {
-                          router.push('/dashboard');
-                        }
-                      }}
-                      className={`${
-                        isSuccess
-                          ? 'border-emerald-250 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800'
-                          : 'bg-amber-600 hover:bg-amber-700 text-white border-none'
-                      } text-xs font-bold transition shadow-sm rounded-lg px-4 h-9 cursor-pointer`}
-                    >
-                      {insight.action}
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                        }}
+                        className={`${
+                          isSuccess
+                            ? 'border-emerald-250 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800'
+                            : 'bg-amber-600 hover:bg-amber-700 text-white border-none'
+                        } text-xs font-bold transition shadow-sm rounded-lg px-4 h-9 cursor-pointer`}
+                      >
+                        {insight.action}
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* ─── Finance Records ────────────────────────────────────────── */}
       <Card id="finance-records-table" className="overflow-hidden rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">

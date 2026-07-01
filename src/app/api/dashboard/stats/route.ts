@@ -147,7 +147,7 @@ export async function GET(req: NextRequest) {
   const totalQuantitySold = qtyAgg._sum.serviceQty || 0;
   const demandRevenue = amountAgg._sum.serviceAmount || 0;
   const reportRevenue = businessAgg._sum.totalSalesAmount || 0;
-  const totalAmountSold = reportRevenue;
+  const totalAmountSold = reportRevenue + demandRevenue;
   const totalCost = businessAgg._sum.marketingBudget || 0;
   const profitLoss = totalAmountSold - totalCost;
   const roi = totalCost > 0 ? (profitLoss / totalCost) * 100 : null;

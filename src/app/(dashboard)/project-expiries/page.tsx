@@ -428,96 +428,99 @@ function ProjectExpiriesPageContent() {
         })}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="bg-white dark:bg-card border-2 border-red-300 border-l-8 border-l-red-500 rounded-xl shadow-sm flex flex-col justify-between">
-          <CardContent className="p-5 flex flex-col h-full justify-between">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">ဝဘ်ဆိုက် သက်တမ်းတိုးရန် ကျန်ရှိမှု အနှစ်ချုပ်</h4>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  သက်တမ်းကုန်ဆုံးသွားသော ပရောဂျက် (${stats.expired}) ခုနှင့် သက်တမ်းကုန်ဆုံးရန် နီးကပ်နေသော ပရောဂျက် (${stats.expiringSoon}) ခု ရှိနေပါသည်။ ဝဘ်ဆိုက်ပြတ်တောက်မှု မဖြစ်စေရန် ချက်ချင်းစစ်ဆေးလုပ်ဆောင်ပါ။
-                </p>
+      {!(isLoading || data?.total === 0) && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="bg-white dark:bg-card border-2 border-red-300 border-l-8 border-l-red-500 rounded-xl shadow-sm flex flex-col justify-between">
+            <CardContent className="p-5 flex flex-col h-full justify-between">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">ဝဘ်ဆိုက် သက်တမ်းတိုးရန် ကျန်ရှိမှု အနှစ်ချုပ်</h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    သက်တမ်းကုန်ဆုံးသွားသော ပရောဂျက် ({stats.expired}) ခုနှင့် သက်တမ်းကုန်ဆုံးရန် နီးကပ်နေသော ပရောဂျက် ({stats.expiringSoon}) ခု ရှိနေပါသည်။ ဝဘ်ဆိုက်ပြတ်တောက်မှု မဖြစ်စေရန် ချက်ချင်းစစ်ဆေးလုပ်ဆောင်ပါ။
+                  </p>
+                </div>
+                <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0" />
               </div>
-              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0" />
-            </div>
-            {(stats.expired > 0 || stats.expiringSoon > 0) && (
-              <div className="mt-4">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    const el = document.getElementById('project-listing-table');
-                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }}
-                  className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg px-4 h-8 cursor-pointer transition shadow-sm border-none"
-                >
-                  သက်တမ်းကုန်/ကုန်လုနီးများ စစ်ဆေးရန်
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="bg-white dark:bg-card border-2 border-amber-300 border-l-8 border-l-amber-500 rounded-xl shadow-sm">
-          <CardContent className="p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">AI လုပ်ဆောင်ရန် အကြံပြုချက်များ</h4>
-                {recsLoading || recsFetching ? (
-                  <Skeleton className="h-10 w-full animate-pulse" />
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-xs text-slate-600 dark:text-slate-400">
-                      {insightTotal > 0
-                        ? `သက်တမ်းတိုးရန် အကြံပြုချက် (${insightTotal}) ခု တွေ့ရှိရပါသည်။ အန္တရာယ်အရှိဆုံးနှင့် သက်တမ်းကုန်ဆုံးရန် နီးကပ်နေသော domain များနှင့် hosting များကို ဦးစားပေး သက်တမ်းတိုးပါ။`
-                        : 'လတ်တလော သက်တမ်းတိုးရန် အရေးကြီးသည့် ဝဘ်ဆိုက်/ပရောဂျက်များ မရှိသေးပါ။'}
-                    </p>
-                    {insightTotal > 0 && recsData?.recommendations && (
-                      <div className="space-y-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                        {recsData.recommendations.slice(0, 3).map((rec, idx) => (
-                          <div
-                            key={`${rec.projectName}-${idx}`}
-                            onClick={() => {
-                              setSearch(rec.projectName);
-                              const el = document.getElementById('project-listing-table');
-                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }}
-                            className="flex items-start gap-2.5 p-2.5 rounded-lg bg-muted/40 border border-border/70 hover:border-border transition-colors cursor-pointer text-xs"
-                          >
-                            <div className="p-1 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
-                              <Bot className="w-3.5 h-3.5 animate-pulse" />
-                            </div>
-                            <div className="flex-1 flex flex-col justify-between">
-                              <div>
-                                <span className="font-bold text-foreground/80 block">{rec.projectName}</span>
-                                <span className="text-[11px] text-muted-foreground leading-relaxed block mt-0.5">{rec.insight}</span>
+              {(stats.expired > 0 || stats.expiringSoon > 0) && (
+                <div className="mt-4">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const el = document.getElementById('project-listing-table');
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                    className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg px-4 h-8 cursor-pointer transition shadow-sm border-none"
+                  >
+                    သက်တမ်းကုန်/ကုန်လုနီးများ စစ်ဆေးရန်
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white dark:bg-card border-2 border-amber-300 border-l-8 border-l-amber-500 rounded-xl shadow-sm">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <h4 className="font-bold text-slate-900 dark:text-slate-100 mb-2">AI လုပ်ဆောင်ရန် အကြံပြုချက်များ</h4>
+                  {recsLoading || recsFetching ? (
+                    <Skeleton className="h-10 w-full animate-pulse" />
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
+                        {insightTotal > 0
+                          ? `သက်တမ်းတိုးရန် အကြံပြုချက် (${insightTotal}) ခု တွေ့ရှိရပါသည်။ အန္တရာယ်အရှိဆုံးနှင့် သက်တမ်းကုန်ဆုံးရန် နီးကပ်နေသော domain များနှင့် hosting များကို ဦးစားပေး သက်တမ်းတိုးပါ။`
+                          : 'လတ်တလော သက်တမ်းတိုးရန် အရေးကြီးသည့် ဝဘ်ဆိုက်/ပရောဂျက်များ မရှိသေးပါ။'}
+                      </p>
+                      {insightTotal > 0 && recsData?.recommendations && (
+                        <div className="space-y-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                          {recsData.recommendations.slice(0, 3).map((rec, idx) => (
+                            <div
+                              key={`${rec.projectName}-${idx}`}
+                              onClick={() => {
+                                setSearch(rec.projectName);
+                                const el = document.getElementById('project-listing-table');
+                                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              }}
+                              className="flex items-start gap-2.5 p-2.5 rounded-lg bg-muted/40 border border-border/70 hover:border-border transition-colors cursor-pointer text-xs"
+                            >
+                              <div className="p-1 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+                                <Bot className="w-3.5 h-3.5 animate-pulse" />
                               </div>
-                              <div className="mt-2 self-start">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-[10px] font-bold border-amber-250 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg px-2.5 cursor-pointer"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSearch(rec.projectName);
-                                    const el = document.getElementById('project-listing-table');
-                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                  }}
-                                >
-                                  ပရောဂျက်ကို ရှာဖွေရန်
-                                </Button>
+                              <div className="flex-1 flex flex-col justify-between">
+                                <div>
+                                  <span className="font-bold text-foreground/80 block">{rec.projectName}</span>
+                                  <span className="text-[11px] text-muted-foreground leading-relaxed block mt-0.5">{rec.insight}</span>
+                                </div>
+                                <div className="mt-2 self-start">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-[10px] font-bold border-amber-250 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg px-2.5 cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSearch(rec.projectName);
+                                      const el = document.getElementById('project-listing-table');
+                                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }}
+                                  >
+                                    ပရောဂျက်ကို ရှာဖွေရန်
+                                  </Button>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <Bot className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
               </div>
-              <Bot className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Urgent Warning Alerts Box */}
       {!isLoading && urgentRecords.length > 0 && (
@@ -845,7 +848,8 @@ function ProjectExpiriesPageContent() {
         </div>
       
         {/* Website Maintenance Alerts */}
-        <div className="grid gap-4 md:grid-cols-2">
+        {websiteStats.total > 0 && (
+          <div className="grid gap-4 md:grid-cols-2">
           <Card
             className={`bg-white dark:bg-card border-2 rounded-xl shadow-sm flex flex-col justify-between ${
               websiteStats.pendingUpdate > 0
@@ -932,6 +936,7 @@ function ProjectExpiriesPageContent() {
             </CardContent>
           </Card>
         </div>
+      )}
 
         {/* Website updates AI Insights Card */}
         <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm">
@@ -940,10 +945,10 @@ function ProjectExpiriesPageContent() {
               <div>
                 <CardTitle className="text-foreground text-sm font-bold uppercase tracking-wider flex items-center gap-2">
                   <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-pulse" />
-                  ဝဘ်ဆိုက် ပြုပြင်ထိန်းသိမ်းမှု အကြံပြုချက်များ
+                  Website Maintenance Recommendations
                 </CardTitle>
                 <CardDescription className="text-xs text-muted-foreground mt-1">
-                  မွမ်းမံပြင်ဆင်ရန် ကျန်ရှိနေသည့် ဝဘ်ဆိုက်များအတွက် AI ၏ အကြံပြုချက်များ
+                  AI recommendations for pending website updates and site maintenance.
                 </CardDescription>
               </div>
               <Button
@@ -964,6 +969,11 @@ function ProjectExpiriesPageContent() {
                 <Skeleton className="h-12 w-full bg-muted rounded-lg animate-pulse" />
                 <Skeleton className="h-12 w-full bg-muted rounded-lg animate-pulse" />
                 <Skeleton className="h-12 w-full bg-muted rounded-lg animate-pulse" />
+              </div>
+            ) : (!websiteLoading && websiteData?.total === 0) ? (
+              <div className="text-center py-8 text-slate-500">
+                <Bot className="w-8 h-8 text-slate-400 mx-auto mb-2 animate-pulse" />
+                <p className="text-sm font-semibold text-muted-foreground">No website updates recorded for this period</p>
               </div>
             ) : websiteRecsData?.recommendations && websiteRecsData.recommendations.length > 0 ? (
               <div className="space-y-3">

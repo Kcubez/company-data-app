@@ -79,7 +79,7 @@ const leadStatusColors: Record<string, string> = {
   closed: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
 };
 
-function useCustomers(params: { search?: string; page?: number; limit?: number; status?: string } = {}) {
+function useCustomers(params: { search?: string; page?: number; limit?: number; status?: string; dateFrom?: string; dateTo?: string } = {}) {
   return useQuery({
     queryKey: ['customers', params],
     queryFn: () => customersApi.list(params),
@@ -210,6 +210,8 @@ function CustomersPageContent() {
     search: debouncedCustomerSearch,
     page: customerPage,
     limit: PAGE_SIZE,
+    dateFrom,
+    dateTo,
   });
 
   const { data: demandStats, isLoading: demandStatsLoading } = useDemandRecordStats({ dateFrom, dateTo });
@@ -400,7 +402,7 @@ function CustomersPageContent() {
   // Calculations for metric cards
   const totalDemandRecords = demandStats?.totalRecords ?? 0;
   const highPotential = demandStats?.priority.high ?? 0;
-  const totalCustomers = customerData?.total ?? 0;
+  const totalCustomers = demandStats?.uniqueCustomers ?? customerData?.total ?? 0;
   const avgSpending = dashboardStats?.totalCustomers > 0 
     ? (dashboardStats?.totalAmountSold / dashboardStats?.totalCustomers) 
     : 0;
@@ -535,108 +537,108 @@ function CustomersPageContent() {
             </Card>
           );
         })}
-      </div>
+      </div>      {/* Intelligence Cards */}
+      {totalDemandRecords > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {demandStatsLoading ? (
+            <>
+              <Skeleton className="h-32 rounded-xl animate-pulse" />
+              <Skeleton className="h-32 rounded-xl animate-pulse" />
+            </>
+          ) : (
+            (() => {
+              const followUp = demandStats?.insights?.find(ins => ins.title.includes("Follow-up") || ins.actionType === "view_overdue" || ins.actionType === "view_due_today") || {
+                type: "sales",
+                severity: "info",
+                title: "Follow-up နောက်ဆက်တွဲ ဆက်သွယ်မှု",
+                message: "လတ်တလော လုပ်ဆောင်ရန်လိုအပ်သော follow-up နောက်ဆက်တွဲ ဖုန်းခေါ်ဆိုမှုများ မရှိသေးပါ။",
+                recommendedAction: "နောက်ဆက်တွဲ လုပ်ဆောင်ရန်မရှိသေးသည့် Leads များအတွက် follow-up ရက်စွဲများ သတ်မှတ်ပေးပါ။",
+                action: "Follow-up စစ်ဆေးရန်",
+                actionType: "view_overdue"
+              };
 
-      {/* Intelligence Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {demandStatsLoading ? (
-          <>
-            <Skeleton className="h-32 rounded-xl animate-pulse" />
-            <Skeleton className="h-32 rounded-xl animate-pulse" />
-          </>
-        ) : (
-          (() => {
-            const followUp = demandStats?.insights?.find(ins => ins.title.includes("Follow-up") || ins.actionType === "view_overdue" || ins.actionType === "view_due_today") || {
-              type: "sales",
-              severity: "info",
-              title: "Follow-up နောက်ဆက်တွဲ ဆက်သွယ်မှု",
-              message: "လတ်တလော လုပ်ဆောင်ရန်လိုအပ်သော follow-up နောက်ဆက်တွဲ ဖုန်းခေါ်ဆိုမှုများ မရှိသေးပါ။",
-              recommendedAction: "နောက်ဆက်တွဲ လုပ်ဆောင်ရန်မရှိသေးသည့် Leads များအတွက် follow-up ရက်စွဲများ သတ်မှတ်ပေးပါ။",
-              action: "Follow-up စစ်ဆေးရန်",
-              actionType: "view_overdue"
-            };
+              const csat = {
+                type: "csat",
+                severity: "success",
+                title: "ဝန်ဆောင်မှု စိတ်ကျေနပ်မှုရလဒ် (CSAT)",
+                message: "ယခုအပတ်အတွင်း သုံးစွဲသူစိတ်ကျေနပ်မှု (CSAT Score) သည် ၉၆% အထိ ရှိခဲ့ပြီး သတ်မှတ်ချက်ထက် ကျော်လွန်အောင်မြင်ခဲ့သည်။",
+                recommendedAction: "ဝန်ဆောင်မှုပေးရသည့်ကြာချိန်များသည် SLA သတ်မှတ်ချက် ဘောင်အတွင်း ကောင်းမွန်စွာ တည်ရှိနေပါသည်။",
+                action: "Overview သွားရန်",
+                actionType: "general_dashboard"
+              };
 
-            const csat = {
-              type: "csat",
-              severity: "success",
-              title: "ဝန်ဆောင်မှု စိတ်ကျေနပ်မှုရလဒ် (CSAT)",
-              message: "ယခုအပတ်အတွင်း သုံးစွဲသူစိတ်ကျေနပ်မှု (CSAT Score) သည် ၉၆% အထိ ရှိခဲ့ပြီး သတ်မှတ်ချက်ထက် ကျော်လွန်အောင်မြင်ခဲ့သည်။",
-              recommendedAction: "ဝန်ဆောင်မှုပေးရသည့်ကြာချိန်များသည် SLA သတ်မှတ်ချက် ဘောင်အတွင်း ကောင်းမွန်စွာ တည်ရှိနေပါသည်။",
-              action: "Overview သွားရန်",
-              actionType: "general_dashboard"
-            };
-
-            return [followUp, csat].map((insight) => {
-              const isUrgent = insight.severity === 'urgent';
-              const isWarning = insight.severity === 'warning';
-              const isSuccess = insight.severity === 'success';
-              const CS_Icon = isUrgent ? AlertTriangle : isWarning ? Phone : CheckCircle2;
-              return (
-                <Card
-                  key={insight.title}
-                  className={`bg-white dark:bg-card border-2 rounded-xl shadow-sm flex flex-col justify-between ${
-                    isUrgent
-                      ? 'border-red-300 border-l-8 border-l-red-500'
-                      : isWarning
-                      ? 'border-amber-300 border-l-8 border-l-amber-500'
-                      : isSuccess
-                      ? 'border-emerald-300 border-l-8 border-l-emerald-500'
-                      : 'border-sky-300 border-l-8 border-l-sky-500'
-                  }`}
-                >
-                  <CardContent className="p-5 flex flex-col h-full justify-between">
-                    <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <CS_Icon className={`w-5 h-5 shrink-0 ${isUrgent ? 'text-red-600' : isWarning ? 'text-amber-600' : isSuccess ? 'text-emerald-600' : 'text-sky-650'}`} />
-                        <h4 className="font-bold text-slate-900 dark:text-slate-100">{insight.title}</h4>
+              return [followUp, csat].map((insight) => {
+                const isUrgent = insight.severity === 'urgent';
+                const isWarning = insight.severity === 'warning';
+                const isSuccess = insight.severity === 'success';
+                const CS_Icon = isUrgent ? AlertTriangle : isWarning ? Phone : CheckCircle2;
+                return (
+                  <Card
+                    key={insight.title}
+                    className={`bg-white dark:bg-card border-2 rounded-xl shadow-sm flex flex-col justify-between ${
+                      isUrgent
+                        ? 'border-red-300 border-l-8 border-l-red-500'
+                        : isWarning
+                        ? 'border-amber-300 border-l-8 border-l-amber-500'
+                        : isSuccess
+                        ? 'border-emerald-300 border-l-8 border-l-emerald-500'
+                        : 'border-sky-300 border-l-8 border-l-sky-500'
+                    }`}
+                  >
+                    <CardContent className="p-5 flex flex-col h-full justify-between">
+                      <div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <CS_Icon className={`w-5 h-5 shrink-0 ${isUrgent ? 'text-red-600' : isWarning ? 'text-amber-600' : isSuccess ? 'text-emerald-600' : 'text-sky-650'}`} />
+                          <h4 className="font-bold text-slate-900 dark:text-slate-100">{insight.title}</h4>
+                        </div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 mb-1 leading-relaxed">
+                          {insight.message}
+                        </p>
+                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-300 leading-relaxed">
+                          {insight.recommendedAction}
+                        </p>
                       </div>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 mb-1 leading-relaxed">
-                        {insight.message}
-                      </p>
-                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-300 leading-relaxed">
-                        {insight.recommendedAction}
-                      </p>
-                    </div>
-                    {insight.action && (
-                      <div className="mt-3.5">
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            if (insight.actionType === 'view_high_priority') {
-                              router.push('/sales-marketing?priority=high#report-table-section');
-                            } else if (insight.actionType === 'view_missing_phone') {
-                              router.push('/sales-marketing?missingField=phone#report-table-section');
-                            } else if (insight.actionType === 'view_overdue' || insight.actionType === 'view_due_today') {
-                              const el = document.getElementById('demand-leads-section');
-                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            } else if (insight.actionType === 'general_dashboard') {
-                              router.push('/dashboard');
-                            } else {
-                              const el = document.getElementById('demand-leads-section');
-                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
-                          }}
-                          className={`${
-                            isUrgent
-                              ? 'bg-red-600 hover:bg-red-700 text-white'
-                              : isWarning
-                              ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                              : isSuccess
-                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                              : 'bg-sky-600 hover:bg-sky-700 text-white'
-                          } text-xs font-bold rounded-lg px-4 h-8 cursor-pointer transition shadow-sm border-none`}
-                        >
-                          {insight.action}
-                        </Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            });
-          })()
-        )}
-      </div>
+                      {insight.action && (
+                        <div className="mt-3.5">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (insight.actionType === 'view_high_priority') {
+                                router.push('/sales-marketing?priority=high#report-table-section');
+                              } else if (insight.actionType === 'view_missing_phone') {
+                                router.push('/sales-marketing?missingField=phone#report-table-section');
+                              } else if (insight.actionType === 'view_overdue' || insight.actionType === 'view_due_today') {
+                                const el = document.getElementById('demand-leads-section');
+                                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              } else if (insight.actionType === 'general_dashboard') {
+                                router.push('/dashboard');
+                              } else {
+                                const el = document.getElementById('demand-leads-section');
+                                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              }
+                            }}
+                            className={`${
+                              isUrgent
+                                ? 'bg-red-600 hover:bg-red-700 text-white'
+                                : isWarning
+                                ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                                : isSuccess
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                : 'bg-sky-600 hover:bg-sky-700 text-white'
+                            } text-xs font-bold rounded-lg px-4 h-8 cursor-pointer transition shadow-sm border-none`}
+                          >
+                            {insight.action}
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              });
+            })()
+          )}
+        </div>
+      )}
 
       {/* 1. Purchased Customers Directory Card */}
       <Card className="bg-card border-2 border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">

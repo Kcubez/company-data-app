@@ -293,10 +293,7 @@ export async function GET(req: NextRequest) {
     const periodLabel = period === "year" ? `${year}` : `${month}/${year}`;
     const targetLabel = period === "year" ? "ကာလပစ်မှတ်" : "လစဉ် အရောင်းပစ်မှတ်";
 
-    const totalSalesAmount = Math.max(
-      businessAgg._sum.totalSalesAmount ?? 0,
-      demandAgg._sum.serviceAmount ?? 0
-    );
+    const totalSalesAmount = (businessAgg._sum.totalSalesAmount ?? 0) + (demandAgg._sum.serviceAmount ?? 0);
 
     const inputData = {
       highPriority: highPriorityCount,

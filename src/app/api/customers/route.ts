@@ -12,17 +12,39 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20")));
   const search = searchParams.get("search") || "";
+  const dateFrom = searchParams.get("dateFrom") || "";
+  const dateTo = searchParams.get("dateTo") || "";
   const status = searchParams.get("status") || "";
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, any> = {};
+  const conditions: any[] = [];
 
   if (status) where.status = status;
+  if (dateFrom || dateTo) {
+    const rangeCondition: Record<string, Date> = {};
+    if (dateFrom) rangeCondition.gte = new Date(dateFrom);
+    if (dateTo) rangeCondition.lte = new Date(dateTo + "T23:59:59.999Z");
+    
+    conditions.push({
+      OR: [
+        { createdAt: rangeCondition },
+        { demandRecords: { some: { createdAt: rangeCondition } } },
+        { activities: { some: { createdAt: rangeCondition } } }
+      ]
+    });
+  }
   if (search) {
-    where.OR = [
-      { name: { contains: search, mode: "insensitive" } },
-      { phone: { contains: search, mode: "insensitive" } },
-      { company: { contains: search, mode: "insensitive" } },
-    ];
+    conditions.push({
+      OR: [
+        { name: { contains: search, mode: "insensitive" } },
+        { phone: { contains: search, mode: "insensitive" } },
+        { company: { contains: search, mode: "insensitive" } },
+      ]
+    });
+  }
+
+  if (conditions.length > 0) {
+    where.AND = conditions;
   }
 
   const [customers, total] = await Promise.all([

@@ -213,6 +213,7 @@ export type ServiceStat = {
 export type DemandRecordStats = {
   totalRecords: number;
   todayRecords: number;
+  uniqueCustomers: number;
   services: ServiceStat[];
   priority: {
     high: number;
@@ -524,6 +525,8 @@ export type CustomersParams = {
   limit?: number;
   search?: string;
   status?: string;
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 export const customersApi = {
@@ -533,6 +536,8 @@ export const customersApi = {
     if (params.limit) searchParams.set("limit", String(params.limit));
     if (params.search) searchParams.set("search", params.search);
     if (params.status) searchParams.set("status", params.status);
+    if (params.dateFrom) searchParams.set("dateFrom", params.dateFrom);
+    if (params.dateTo) searchParams.set("dateTo", params.dateTo);
     const qs = searchParams.toString();
     return request<CustomersResponse>(`/api/customers${qs ? `?${qs}` : ""}`);
   },

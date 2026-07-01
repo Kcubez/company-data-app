@@ -44,7 +44,16 @@ export async function GET(req: NextRequest) {
     if (dateTo) where.reportDate.lte = new Date(dateTo + "T23:59:59.999Z");
   }
 
-  const [totals, expenseRecords, recentRecords] = await Promise.all([
+  const demandWhere: any = {
+    status: { in: ['closed', 'completed'] },
+  };
+  if (dateFrom || dateTo) {
+    demandWhere.createdAt = {};
+    if (dateFrom) demandWhere.createdAt.gte = new Date(dateFrom);
+    if (dateTo) demandWhere.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+  }
+
+  const [totals, expenseRecords, recentRecords, demandAgg] = await Promise.all([
     prisma.businessReport.aggregate({
       where,
       _sum: {
@@ -84,12 +93,17 @@ export async function GET(req: NextRequest) {
         closedDeals: true,
       },
     }),
+    prisma.demandRecord.aggregate({
+      _sum: { serviceAmount: true },
+      where: demandWhere,
+    }),
   ]);
 
   const s = totals._sum;
   const totalReports = totals._count._all;
   const totalBudget = s.marketingBudget ?? 0;
-  const totalSales = s.totalSalesAmount ?? 0;
+  const demandRevenue = demandAgg._sum.serviceAmount ?? 0;
+  const totalSales = (s.totalSalesAmount ?? 0) + demandRevenue;
   const totalLeads = s.newLeads ?? 0;
   const totalClosed = s.closedDeals ?? 0;
   const totalCalls = s.callsMade ?? 0;

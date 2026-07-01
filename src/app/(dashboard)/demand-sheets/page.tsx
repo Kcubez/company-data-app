@@ -549,7 +549,7 @@ function DemandSheetsPageContent() {
             </Card>
           </div>
 
-          {demandStats?.insights && demandStats.insights.length > 0 && (
+          {demandStats?.insights && demandStats.insights.length > 0 && demandStats.totalRecords > 0 && (
             <div className="grid gap-4 md:grid-cols-2">
               {demandStats.insights.slice(0, 2).map((insight) => (
                 <Card
@@ -724,6 +724,10 @@ function DemandSheetsPageContent() {
                       <Skeleton className="h-12 w-full bg-muted rounded-lg" />
                       <Skeleton className="h-12 w-full bg-muted rounded-lg" />
                       <Skeleton className="h-12 w-full bg-muted rounded-lg" />
+                    </div>
+                  ) : (!isLoading && data?.total === 0) ? (
+                    <div className="text-center py-8 text-slate-500 text-xs">
+                      No insights available for this period
                     </div>
                   ) : recsData?.recommendations && recsData.recommendations.length > 0 ? (
                     <div className="space-y-3">

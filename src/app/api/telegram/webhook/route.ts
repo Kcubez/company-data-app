@@ -2694,6 +2694,88 @@ export async function POST(req: NextRequest) {
         "━━━━━━━━━━━━━━━━━━━━",
         `📅 <b>ရက်စွဲ:</b> <code>${parsed.reportDate.toISOString().slice(0, 10)}</code>`,
       ];
+
+      // If customer info is in the business report text, also create a Customer & DemandRecord
+      const parsedDemand = await parseDemandMessageWithGemini({
+        text: message.text,
+        receivedAt,
+        apiKey: settings?.geminiApiKey,
+        model: settings?.geminiModel,
+      });
+
+      if (parsedDemand.customerName) {
+        const normalizedName = normalizeCustomerName(parsedDemand.customerName);
+        let customer = await prisma.customer.findFirst({
+          where: { nameNormalized: normalizedName },
+        });
+        if (!customer) {
+          customer = await prisma.customer.findUnique({
+            where: { name: parsedDemand.customerName },
+          });
+        }
+        if (customer) {
+          await prisma.customer.update({
+            where: { id: customer.id },
+            data: {
+              updatedAt: new Date(),
+              nameNormalized: customer.nameNormalized || normalizedName,
+              ...(parsedDemand.customerPhone ? { phone: parsedDemand.customerPhone } : {}),
+              ...(parsedDemand.customerCompany ? { company: parsedDemand.customerCompany } : {}),
+            },
+          });
+        } else {
+          customer = await prisma.customer.create({
+            data: {
+              name: parsedDemand.customerName,
+              nameNormalized: normalizedName,
+              phone: parsedDemand.customerPhone || null,
+              company: parsedDemand.customerCompany || null,
+            },
+          });
+        }
+        const customerId = customer.id;
+
+        await prisma.customerActivity.create({
+          data: {
+            customerId: customer.id,
+            senderId: sender.id,
+            action: 'demand_report',
+            description: parsedDemand.note,
+          },
+        });
+
+        const analysis = analyzeDemandRecord(parsedDemand);
+
+        await prisma.demandRecord.create({
+          data: {
+            messageId: telegramMessage.id,
+            senderId: sender.id,
+            customerId,
+            customerName: parsedDemand.customerName,
+            category: parsedDemand.category,
+            status: parsedDemand.status || 'closed',
+            note: parsedDemand.note,
+            serviceName: parsedDemand.serviceName,
+            serviceAmount: parsedDemand.serviceAmount,
+            serviceQty: parsedDemand.serviceQty,
+            followUpDate: parsedDemand.followUpDate,
+            followUpStatus: analysis.followUpStatus,
+            priority: analysis.priority,
+            potentialScore: analysis.potentialScore,
+            priorityReason: analysis.priorityReason,
+            recommendedAction: analysis.recommendedAction,
+            missingFields: analysis.missingFields,
+            confidence: parsedDemand.confidence,
+            aiProvider: parsedDemand.aiProvider,
+            aiModel: parsedDemand.aiModel,
+          },
+        });
+        
+        confirmParts.push("");
+        confirmParts.push(`👤 <b>ဝယ်ယူသူ စာရင်းသွင်းမှု အလိုအလျောက် အောင်မြင်ပါသည်:</b>`);
+        confirmParts.push(`• Customer: <code>${parsedDemand.customerName}</code>`);
+        if (parsedDemand.serviceName) confirmParts.push(`• Service: <code>${parsedDemand.serviceName}</code>`);
+      }
       if (parsed.marketingChannel) confirmParts.push(`📢 <b>Channel:</b> <code>${parsed.marketingChannel}</code>`);
       if (parsed.marketingBudget != null) confirmParts.push(`💸 <b>Budget:</b> <code>${parsed.marketingBudget.toLocaleString()} Ks</code>`);
       if (parsed.callsMade != null) confirmParts.push(`📞 <b>Calls:</b> <code>${parsed.callsMade}</code>`);
