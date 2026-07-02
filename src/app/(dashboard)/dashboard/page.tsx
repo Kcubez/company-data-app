@@ -791,43 +791,49 @@ function DashboardPageContent() {
   const timePct = stats?.elapsedRatio ? stats.elapsedRatio * 100 : 0;
   
   // Calculations for cards
-  const revenueTarget = stats?.targetSalesAmount || 3000000;
+  const hasRevenueTarget = stats?.targetSalesAmount !== null && stats?.targetSalesAmount !== undefined;
+  const revenueTarget = hasRevenueTarget ? stats.targetSalesAmount! : 0;
   const revenueValue = stats?.totalAmountSold || 0;
-  const revenueActualPct = (revenueValue / revenueTarget) * 100;
+  const revenueActualPct = revenueTarget > 0 ? (revenueValue / revenueTarget) * 100 : 0;
   const revenueExpected = stats?.expectedRevenue || 0;
-  const revenuePacing = getPacingStatus(revenueValue, revenueExpected);
+  const revenuePacing = hasRevenueTarget ? getPacingStatus(revenueValue, revenueExpected) : { label: 'Not Set', color: '#64748b', barColor: '#94a3b8' };
 
-  const expenseTarget = stats?.targetExpenseAmount || (revenueTarget * 0.5);
+  const hasExpenseTarget = stats?.targetExpenseAmount !== null && stats?.targetExpenseAmount !== undefined;
+  const expenseTarget = hasExpenseTarget ? stats.targetExpenseAmount! : 0;
   const expenseValue = stats?.totalCost || 0;
-  const expenseActualPct = (expenseValue / expenseTarget) * 100;
-  const expenseExpected = stats?.expectedExpense || (revenueExpected * 0.5);
-  const expensePacing = getPacingStatus(expenseValue, expenseExpected, true);
+  const expenseActualPct = expenseTarget > 0 ? (expenseValue / expenseTarget) * 100 : 0;
+  const expenseExpected = stats?.expectedExpense || 0;
+  const expensePacing = hasExpenseTarget ? getPacingStatus(expenseValue, expenseExpected, true) : { label: 'Not Set', color: '#64748b', barColor: '#94a3b8' };
 
+  const hasProfitTarget = hasRevenueTarget && hasExpenseTarget;
   const profitTarget = revenueTarget - expenseTarget;
   const profitValue = stats?.profitLoss || 0;
   const profitActualPct = profitTarget > 0 ? (profitValue / profitTarget) * 100 : 0;
   const profitExpected = revenueExpected - expenseExpected;
   const profitMarginPercent = revenueValue > 0 ? (profitValue / revenueValue) * 100 : 0;
-  const targetMarginPct = revenueTarget > 0 ? (profitTarget / revenueTarget) * 100 : 50;
-  const profitPacing = getPacingStatus(profitMarginPercent, targetMarginPct);
+  const targetMarginPct = revenueTarget > 0 ? (profitTarget / revenueTarget) * 100 : 0;
+  const profitPacing = hasProfitTarget ? getPacingStatus(profitMarginPercent, targetMarginPct) : { label: 'Not Set', color: '#64748b', barColor: '#94a3b8' };
 
-  const demandTarget = stats?.targetDemandCount || 10000;
+  const hasDemandTarget = stats?.targetDemandCount !== null && stats?.targetDemandCount !== undefined;
+  const demandTarget = hasDemandTarget ? stats.targetDemandCount! : 0;
   const demandValue = stats?.actualDemandCount || 0;
-  const demandActualPct = (demandValue / demandTarget) * 100;
+  const demandActualPct = demandTarget > 0 ? (demandValue / demandTarget) * 100 : 0;
   const demandExpected = stats?.expectedDemandCount || 0;
-  const demandPacing = getPacingStatus(demandValue, demandExpected);
+  const demandPacing = hasDemandTarget ? getPacingStatus(demandValue, demandExpected) : { label: 'Not Set', color: '#64748b', barColor: '#94a3b8' };
 
-  const apptTarget = stats?.targetAppointments || 500;
+  const hasApptTarget = stats?.targetAppointments !== null && stats?.targetAppointments !== undefined;
+  const apptTarget = hasApptTarget ? stats.targetAppointments! : 0;
   const apptValue = stats?.actualAppointments || 0;
-  const apptActualPct = (apptValue / apptTarget) * 100;
+  const apptActualPct = apptTarget > 0 ? (apptValue / apptTarget) * 100 : 0;
   const apptExpected = stats?.expectedAppointments || 0;
-  const apptPacing = getPacingStatus(apptValue, apptExpected);
+  const apptPacing = hasApptTarget ? getPacingStatus(apptValue, apptExpected) : { label: 'Not Set', color: '#64748b', barColor: '#94a3b8' };
 
-  const customerTarget = stats?.targetNewCustomers || 80;
+  const hasCustomerTarget = stats?.targetNewCustomers !== null && stats?.targetNewCustomers !== undefined;
+  const customerTarget = hasCustomerTarget ? stats.targetNewCustomers! : 0;
   const customerValue = stats?.newCustomers || 0;
-  const customerActualPct = (customerValue / customerTarget) * 100;
-  const customerExpected = stats?.expectedNewCustomers || Math.round(customerTarget * (stats?.elapsedRatio || 0));
-  const customerPacing = getPacingStatus(customerValue, customerExpected);
+  const customerActualPct = customerTarget > 0 ? (customerValue / customerTarget) * 100 : 0;
+  const customerExpected = stats?.expectedNewCustomers || 0;
+  const customerPacing = hasCustomerTarget ? getPacingStatus(customerValue, customerExpected) : { label: 'Not Set', color: '#64748b', barColor: '#94a3b8' };
 
   const elapsedDaysText = stats?.elapsedDays ? ` (Day ${stats.elapsedDays})` : '';
 
@@ -948,10 +954,10 @@ function DashboardPageContent() {
               statusLabel={profitPacing.label}
               statusColor={profitPacing.color}
               value={(revenueValue > 0 ? (profitValue / revenueValue) * 100 : 0).toFixed(1) + "%"}
-              maxValue="Margin"
+              maxValue={hasProfitTarget ? "Margin" : undefined}
               expectedLabel="Target Margin"
-              expectedValue="50%"
-              actualPct={((revenueValue > 0 ? (profitValue / revenueValue) * 100 : 0) / 50) * 100}
+              expectedValue={hasProfitTarget ? `${targetMarginPct.toFixed(0)}%` : "0%"}
+              actualPct={hasProfitTarget && targetMarginPct > 0 ? ((revenueValue > 0 ? (profitValue / revenueValue) * 100 : 0) / targetMarginPct) * 100 : 0}
               timePct={timePct}
               barColor={profitPacing.barColor}
               icon={TrendingUp}
