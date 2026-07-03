@@ -7,9 +7,10 @@ export type PeriodMode = "month" | "year";
 
 /**
  * Shared date-filter hook — URL search params as source of truth,
- * with localStorage persistence so filters survive navigation.
+ * with sessionStorage persistence so filters survive navigation within a
+ * tab, but reset to the current month/year on a new tab or browser restart.
  *
- * @param storageKey  Unique prefix for localStorage keys, e.g. "dashboard_filter"
+ * @param storageKey  Unique prefix for sessionStorage keys, e.g. "dashboard_filter"
  */
 export function useDateFilter(storageKey: string) {
   const now = new Date();
@@ -50,7 +51,7 @@ export function useDateFilter(storageKey: string) {
     [searchParams, period, month, year, router, pathname]
   );
 
-  // ── localStorage persistence ──────────────────────────────────────────
+  // ── sessionStorage persistence ────────────────────────────────────────
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -61,12 +62,12 @@ export function useDateFilter(storageKey: string) {
     const hasYear = currentParams.has("year");
 
     if (!hasPeriod || !hasMonth || !hasYear) {
-      // Restore from localStorage if URL is bare
-      const storedPeriod = localStorage.getItem(
+      // Restore from sessionStorage if URL is bare
+      const storedPeriod = sessionStorage.getItem(
         `${storageKey}_period`
       ) as PeriodMode | null;
-      const storedMonth = localStorage.getItem(`${storageKey}_month`);
-      const storedYear = localStorage.getItem(`${storageKey}_year`);
+      const storedMonth = sessionStorage.getItem(`${storageKey}_month`);
+      const storedYear = sessionStorage.getItem(`${storageKey}_year`);
 
       if (
         (storedPeriod === "month" || storedPeriod === "year") &&
@@ -80,16 +81,16 @@ export function useDateFilter(storageKey: string) {
         const hash = window.location.hash || "";
         router.replace(`${pathname}?${params.toString()}${hash}`, { scroll: false });
       } else {
-        // First visit — seed localStorage with defaults
-        localStorage.setItem(`${storageKey}_period`, period);
-        localStorage.setItem(`${storageKey}_month`, String(month));
-        localStorage.setItem(`${storageKey}_year`, String(year));
+        // First visit in this tab — seed sessionStorage with defaults
+        sessionStorage.setItem(`${storageKey}_period`, period);
+        sessionStorage.setItem(`${storageKey}_month`, String(month));
+        sessionStorage.setItem(`${storageKey}_year`, String(year));
       }
     } else {
       // URL has all params — persist them
-      localStorage.setItem(`${storageKey}_period`, period);
-      localStorage.setItem(`${storageKey}_month`, String(month));
-      localStorage.setItem(`${storageKey}_year`, String(year));
+      sessionStorage.setItem(`${storageKey}_period`, period);
+      sessionStorage.setItem(`${storageKey}_month`, String(month));
+      sessionStorage.setItem(`${storageKey}_year`, String(year));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, pathname, router, period, month, year, storageKey]);

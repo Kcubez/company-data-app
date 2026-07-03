@@ -114,6 +114,7 @@ export async function POST(req: NextRequest) {
               nameNormalized,
               phone: row.normalized.customerPhone,
               company: row.normalized.customerCompany,
+              createdAt: row.normalized.createdAt || undefined,
             },
           });
 
