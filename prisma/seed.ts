@@ -231,7 +231,7 @@ async function main() {
           company: row.company || null,
           notes: row.last_contact_note || null,
           status: row.status || "active",
-          createdAt: row.purchase_date ? new Date(row.purchase_date) : new Date(),
+          createdAt: row.date ? new Date(row.date) : new Date(),
         }
       });
 
@@ -270,7 +270,7 @@ async function main() {
             recommendedAction: "Maintain monthly support.",
             confidence: 1.0,
             aiProvider: "manual",
-            createdAt: row.purchase_date ? new Date(row.purchase_date) : new Date(),
+            createdAt: row.date ? new Date(row.date) : new Date(),
           }
         });
       }

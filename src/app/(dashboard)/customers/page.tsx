@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import { customersApi, type Customer } from '@/lib/api';
 import { toast } from 'sonner';
+import { formatPhoneNumber } from '@/lib/utils';
 import {
   useDemandRecords,
   useDemandRecordStats,
@@ -860,7 +861,7 @@ function CustomersPageContent() {
                   ))
                 ) : demandData?.records && demandData.records.length > 0 ? (
                   demandData.records.map((lead) => {
-                    const leadPhone = lead.customer?.phone;
+                    const leadPhone = formatPhoneNumber(lead.customer?.phone);
                     const leadCompany = lead.customer?.company;
 
                     return (

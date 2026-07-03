@@ -114,6 +114,31 @@ function cleanValue(value: string): string {
   return value.replace(/^[:\-=\s]+/, '').replace(/[\s.,:;]+$/, '').trim();
 }
 
+/**
+ * Parse a human-written date, treating numeric `d/m/yyyy` as DAY-first
+ * (Myanmar convention) rather than JS's default month-first. Falls back to
+ * `Date.parse` for named-month formats like "1 June 2026". Returns null if
+ * nothing parses.
+ */
+function parseHumanDate(value: string): Date | null {
+  const str = value.trim();
+  // Numeric d/m/yyyy or d-m-yyyy or d.m.yyyy → day-first
+  const numeric = str.match(/^(\d{1,2})[\s./-](\d{1,2})[\s./-](\d{4})$/);
+  if (numeric) {
+    const day = parseInt(numeric[1], 10);
+    const month = parseInt(numeric[2], 10);
+    const year = parseInt(numeric[3], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const d = new Date(year, month - 1, day);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  // Named-month or ISO formats — let JS handle it
+  const parsed = Date.parse(str);
+  if (!isNaN(parsed)) return new Date(parsed);
+  return null;
+}
+
 function parseDemandSheet(text: string): Partial<ParsedDemandRecord> {
   const customerName = extractString(text, [
     /(?:customer|client|name|fb account Name|fb account)\s*[:=-]?\s*([^\n,]+)/i,
@@ -140,15 +165,36 @@ function parseDemandSheet(text: string): Partial<ParsedDemandRecord> {
   ]);
 
   const followUpDateStr = extractString(text, [
-    /(?:follow[\s-]?up[\s-]?date|next[\s-]?fu|next[\s-]?fu[\s-]?date|date|fu[\s-]?date)\s*[:=-]?\s*([^\n]+)/i,
+    /(?:follow[\s-]?up[\s-]?date|next[\s-]?fu[\s-]?date|next[\s-]?fu|fu[\s-]?date)\s*[:=-]?\s*([^\n]+)/i,
   ]);
 
   let followUpDate: Date | null = null;
   if (followUpDateStr) {
-    const parsedDate = Date.parse(followUpDateStr.trim());
-    if (!isNaN(parsedDate)) {
-      followUpDate = new Date(parsedDate);
-    }
+    followUpDate = parseHumanDate(followUpDateStr);
+  }
+
+  // Record date ("Date:" line) — anchored to line start so it is not confused
+  // with "Follow-up Date". Absent → left null so the caller falls back to now().
+  const recordDateStr = extractString(text, [
+    /(?:^|\n)\s*date\s*[:=-]?\s*([^\n]+)/i,
+  ]);
+
+  let createdAt: Date | null = null;
+  if (recordDateStr) {
+    createdAt = parseHumanDate(recordDateStr);
+  }
+
+  const statusStr = extractString(text, [
+    /(?:status|stage)\s*[:=-]?\s*([^\n,]+)/i,
+  ]);
+  const rawStatus = statusStr ? statusStr.toLowerCase().trim() : null;
+  let status: "new" | "contacted" | "quoted" | "pending" | "closed" | null = null;
+  if (rawStatus) {
+    if (rawStatus.includes('new')) status = 'new';
+    else if (rawStatus.includes('contact')) status = 'contacted';
+    else if (rawStatus.includes('quot')) status = 'quoted';
+    else if (rawStatus.includes('pend')) status = 'pending';
+    else if (rawStatus.includes('close')) status = 'closed';
   }
 
   return {
@@ -159,6 +205,8 @@ function parseDemandSheet(text: string): Partial<ParsedDemandRecord> {
     serviceAmount,
     serviceQty: serviceQty ? Math.round(serviceQty) : null,
     followUpDate,
+    createdAt,
+    ...(status ? { status } : {}),
   };
 }
 
@@ -213,6 +261,7 @@ Extract and return a JSON object with these fields:
   "serviceAmount": number | null (revenue / package amount from the service),
   "serviceQty": number | null (quantity sold),
   "followUpDate": string | null (next follow-up date in YYYY-MM-DD format if mentioned),
+  "createdAt": string | null (the record's own date in YYYY-MM-DD format if a date is stated in the message, e.g. from a 'Date' label or line; null if no record date is mentioned — do NOT invent today's date),
   "category": "sales" | "inquiry" | "follow_up" | "general",
   "status": "new" | "contacted" | "quoted" | "pending" | "closed"
 }
@@ -270,6 +319,14 @@ export async function parseDemandMessageWithGemini({
       }
     }
 
+    let createdAt: Date | null = null;
+    if (parsed.createdAt) {
+      const parsedDate = Date.parse(parsed.createdAt);
+      if (!isNaN(parsedDate)) {
+        createdAt = new Date(parsedDate);
+      }
+    }
+
     return {
       ...fallback,
       aiProvider: 'gemini',
@@ -285,6 +342,7 @@ export async function parseDemandMessageWithGemini({
       serviceAmount: typeof parsed.serviceAmount === 'number' ? parsed.serviceAmount : fallback.serviceAmount,
       serviceQty: typeof parsed.serviceQty === 'number' ? parsed.serviceQty : fallback.serviceQty,
       followUpDate: followUpDate || fallback.followUpDate,
+      createdAt: createdAt || fallback.createdAt,
       sourceChannel: parsed.sourceChannel || fallback.sourceChannel,
     };
   } catch (error) {
@@ -510,21 +568,8 @@ function buildRecordFromStructuredData(
     (structuredData.note as string) || extractedText.slice(0, 500)
   );
 
-  let followUpDate: Date | null = null;
-  if (structuredData.followUpDate) {
-    const parsedDate = Date.parse(String(structuredData.followUpDate));
-    if (!isNaN(parsedDate)) {
-      followUpDate = new Date(parsedDate);
-    }
-  }
-
-  let createdAt: Date | null = null;
-  if (structuredData.createdAt) {
-    const parsedDate = Date.parse(String(structuredData.createdAt));
-    if (!isNaN(parsedDate)) {
-      createdAt = new Date(parsedDate);
-    }
-  }
+  const followUpDate = parseExcelDate(structuredData.followUpDate);
+  const createdAt = parseExcelDate(structuredData.createdAt);
 
   return {
     ...fallback,
@@ -805,6 +850,7 @@ export type ParsedProjectExpiration = {
   domainExpireDate: Date | null;
   hostingExpireDate: Date | null;
   remark: string | null;
+  createdAt?: Date | null;
 };
 
 export function parseExcelDate(val: any): Date | null {
@@ -816,6 +862,10 @@ export function parseExcelDate(val: any): Date | null {
   }
   const str = String(val).trim();
   if (!str) return null;
+  // Numeric d/m/yyyy strings (CSV) are day-first (Myanmar) — parse explicitly
+  // so they aren't misread as US month-first by Date.parse.
+  const dayFirst = parseHumanDate(str);
+  if (dayFirst) return dayFirst;
   const parsed = Date.parse(str);
   if (!isNaN(parsed)) return new Date(parsed);
   return null;
@@ -866,6 +916,7 @@ export function parseProjectExpirySpreadsheet(fileBuffer: Buffer): ParsedProject
       const domainExpireDate = parseExcelDate(getVal(['Domain Expiration Date', 'Domain Expiry', 'Domain Expire Date']));
       const hostingExpireDate = parseExcelDate(getVal(['Hosting Expiration Date', 'Hosting Expiry', 'Hosting Expire Date']));
       const remark = String(getVal(['Remark', 'Remarks']) || '').trim() || null;
+      const createdAt = parseExcelDate(getVal(['Date', 'Record Date', 'Report Date'])) || null;
 
       allRecords.push({
         projectName,
@@ -877,6 +928,7 @@ export function parseProjectExpirySpreadsheet(fileBuffer: Buffer): ParsedProject
         domainExpireDate,
         hostingExpireDate,
         remark,
+        createdAt,
       });
     }
   }
@@ -889,6 +941,7 @@ export type ParsedWebsiteUpdate = {
   url: string | null;
   businessType: string | null;
   packageName: string | null;
+  createdAt?: Date | null;
 };
 
 export function isWebsiteUpdateHeaders(headers: string[]): boolean {
@@ -927,12 +980,14 @@ export function parseWebsiteUpdateSpreadsheet(fileBuffer: Buffer): ParsedWebsite
       const url = String(getVal(['Website Link', 'Website_Link', 'URL', 'Link']) || '').trim() || null;
       const businessType = String(getVal(['Business Type', 'Business_Type', 'Business']) || '').trim() || null;
       const packageName = String(getVal(['Package', 'Package Name', 'Package_Name']) || '').trim() || null;
+      const createdAt = parseExcelDate(getVal(['Date', 'Record Date', 'Report Date'])) || null;
 
       allRecords.push({
         name,
         url,
         businessType,
         packageName,
+        createdAt,
       });
     }
   }
@@ -969,7 +1024,8 @@ Extract and return a JSON object with these fields:
   "hostingRemark": string | null (hosting notes/remarks),
   "domainExpireDate": string | null (domain expiration date in YYYY-MM-DD format),
   "hostingExpireDate": string | null (hosting expiration date in YYYY-MM-DD format),
-  "remark": string | null (any general remarks or notes)
+  "remark": string | null (any general remarks or notes),
+  "createdAt": string | null (the record's own date in YYYY-MM-DD format if a date is stated in the message, e.g. from a 'Date' label or line; null if none — do NOT invent today's date)
 }
 
 Rules:
@@ -1003,6 +1059,12 @@ Rules:
       if (!isNaN(p)) hostingExpireDate = new Date(p);
     }
 
+    let createdAt: Date | null = null;
+    if (parsed.createdAt) {
+      const p = Date.parse(parsed.createdAt);
+      if (!isNaN(p)) createdAt = new Date(p);
+    }
+
     return {
       projectName: parsed.projectName || fallback.projectName,
       url: parsed.url || fallback.url,
@@ -1013,6 +1075,7 @@ Rules:
       domainExpireDate: domainExpireDate || fallback.domainExpireDate,
       hostingExpireDate: hostingExpireDate || fallback.hostingExpireDate,
       remark: parsed.remark || fallback.remark,
+      createdAt: createdAt || fallback.createdAt,
     };
   } catch (err) {
     console.error("Gemini project expiry text parse failed:", err);
@@ -1042,15 +1105,20 @@ export function parseProjectExpiryMessage(text: string): ParsedProjectExpiration
 
   let domainExpireDate: Date | null = null;
   if (domainExpireDateStr) {
-    const p = Date.parse(domainExpireDateStr);
-    if (!isNaN(p)) domainExpireDate = new Date(p);
+    domainExpireDate = parseHumanDate(domainExpireDateStr);
   }
 
   let hostingExpireDate: Date | null = null;
   if (hostingExpireDateStr) {
-    const p = Date.parse(hostingExpireDateStr);
-    if (!isNaN(p)) hostingExpireDate = new Date(p);
+    hostingExpireDate = parseHumanDate(hostingExpireDateStr);
   }
+
+  // Record date ("Date:" line, line-anchored so it isn't confused with the
+  // domain/hosting expiry dates). Absent → null → caller falls back to now().
+  const recordDateStr = extractString(text, [
+    /(?:^|\n)\s*(?:record[\s-]?date|report[\s-]?date|date)\s*[:=-]?\s*([^\n]+)/i,
+  ]);
+  const createdAt = recordDateStr ? parseHumanDate(recordDateStr) : null;
 
   return {
     projectName,
@@ -1062,6 +1130,7 @@ export function parseProjectExpiryMessage(text: string): ParsedProjectExpiration
     domainExpireDate,
     hostingExpireDate,
     remark,
+    createdAt,
   };
 }
 
@@ -1091,7 +1160,8 @@ Extract and return a JSON object with these fields:
   "businessType": string | null (business type / description),
   "packageName": string | null (package name),
   "status": "up_to_date" | "pending_update" | "in_progress" (maintenance status, default is "up_to_date"),
-  "remark": string | null (remarks / update logs / notes)
+  "remark": string | null (remarks / update logs / notes),
+  "createdAt": string | null (the record's own date in YYYY-MM-DD format if a date is stated in the message, e.g. from a 'Date' label or line; null if none — do NOT invent today's date)
 }
 
 Rules:
@@ -1113,6 +1183,12 @@ Rules:
 
     const parsed = JSON.parse(cleanedJson);
 
+    let createdAt: Date | null = null;
+    if (parsed.createdAt) {
+      const p = Date.parse(parsed.createdAt);
+      if (!isNaN(p)) createdAt = new Date(p);
+    }
+
     return {
       name: parsed.name || fallback.name,
       url: parsed.url || fallback.url,
@@ -1120,6 +1196,7 @@ Rules:
       packageName: parsed.packageName || fallback.packageName,
       status: parsed.status || fallback.status,
       remark: parsed.remark || fallback.remark,
+      createdAt: createdAt || fallback.createdAt,
     };
   } catch (err) {
     console.error("Gemini website update text parse failed:", err);
@@ -1154,6 +1231,13 @@ export function parseWebsiteUpdateMessage(text: string): ParsedWebsiteUpdate & {
     }
   }
 
+  // Record date ("Date:" line, line-anchored so it isn't captured from other
+  // date-like fields). Absent → null → caller falls back to now().
+  const recordDateStr = extractString(text, [
+    /(?:^|\n)\s*(?:record[\s-]?date|report[\s-]?date|date)\s*[:=-]?\s*([^\n]+)/i,
+  ]);
+  const createdAt = recordDateStr ? parseHumanDate(recordDateStr) : null;
+
   return {
     name,
     url,
@@ -1161,6 +1245,7 @@ export function parseWebsiteUpdateMessage(text: string): ParsedWebsiteUpdate & {
     packageName,
     status,
     remark,
+    createdAt,
   };
 }
 // ─── Business Report Parser ──────────────────────────────────────────────────
@@ -1210,12 +1295,16 @@ export function parseBusinessReportSpreadsheet(buffer: Buffer): ParsedBusinessRe
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
 
     for (const row of rows) {
-      const getStr = (keys: string[]) => {
+      const getVal = (keys: string[]) => {
         for (const k of keys) {
           const key = Object.keys(row).find(r => r.toLowerCase().includes(k));
-          if (key && row[key] != null && String(row[key]).trim()) return String(row[key]).trim();
+          if (key && row[key] != null) return row[key];
         }
         return null;
+      };
+      const getStr = (keys: string[]) => {
+        const val = getVal(keys);
+        return val != null && String(val).trim() ? String(val).trim() : null;
       };
       const getNum = (keys: string[]) => {
         const v = getStr(keys);
@@ -1228,12 +1317,8 @@ export function parseBusinessReportSpreadsheet(buffer: Buffer): ParsedBusinessRe
         return n !== null ? Math.round(n) : null;
       };
 
-      const dateStr = getStr(['date', 'report date']);
-      let reportDate = new Date();
-      if (dateStr) {
-        const parsed = Date.parse(dateStr);
-        if (!isNaN(parsed)) reportDate = new Date(parsed);
-      }
+      const dateVal = getVal(['date', 'report date']);
+      const reportDate = parseExcelDate(dateVal) || new Date();
 
       results.push({
         reportDate,
@@ -1259,7 +1344,7 @@ export function parseBusinessReportSpreadsheet(buffer: Buffer): ParsedBusinessRe
   return results.filter(r => r.reportDate);
 }
 
-export function parseBusinessReportMessage(text: string): ParsedBusinessReport {
+export function parseBusinessReportMessage(text: string, fallbackDate?: Date): ParsedBusinessReport {
   const getVal = (keys: string[]) => {
     for (const k of keys) {
       const p = new RegExp(`(?:${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\s*[:=-]?\\s*((?:[^\n,]|,(?=\\d))+)`, 'i');
@@ -1286,10 +1371,10 @@ export function parseBusinessReportMessage(text: string): ParsedBusinessReport {
   const isIncome = transactionType ? /income|revenue|sale|in/i.test(transactionType) : false;
 
   const dateStr = getVal(['date', 'report date', 'ရက်']);
-  let reportDate = new Date();
+  let reportDate = fallbackDate || new Date();
   if (dateStr) {
-    const parsed = Date.parse(dateStr);
-    if (!isNaN(parsed)) reportDate = new Date(parsed);
+    const parsed = parseExcelDate(dateStr);
+    if (parsed) reportDate = parsed;
   } else {
     // Standalone date pattern search fallback, e.g. "11.June.2026" or "11-June-2026"
     const datePattern = /(\d{1,2})[\s./-](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s./-](\d{4})/i;
@@ -1337,12 +1422,14 @@ export async function parseBusinessReportWithGemini({
   text,
   apiKey,
   model,
+  fallbackDate,
 }: {
   text: string;
   apiKey?: string | null;
   model?: string | null;
+  fallbackDate?: Date;
 }): Promise<ParsedBusinessReport> {
-  const fallback = parseBusinessReportMessage(text);
+  const fallback = parseBusinessReportMessage(text, fallbackDate);
   if (!apiKey) return fallback;
 
   try {
@@ -1389,8 +1476,8 @@ Rules:
 
     let reportDate = fallback.reportDate;
     if (parsed.reportDate) {
-      const d = Date.parse(parsed.reportDate);
-      if (!isNaN(d)) reportDate = new Date(d);
+      const d = parseExcelDate(parsed.reportDate);
+      if (d) reportDate = d;
     }
 
     return {

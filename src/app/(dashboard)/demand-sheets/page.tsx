@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { formatPhoneNumber } from '@/lib/utils';
 import {
   FileSpreadsheet,
   TrendingUp,
@@ -1044,7 +1045,7 @@ function DemandSheetsPageContent() {
                   {/* Contact Number Column */}
                   <div className="md:col-span-1 text-xs text-foreground truncate font-mono">
                     {record.customer?.phone ? (
-                      <span>{record.customer.phone}</span>
+                      <span>{formatPhoneNumber(record.customer.phone)}</span>
                     ) : (
                       <span className="text-slate-600 italic text-xs">No phone</span>
                     )}

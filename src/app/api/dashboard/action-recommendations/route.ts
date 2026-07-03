@@ -182,15 +182,16 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date();
+  const nowMyanmar = new Date(Date.now() + 6.5 * 60 * 60 * 1000);
   const { searchParams } = req.nextUrl;
   const period = searchParams.get("period") === "year" ? "year" : "month";
-  const monthParam = Number(searchParams.get("month") || now.getMonth() + 1);
-  const yearParam = Number(searchParams.get("year") || now.getFullYear());
-  const month = Math.min(12, Math.max(1, Number.isFinite(monthParam) ? monthParam : now.getMonth() + 1));
-  const year = Number.isFinite(yearParam) ? yearParam : now.getFullYear();
-  const periodStart = period === "year" ? new Date(year, 0, 1) : new Date(year, month - 1, 1);
-  const periodEnd = period === "year" ? new Date(year + 1, 0, 1) : new Date(year, month, 1);
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const monthParam = Number(searchParams.get("month") || nowMyanmar.getUTCMonth() + 1);
+  const yearParam = Number(searchParams.get("year") || nowMyanmar.getUTCFullYear());
+  const month = Math.min(12, Math.max(1, Number.isFinite(monthParam) ? monthParam : nowMyanmar.getUTCMonth() + 1));
+  const year = Number.isFinite(yearParam) ? yearParam : nowMyanmar.getUTCFullYear();
+  const periodStart = period === "year" ? new Date(Date.UTC(year, 0, 1)) : new Date(Date.UTC(year, month - 1, 1));
+  const periodEnd = period === "year" ? new Date(Date.UTC(year + 1, 0, 1)) : new Date(Date.UTC(year, month, 1));
+  const startOfToday = new Date(Date.UTC(nowMyanmar.getUTCFullYear(), nowMyanmar.getUTCMonth(), nowMyanmar.getUTCDate()));
 
   try {
     const [

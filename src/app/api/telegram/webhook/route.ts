@@ -15,11 +15,13 @@ import {
   parseProjectExpiryMessageWithGemini,
   parseWebsiteUpdateMessageWithGemini,
   parseBusinessReportWithGemini,
+  parseExcelDate,
   type ParsedDemandRecord,
 } from "@/lib/demand-parser";
 import { analyzeDemandRecord } from "@/lib/demand-analysis";
 import { NextRequest, NextResponse, after } from "next/server";
 import { sendOTPEmail } from "@/lib/email";
+import { formatPhoneNumber } from "@/lib/utils";
 
 function displayNameFromTelegramUser(from: { first_name?: string; last_name?: string }) {
   return [from.first_name, from.last_name].filter(Boolean).join(" ");
@@ -483,10 +485,12 @@ function getFormatPrompt(): string {
     "",
     "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
+    "• Date: [YYYY-MM-DD]",
     "• Customer: [နာမည်]",
     "• Phone: [ဖုန်းနံပါတ်]",
     "• Business: [ကုမ္ပဏီအမည်]",
     "• Service: [ဝန်ဆောင်မှု] - Amount: [ငွေ]",
+    "• Status: [new|contacted|quoted|pending|closed]",
     "• Follow-up Date: [YYYY-MM-DD]",
     "• Note: [မှတ်ချက်]",
     "</pre>",
@@ -511,6 +515,7 @@ function getProjectExpiryFormatPrompt(): string {
     "",
     "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
+    "• Date: [YYYY-MM-DD]",
     "• Project: [Project အမည်]",
     "• URL: [Website URL]",
     "• Package: [Package]",
@@ -539,6 +544,7 @@ function getWebsiteUpdateFormatPrompt(): string {
     "",
     "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
+    "• Date: [YYYY-MM-DD]",
     "• Name: [ဝဘ်ဆိုဒ်/လုပ်ငန်း]",
     "• URL: [Website URL]",
     "• Business: [လုပ်ငန်းအမျိုးအစား]",
@@ -615,11 +621,11 @@ function getFormatPromptForMode(mode: string | null | undefined): string {
 function getFormatHintFooter(mode: string): string {
   let fields = "";
   if (mode === 'demand_report') {
-    fields = "Customer • Phone • Service • Amount • Follow-up";
+    fields = "Date • Customer • Phone • Service • Amount • Status • Follow-up";
   } else if (mode === 'project_expiry') {
-    fields = "Project • URL • Domain/Hosting Expiry";
+    fields = "Date • Project • URL • Domain/Hosting Expiry";
   } else if (mode === 'website_update') {
-    fields = "Name • URL • Package • Status";
+    fields = "Date • Name • URL • Package • Status";
   } else if (mode === 'business_report') {
     fields = "Date • Budget • Calls • Appointments • Sales";
   }
@@ -639,17 +645,6 @@ function isFinanceRecordsHeaders(headers: string[]): boolean {
   );
 }
 
-function parseExcelDate(val: any): Date | null {
-  if (!val) return null;
-  if (val instanceof Date) return val;
-  const num = Number(val);
-  if (!isNaN(num) && num > 0) {
-    // Excel base date is Dec 30, 1899 due to 1900 leap year bug
-    return new Date(Math.round((num - 25569) * 86400 * 1000));
-  }
-  const parsed = Date.parse(String(val));
-  return isNaN(parsed) ? null : new Date(parsed);
-}
 
 function parseFinanceRecordsSpreadsheet(fileBuffer: Buffer): any[] {
   const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
@@ -724,7 +719,7 @@ function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
         "",
         "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
         "",
-        "<code>• Customer: \n• Phone: \n• Business: \n• Service:  - Amount: \n• Follow-up Date: \n• Note: </code>",
+        "<code>• Date: \n• Customer: \n• Phone: \n• Business: \n• Service:  - Amount: \n• Status: \n• Follow-up Date: \n• Note: </code>",
       ].join("\n");
     case 'project_expiry':
       return [
@@ -736,7 +731,7 @@ function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
         "",
         "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
         "",
-        "<code>• Project: \n• URL: \n• Package: \n• Domain Provider: \n• Hosting Provider: \n• Domain Expiry: \n• Hosting Expiry: \n• Remark: </code>",
+        "<code>• Date: \n• Project: \n• URL: \n• Package: \n• Domain Provider: \n• Hosting Provider: \n• Domain Expiry: \n• Hosting Expiry: \n• Remark: </code>",
       ].join("\n");
     case 'website_update':
       return [
@@ -748,7 +743,7 @@ function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
         "",
         "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
         "",
-        "<code>• Name: \n• URL: \n• Business: \n• Package: \n• Status: \n• Remark: </code>",
+        "<code>• Date: \n• Name: \n• URL: \n• Business: \n• Package: \n• Status: \n• Remark: </code>",
       ].join("\n");
     case 'business_report':
       return [
@@ -937,7 +932,7 @@ async function resolveCustomersBatch(
       }
 
       nameToDetails.set(d.customerName, {
-        phone: d.customerPhone || (existing ? existing.phone : null),
+        phone: d.customerPhone ? formatPhoneNumber(d.customerPhone) : (existing ? existing.phone : null),
         company: d.customerCompany || (existing ? existing.company : null),
         createdAt: earliestDate,
       } as any);
@@ -1256,6 +1251,7 @@ async function processFileInBackground({
   senderId,
   telegramMessageId,
   progressMsgId,
+  receivedAtMyanmar,
 }: {
   downloadedBuffer: Buffer;
   fileInfo: { fileName: string; mimeType: string; fileSize: number };
@@ -1265,6 +1261,7 @@ async function processFileInBackground({
   senderId: string;
   telegramMessageId: string;
   progressMsgId: number | null;
+  receivedAtMyanmar: Date;
 }) {
   const errors: string[] = [];
   try {
@@ -1324,6 +1321,7 @@ async function processFileInBackground({
         domainExpireDate: rec.domainExpireDate,
         hostingExpireDate: rec.hostingExpireDate,
         remark: rec.remark,
+        createdAt: rec.createdAt || receivedAtMyanmar,
       }));
 
       if (creates.length > 0) {
@@ -1357,6 +1355,7 @@ async function processFileInBackground({
         // Imported sites start as "pending_update" — a freshly uploaded list is a
         // backlog of sites to work through. Team marks each "up_to_date" once done.
         status: "pending_update",
+        createdAt: rec.createdAt || receivedAtMyanmar,
       }));
 
       if (creates.length > 0) {
@@ -1383,7 +1382,7 @@ async function processFileInBackground({
 
     if (isBusinessReportFile) {
       const creates = parsedBusinessReportRecords.map((rec: any) => ({
-        reportDate: rec.reportDate || new Date(),
+        reportDate: rec.reportDate || receivedAtMyanmar,
         reporterName: rec.reporterName || null,
         senderId: senderId,
         messageId: telegramMessageId,
@@ -1423,8 +1422,9 @@ async function processFileInBackground({
     if (isFinanceFile) {
       const creates = parsedFinanceRecords.map((rec: any) => {
         const isIncome = rec.type.toLowerCase() === 'income';
+        const recordDate = rec.date || receivedAtMyanmar;
         return {
-          reportDate: rec.date,
+          reportDate: recordDate,
           senderId: senderId,
           messageId: telegramMessageId,
           marketingBudget: isIncome ? 0 : rec.amount,
@@ -1435,7 +1435,7 @@ async function processFileInBackground({
           closedDeals: isIncome ? 1 : 0,
           totalDemandCount: 1,
           reporterName: "Telegram Upload",
-          createdAt: rec.date,
+          createdAt: recordDate,
         };
       });
 
@@ -2349,6 +2349,7 @@ export async function POST(req: NextRequest) {
     // ─── Handle File Uploads ──────────────────────────────────────────
     if (hasFile && fileInfo) {
       const receivedAt = new Date(message.date * 1000);
+      const receivedAtMyanmar = new Date(receivedAt.getTime() + 6.5 * 60 * 60 * 1000);
       const updatedSender = await prisma.telegramSender.update({
         where: { id: sender.id },
         data: {
@@ -2475,6 +2476,7 @@ export async function POST(req: NextRequest) {
             senderId: sender.id,
             telegramMessageId: telegramMessage.id,
             progressMsgId,
+            receivedAtMyanmar,
           });
         } catch (err) {
           console.error("Unhandled error in processFileInBackground:", err);
@@ -2490,6 +2492,7 @@ export async function POST(req: NextRequest) {
     }
 
     const receivedAt = new Date(message.date * 1000);
+    const receivedAtMyanmar = new Date(receivedAt.getTime() + 6.5 * 60 * 60 * 1000);
     const updatedSender = await prisma.telegramSender.update({
       where: { id: sender.id },
       data: {
@@ -2588,12 +2591,15 @@ export async function POST(req: NextRequest) {
           domainExpireDate: parsedExpiry.domainExpireDate,
           hostingExpireDate: parsedExpiry.hostingExpireDate,
           remark: parsedExpiry.remark,
+          createdAt: parsedExpiry.createdAt || receivedAtMyanmar || undefined,
         },
       });
 
+      const recordDate = parsedExpiry.createdAt || receivedAtMyanmar;
       const confirmParts = [
         "✅ <b>သက်တမ်းကုန်ဆုံးမှုမှတ်တမ်း တင်သွင်းခြင်း အောင်မြင်ပါသည်</b>",
         "━━━━━━━━━━━━━━━━━━━━",
+        `📅 <b>ရက်စွဲ:</b> <code>${recordDate.toISOString().slice(0, 10)}</code>`,
         `📁 <b>ပရောဂျက်:</b> <code>${parsedExpiry.projectName}</code>`,
       ];
       if (parsedExpiry.url) confirmParts.push(`🌐 <b>URL:</b> <code>${parsedExpiry.url}</code>`);
@@ -2640,12 +2646,15 @@ export async function POST(req: NextRequest) {
           packageName: parsedUpdate.packageName,
           status: parsedUpdate.status,
           remark: parsedUpdate.remark,
+          createdAt: parsedUpdate.createdAt || receivedAtMyanmar || undefined,
         },
       });
 
+      const recordDate = parsedUpdate.createdAt || receivedAtMyanmar;
       const confirmParts = [
         "✅ <b>ဝဘ်ဆိုဒ် အပ်ဒိတ်/ထိန်းသိမ်းမှု မှတ်တမ်း တင်သွင်းခြင်း အောင်မြင်ပါသည်</b>",
         "━━━━━━━━━━━━━━━━━━━━",
+        `📅 <b>ရက်စွဲ:</b> <code>${recordDate.toISOString().slice(0, 10)}</code>`,
         `📁 <b>အမည်:</b> <code>${parsedUpdate.name}</code>`,
       ];
       if (parsedUpdate.url) confirmParts.push(`🌐 <b>URL:</b> <code>${parsedUpdate.url}</code>`);
@@ -2682,6 +2691,7 @@ export async function POST(req: NextRequest) {
         text: message.text,
         apiKey: settings?.geminiApiKey,
         model: settings?.geminiModel,
+        fallbackDate: receivedAtMyanmar,
       });
 
       await prisma.businessReport.create({
@@ -2716,7 +2726,7 @@ export async function POST(req: NextRequest) {
       // If customer info is in the business report text, also create a Customer & DemandRecord
       const parsedDemand = await parseDemandMessageWithGemini({
         text: message.text,
-        receivedAt,
+        receivedAt: receivedAtMyanmar,
         apiKey: settings?.geminiApiKey,
         model: settings?.geminiModel,
       });
@@ -2737,7 +2747,7 @@ export async function POST(req: NextRequest) {
             data: {
               updatedAt: new Date(),
               nameNormalized: customer.nameNormalized || normalizedName,
-              ...(parsedDemand.customerPhone ? { phone: parsedDemand.customerPhone } : {}),
+              ...(parsedDemand.customerPhone ? { phone: formatPhoneNumber(parsedDemand.customerPhone) } : {}),
               ...(parsedDemand.customerCompany ? { company: parsedDemand.customerCompany } : {}),
             },
           });
@@ -2746,8 +2756,9 @@ export async function POST(req: NextRequest) {
             data: {
               name: parsedDemand.customerName,
               nameNormalized: normalizedName,
-              phone: parsedDemand.customerPhone || null,
+              phone: parsedDemand.customerPhone ? formatPhoneNumber(parsedDemand.customerPhone) : null,
               company: parsedDemand.customerCompany || null,
+              createdAt: parsedDemand.createdAt || receivedAtMyanmar || undefined,
             },
           });
         }
@@ -2759,7 +2770,7 @@ export async function POST(req: NextRequest) {
             senderId: sender.id,
             action: 'demand_report',
             description: parsedDemand.note,
-            createdAt: receivedAt || undefined,
+            createdAt: parsedDemand.createdAt || receivedAtMyanmar || undefined,
           },
         });
 
@@ -2788,9 +2799,10 @@ export async function POST(req: NextRequest) {
             confidence: parsedDemand.confidence,
             aiProvider: parsedDemand.aiProvider,
             aiModel: parsedDemand.aiModel,
+            createdAt: parsedDemand.createdAt || receivedAtMyanmar || undefined,
           },
         });
-        
+
         confirmParts.push("");
         confirmParts.push(`👤 <b>ဝယ်ယူသူ စာရင်းသွင်းမှု အလိုအလျောက် အောင်မြင်ပါသည်:</b>`);
         confirmParts.push(`• Customer: <code>${parsedDemand.customerName}</code>`);
@@ -2842,7 +2854,7 @@ export async function POST(req: NextRequest) {
 
     const parsedDemand = await parseDemandMessageWithGemini({
       text: message.text,
-      receivedAt,
+      receivedAt: receivedAtMyanmar,
       apiKey: settings?.geminiApiKey,
       model: settings?.geminiModel,
     });
@@ -2864,7 +2876,7 @@ export async function POST(req: NextRequest) {
           data: {
             updatedAt: new Date(),
             nameNormalized: customer.nameNormalized || normalizedName,
-            ...(parsedDemand.customerPhone ? { phone: parsedDemand.customerPhone } : {}),
+            ...(parsedDemand.customerPhone ? { phone: formatPhoneNumber(parsedDemand.customerPhone) } : {}),
             ...(parsedDemand.customerCompany ? { company: parsedDemand.customerCompany } : {}),
           },
         });
@@ -2873,8 +2885,9 @@ export async function POST(req: NextRequest) {
           data: {
             name: parsedDemand.customerName,
             nameNormalized: normalizedName,
-            phone: parsedDemand.customerPhone || null,
+            phone: parsedDemand.customerPhone ? formatPhoneNumber(parsedDemand.customerPhone) : null,
             company: parsedDemand.customerCompany || null,
+            createdAt: parsedDemand.createdAt || receivedAtMyanmar || undefined,
           },
         });
       }
@@ -2886,7 +2899,7 @@ export async function POST(req: NextRequest) {
           senderId: sender.id,
           action: 'demand_report',
           description: parsedDemand.note,
-          createdAt: receivedAt || undefined,
+          createdAt: parsedDemand.createdAt || receivedAtMyanmar || undefined,
         },
       });
     }
@@ -2916,17 +2929,22 @@ export async function POST(req: NextRequest) {
         confidence: parsedDemand.confidence,
         aiProvider: parsedDemand.aiProvider,
         aiModel: parsedDemand.aiModel,
+        createdAt: parsedDemand.createdAt || receivedAtMyanmar || undefined,
       },
     });
 
+    const recordDate = parsedDemand.createdAt || receivedAtMyanmar;
     const confirmParts = [
       "✅ <b>ဝယ်လိုအားမှတ်တမ်းတင်ခြင်း အောင်မြင်ပါသည်</b>",
       "━━━━━━━━━━━━━━━━━━━━",
+      `📅 <b>ရက်စွဲ:</b> <code>${recordDate.toISOString().slice(0, 10)}</code>`,
       ""
     ];
     if (parsedDemand.customerName) confirmParts.push(`👤 <b>Customer:</b> ${parsedDemand.customerName}`);
     if (parsedDemand.serviceName) confirmParts.push(`🛠️ <b>Service:</b> ${parsedDemand.serviceName}`);
     if (parsedDemand.serviceAmount) confirmParts.push(`💰 <b>Amount:</b> ${parsedDemand.serviceAmount.toLocaleString()} Ks`);
+    const statusVal = parsedDemand.status || 'new';
+    confirmParts.push(`⚙️ <b>Status:</b> <code>${statusVal}</code>`);
     if (parsedDemand.serviceQty) confirmParts.push(`📦 <b>Qty:</b> ${parsedDemand.serviceQty}`);
     if (parsedDemand.followUpDate) confirmParts.push(`📅 <b>Follow-up Date:</b> ${parsedDemand.followUpDate.toISOString().slice(0, 10)}`);
     if (parsedDemand.note) {

@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseDemandRowsFromWorkbook } from "@/lib/demand-import";
 import { NextRequest, NextResponse } from "next/server";
+import { formatPhoneNumber } from "@/lib/utils";
 
 function normalizeCustomerName(name: string): string {
   return name.toLowerCase().replace(/\s+/g, " ").trim();
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
             where: { id: existing.id },
             data: {
               nameNormalized: existing.nameNormalized || nameNormalized,
-              ...(row.normalized.customerPhone ? { phone: row.normalized.customerPhone } : {}),
+              ...(row.normalized.customerPhone ? { phone: formatPhoneNumber(row.normalized.customerPhone) } : {}),
               ...(row.normalized.customerCompany ? { company: row.normalized.customerCompany } : {}),
               updatedAt: new Date(),
             },
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
             data: {
               name: row.normalized.customerName,
               nameNormalized,
-              phone: row.normalized.customerPhone,
+              phone: row.normalized.customerPhone ? formatPhoneNumber(row.normalized.customerPhone) : undefined,
               company: row.normalized.customerCompany,
               createdAt: row.normalized.createdAt || undefined,
             },

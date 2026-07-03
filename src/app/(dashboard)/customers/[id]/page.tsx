@@ -32,6 +32,7 @@ import {
   AlertCircle,
   Trash2,
 } from 'lucide-react';
+import { formatPhoneNumber } from '@/lib/utils';
 import { customersApi } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -177,7 +178,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             {customer.phone && (
               <div className="flex items-center gap-3 text-sm text-foreground/85">
                 <Phone className="w-4 h-4 text-muted-foreground" />
-                <span>{customer.phone}</span>
+                <span>{formatPhoneNumber(customer.phone)}</span>
               </div>
             )}
             {customer.email && (
