@@ -36,6 +36,7 @@ export type ParsedDemandRecord = {
   serviceAmount: number | null;
   serviceQty: number | null;
   createdAt?: Date | null;
+  sourceChannel?: string | null;
 };
 
 async function generateContentWithRetry(
@@ -176,6 +177,7 @@ export function parseDemandMessage(text: string, _reportType?: ReportType): Pars
     serviceName: null,
     serviceAmount: null,
     serviceQty: null,
+    sourceChannel: null,
   };
 
   const extracted = parseDemandSheet(text);
@@ -283,6 +285,7 @@ export async function parseDemandMessageWithGemini({
       serviceAmount: typeof parsed.serviceAmount === 'number' ? parsed.serviceAmount : fallback.serviceAmount,
       serviceQty: typeof parsed.serviceQty === 'number' ? parsed.serviceQty : fallback.serviceQty,
       followUpDate: followUpDate || fallback.followUpDate,
+      sourceChannel: parsed.sourceChannel || fallback.sourceChannel,
     };
   } catch (error) {
     console.error('Gemini parsing failed, using heuristic fallback:', error);
@@ -354,7 +357,7 @@ export function isSpreadsheetFile(mimeType: string, fileName: string): boolean {
 }
 
 export function extractSpreadsheetToText(buffer: Buffer): string {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const parts: string[] = [];
   for (const sheetName of workbook.SheetNames) {
     const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
@@ -569,7 +572,7 @@ export async function extractDataFromFile({
 
   if (isSpreadsheet) {
     try {
-      const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+      const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
       const allExtractedTexts: string[] = [];
       const allParsedRecords: ParsedDemandRecord[] = [];
       const batchSize = 5;
@@ -832,7 +835,7 @@ export function isProjectExpiryHeaders(headers: string[]): boolean {
 }
 
 export function parseProjectExpirySpreadsheet(fileBuffer: Buffer): ParsedProjectExpiration[] {
-  const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+  const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
   const allRecords: ParsedProjectExpiration[] = [];
 
   for (const sheetName of workbook.SheetNames) {
@@ -841,9 +844,11 @@ export function parseProjectExpirySpreadsheet(fileBuffer: Buffer): ParsedProject
 
     for (const row of rows) {
       const getVal = (keys: string[]) => {
+        const normalize = (s: string) => s.toLowerCase().trim().replace(/[_-]+/g, ' ');
         for (const k of keys) {
+          const normalizedK = normalize(k);
           const matchedKey = Object.keys(row).find(
-            rk => rk.toLowerCase().trim() === k.toLowerCase()
+            rk => normalize(rk) === normalizedK
           );
           if (matchedKey !== undefined) return row[matchedKey];
         }
@@ -854,12 +859,12 @@ export function parseProjectExpirySpreadsheet(fileBuffer: Buffer): ParsedProject
       if (!projectName) continue;
 
       const url = String(getVal(['URL', 'Link']) || '').trim() || null;
-      const packageName = String(getVal(['Package']) || '').trim() || null;
+      const packageName = String(getVal(['Package', 'Package Name']) || '').trim() || null;
       const domainProvider = String(getVal(['Domain Provider']) || '').trim() || null;
       const hostingProvider = String(getVal(['Hosting Provider']) || '').trim() || null;
       const hostingRemark = String(getVal(['Hosting Remark']) || '').trim() || null;
-      const domainExpireDate = parseExcelDate(getVal(['Domain Expiration Date', 'Domain Expiry']));
-      const hostingExpireDate = parseExcelDate(getVal(['Hosting Expiration Date', 'Hosting Expiry']));
+      const domainExpireDate = parseExcelDate(getVal(['Domain Expiration Date', 'Domain Expiry', 'Domain Expire Date']));
+      const hostingExpireDate = parseExcelDate(getVal(['Hosting Expiration Date', 'Hosting Expiry', 'Hosting Expire Date']));
       const remark = String(getVal(['Remark', 'Remarks']) || '').trim() || null;
 
       allRecords.push({
@@ -896,7 +901,7 @@ export function isWebsiteUpdateHeaders(headers: string[]): boolean {
 }
 
 export function parseWebsiteUpdateSpreadsheet(fileBuffer: Buffer): ParsedWebsiteUpdate[] {
-  const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+  const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
   const allRecords: ParsedWebsiteUpdate[] = [];
 
   for (const sheetName of workbook.SheetNames) {
@@ -905,9 +910,11 @@ export function parseWebsiteUpdateSpreadsheet(fileBuffer: Buffer): ParsedWebsite
 
     for (const row of rows) {
       const getVal = (keys: string[]) => {
+        const normalize = (s: string) => s.toLowerCase().trim().replace(/[_-]+/g, ' ');
         for (const k of keys) {
+          const normalizedK = normalize(k);
           const matchedKey = Object.keys(row).find(
-            rk => rk.toLowerCase().trim() === k.toLowerCase()
+            rk => normalize(rk) === normalizedK
           );
           if (matchedKey !== undefined) return row[matchedKey];
         }
@@ -1195,7 +1202,7 @@ export function isBusinessReportHeaders(headers: unknown[]): boolean {
 }
 
 export function parseBusinessReportSpreadsheet(buffer: Buffer): ParsedBusinessReport[] {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const results: ParsedBusinessReport[] = [];
 
   for (const sheetName of workbook.SheetNames) {

@@ -176,6 +176,7 @@ export type DemandRecord = {
   note: string;
   sourceType: string;
   sourceFileName: string | null;
+  sourceChannel: string | null;
   rawData?: Record<string, unknown> | null;
   normalizedData?: Record<string, unknown> | null;
   importBatchId: string | null;

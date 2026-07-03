@@ -880,7 +880,7 @@ function CustomersPageContent() {
                             <span className="block text-xs font-normal text-muted-foreground">{leadCompany}</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-semibold">{lead.sourceType || 'Telegram'}</td>
+                        <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-semibold">{lead.sourceChannel || lead.sourceType || 'Telegram'}</td>
                         <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
                           {lead.serviceName || (lead.note ? lead.note.slice(0, 45) + (lead.note.length > 45 ? '...' : '') : '-')}
                         </td>

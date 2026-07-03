@@ -234,6 +234,7 @@ model DemandRecord {
   note            String
   sourceType      String           @default("telegram") @map("source_type")
   sourceFileName  String?          @map("source_file_name")
+  sourceChannel   String?          @map("source_channel")
   rawData         Json?            @map("raw_data")
   normalizedData  Json?            @map("normalized_data")
   importBatchId   String?          @map("import_batch_id")

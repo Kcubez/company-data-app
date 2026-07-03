@@ -51,6 +51,10 @@ const FIELD_ALIASES: Array<{ field: keyof ParsedDemandRecord; aliases: string[] 
     field: "createdAt",
     aliases: ["date", "created", "created at", "report date", "lead date", "ရက်စွဲ"],
   },
+  {
+    field: "sourceChannel",
+    aliases: ["source channel", "source_channel", "channel", "platform", "source"],
+  },
 ];
 
 const NUMBER_PATTERN = /[^\d.-]/g;
@@ -170,6 +174,7 @@ export function parseDemandRowsFromWorkbook(fileBuffer: Buffer): {
         serviceAmount,
         serviceQty: serviceQty ? Math.round(serviceQty) : null,
         createdAt,
+        sourceChannel: pickByMapping(rawData, mapping, "sourceChannel") || null,
       };
 
       allRows.push({

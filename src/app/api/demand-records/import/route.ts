@@ -125,6 +125,7 @@ export async function POST(req: NextRequest) {
           senderId: sender.id,
           action: "dashboard_import",
           description: `${file.name}: ${row.analysis.recommendedAction}`,
+          createdAt: row.normalized.createdAt || undefined,
         },
       });
     }
@@ -140,6 +141,7 @@ export async function POST(req: NextRequest) {
         note: row.normalized.note,
         sourceType: "dashboard_upload",
         sourceFileName: file.name,
+        sourceChannel: row.normalized.sourceChannel || null,
         rawData: row.rawData,
         normalizedData: {
           customerName: row.normalized.customerName,
@@ -150,6 +152,7 @@ export async function POST(req: NextRequest) {
           serviceQty: row.normalized.serviceQty,
           followUpDate: row.normalized.followUpDate?.toISOString() || null,
           status: row.normalized.status,
+          sourceChannel: row.normalized.sourceChannel || null,
         },
         importBatchId: batch.id,
         serviceName: row.normalized.serviceName,

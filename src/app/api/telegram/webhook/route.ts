@@ -652,16 +652,18 @@ function parseExcelDate(val: any): Date | null {
 }
 
 function parseFinanceRecordsSpreadsheet(fileBuffer: Buffer): any[] {
-  const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+  const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
   const allRecords: any[] = [];
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { raw: true });
     for (const row of rows) {
       const getVal = (keys: string[]) => {
+        const normalize = (s: string) => s.toLowerCase().trim().replace(/[_-]+/g, ' ');
         for (const k of keys) {
+          const normalizedK = normalize(k);
           const matchedKey = Object.keys(row).find(
-            rk => rk.toLowerCase().trim() === k.toLowerCase()
+            rk => normalize(rk) === normalizedK
           );
           if (matchedKey !== undefined) return row[matchedKey];
         }
@@ -925,10 +927,20 @@ async function resolveCustomersBatch(
       }
 
       const existing = nameToDetails.get(d.customerName);
+      const existingDate = existing ? (existing as any).createdAt : null;
+      const newDate = (d as any).createdAt || null;
+      let earliestDate = existingDate;
+      if (newDate) {
+        if (!earliestDate || newDate < earliestDate) {
+          earliestDate = newDate;
+        }
+      }
+
       nameToDetails.set(d.customerName, {
         phone: d.customerPhone || (existing ? existing.phone : null),
         company: d.customerCompany || (existing ? existing.company : null),
-      });
+        createdAt: earliestDate,
+      } as any);
     }
   }
   if (nameToNormalized.size === 0) return new Map();
@@ -976,6 +988,7 @@ async function resolveCustomersBatch(
           nameNormalized: m.normalized,
           phone: details?.phone || null,
           company: details?.company || null,
+          createdAt: (details as any)?.createdAt || undefined,
         },
         select: { id: true, name: true, nameNormalized: true },
       });
@@ -1026,12 +1039,16 @@ async function resolveCustomersBatch(
     if (entry) rawNameToId.set(raw, entry.id);
   }
 
-  const activityCreates = Array.from(rawNameToId.entries()).map(([, id]) => ({
-    customerId: id,
-    senderId,
-    action: 'demand_report',
-    description: `File: ${fileName}`,
-  }));
+  const activityCreates = Array.from(rawNameToId.entries()).map(([raw, id]) => {
+    const details = nameToDetails.get(raw);
+    return {
+      customerId: id,
+      senderId,
+      action: 'demand_report',
+      description: `File: ${fileName}`,
+      createdAt: (details as any)?.createdAt || undefined,
+    };
+  });
   if (activityCreates.length > 0) {
     await prisma.customerActivity.createMany({ data: activityCreates });
   }
@@ -1202,6 +1219,7 @@ async function createDemandRecordsFromParsedDemands({
       status: parsedDemand.status,
       note: parsedDemand.note,
       sourceType,
+      sourceChannel: parsedDemand.sourceChannel || null,
       sourceFileName: fileName || null,
       normalizedData: serializeParsedDemand(parsedDemand),
       importBatchId: importBatchId || null,
@@ -1269,7 +1287,7 @@ async function processFileInBackground({
 
     if (isSpreadsheet) {
       try {
-        const workbook = XLSX.read(downloadedBuffer, { type: 'buffer' });
+        const workbook = XLSX.read(downloadedBuffer, { type: 'buffer', cellDates: true });
         if (workbook.SheetNames.length > 0) {
           const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
           const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1 });
@@ -2741,6 +2759,7 @@ export async function POST(req: NextRequest) {
             senderId: sender.id,
             action: 'demand_report',
             description: parsedDemand.note,
+            createdAt: receivedAt || undefined,
           },
         });
 
@@ -2755,6 +2774,7 @@ export async function POST(req: NextRequest) {
             category: parsedDemand.category,
             status: parsedDemand.status || 'closed',
             note: parsedDemand.note,
+            sourceChannel: parsedDemand.sourceChannel || 'Telegram',
             serviceName: parsedDemand.serviceName,
             serviceAmount: parsedDemand.serviceAmount,
             serviceQty: parsedDemand.serviceQty,
@@ -2866,6 +2886,7 @@ export async function POST(req: NextRequest) {
           senderId: sender.id,
           action: 'demand_report',
           description: parsedDemand.note,
+          createdAt: receivedAt || undefined,
         },
       });
     }
@@ -2881,6 +2902,7 @@ export async function POST(req: NextRequest) {
         category: parsedDemand.category,
         status: parsedDemand.status,
         note: parsedDemand.note,
+        sourceChannel: parsedDemand.sourceChannel || 'Telegram',
         serviceName: parsedDemand.serviceName,
         serviceAmount: parsedDemand.serviceAmount,
         serviceQty: parsedDemand.serviceQty,
