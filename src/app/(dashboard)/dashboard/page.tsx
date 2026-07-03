@@ -218,7 +218,9 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
 
   const values = data.map(d => Number(d[valueKey]) || 0);
   const maxValue = Math.max(...values, 1);
-  const roundedMax = Math.ceil(maxValue * 1.15);
+  const initialMax = Math.ceil(maxValue * 1.15);
+  const yStep = Math.max(1, Math.ceil(initialMax / 5));
+  const roundedMax = yStep * 5;
 
   // Include data up to current day (include today even if 0)
   // Only trim trailing zeros if there are future-month padding entries
@@ -264,7 +266,7 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
 
   // Y axis ticks (6 ticks)
   const yTicks = Array.from({ length: 6 }).map((_, i) => {
-    const val = (roundedMax / 5) * i;
+    const val = yStep * i;
     const y = paddingTop + plotHeight - (val / roundedMax) * plotHeight;
     return { val, y };
   });
@@ -446,7 +448,9 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'm
 
   const values = data.map(d => Number(d[valueKey]) || 0);
   const maxValue = Math.max(...values, 1);
-  const roundedMax = Math.ceil(maxValue * 1.15);
+  const initialMax = Math.ceil(maxValue * 1.15);
+  const yStep = Math.max(1, Math.ceil(initialMax / 5));
+  const roundedMax = yStep * 5;
 
   const getDay = (label: string) => {
     if (!label) return 1;
@@ -473,7 +477,7 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'm
 
   // Y axis ticks (6 ticks)
   const yTicks = Array.from({ length: 6 }).map((_, i) => {
-    const val = (roundedMax / 5) * i;
+    const val = yStep * i;
     const y = paddingTop + plotHeight - (val / roundedMax) * plotHeight;
     return { val, y };
   });

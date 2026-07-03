@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
       websites.slice(0, 5).map((w) => {
         let insight = "";
         if (w.status === "pending_update") {
-          insight = `${w.packageName ? `${w.packageName} package` : "ဝဘ်ဆိုက်"} အပ်ဒိတ်လုပ်ရန် ကျန်ရှိနေပါသည် — developer ခန့်အပ်ပြီး အပ်ဒိတ်လုပ်ငန်းစဉ်ကို စတင်ပါ။`;
+          insight = `${w.packageName ? `${w.packageName} package` : "Website"} Update လုပ်ရန် ကျန်ရှိနေပါသည် — developer ခန့်အပ်ပြီး အပ်ဒိတ်လုပ်ငန်းစဉ်ကို စတင်ပါ။`;
         } else {
           insight = `အပ်ဒိတ်လုပ်ငန်းစဉ် လုပ်ဆောင်နေဆဲဖြစ်သည် — ပြီးစီးမည့်အချိန်ဇယားကို အတည်ပြုရန် developer နှင့် ဆက်သွယ်ပါ။`;
         }
