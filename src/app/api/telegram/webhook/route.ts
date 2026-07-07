@@ -282,6 +282,7 @@ async function upsertSender(from: {
 const MAIN_MENU_BUTTONS = {
   inline_keyboard: [
     [{ text: "🤖 Q&A မေးမြန်း", callback_data: "mode:qa" }, { text: "📈 Sales & Marketing", callback_data: "mode:demand_report" }],
+    [{ text: "🎧 Customer Service", callback_data: "mode:customer_service" }, { text: "💳 Finance Transactions", callback_data: "mode:finance_transactions" }],
     [{ text: "⏰ Project Expiry", callback_data: "mode:project_expiry" }, { text: "🔧 Website Update", callback_data: "mode:website_update" }],
     [{ text: "📊 Business KPI Report", callback_data: "mode:business_report" }],
   ],
@@ -305,46 +306,133 @@ const KEYBOARD_LINKED = {
   one_time_keyboard: false
 };
 
-const FORMAT_INLINE_BUTTONS = {
-  inline_keyboard: [
-    [
-      { text: "📋 Template ကူးယူရန်", callback_data: "action:template" },
-      { text: "↩️ Main Menu", callback_data: "action:menu" }
-    ]
-  ]
-};
+function getPlainTemplateTextForMode(mode: string | null | undefined): string {
+  switch (mode) {
+    case 'customer_service':
+      return [
+        "Date:",
+        "Customer Name:",
+        "Company:",
+        "Phone:",
+        "Email:",
+        "Purchased Service:",
+        "Purchase Amount MMK:",
+        "Status:",
+        "Next Follow Up:",
+        "CSAT:",
+        "Last Contact Note:",
+      ].join("\n");
+    case 'project_expiry':
+      return [
+        "Date:",
+        "Check List:",
+        "URL:",
+        "Package:",
+        "Domain Provider:",
+        "Hosting Provider:",
+        "Hosting Remark:",
+        "Domain Expiration Date:",
+        "Hosting Expiration Date:",
+        "Remark:",
+      ].join("\n");
+    case 'website_update':
+      return [
+        "Date:",
+        "Project Name:",
+        "Website Link:",
+        "Business Type:",
+        "Package Name:",
+        "Status:",
+        "Remark:",
+      ].join("\n");
+    case 'finance_transactions':
+      return [
+        "Date:",
+        "Description:",
+        "Category:",
+        "Type:",
+        "Amount (MMK):",
+        "Payment Method:",
+        "Reference:",
+        "Notes:",
+      ].join("\n");
+    case 'business_report':
+      return [
+        "Date:",
+        "Reporter:",
+        "Marketing Budget:",
+        "Marketing Channel:",
+        "Calls Made:",
+        "Appointments Made:",
+        "Appointments Kept:",
+        "New Leads:",
+        "Total Sales Amount:",
+        "Closed Deals:",
+        "Pending Deals:",
+        "Notes:",
+      ].join("\n");
+    case 'demand_report':
+    default:
+      return [
+        "Date:",
+        "Customer Name:",
+        "Phone:",
+        "Company:",
+        "Service Name:",
+        "Service Amount:",
+        "Service Qty:",
+        "Follow-up Date:",
+        "Note:",
+      ].join("\n");
+  }
+}
+
+function buildFormatInlineButtons(mode: string | null | undefined) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "📋 Template ကူးယူရန်", copy_text: { text: getPlainTemplateTextForMode(mode) } },
+        { text: "↩️ Main Menu", callback_data: "action:menu" },
+      ],
+    ],
+  };
+}
 
 function buildMainMenuButtons(allowedDepartments: string[]) {
   const buttons: { text: string; callback_data: string }[][] = [];
   const row1: { text: string; callback_data: string }[] = [];
   const row2: { text: string; callback_data: string }[] = [];
   const row3: { text: string; callback_data: string }[] = [];
+  const row4: { text: string; callback_data: string }[] = [];
 
   if (allowedDepartments.includes('QA')) {
     row1.push({ text: "🤖 Q&A မေးမြန်း", callback_data: "mode:qa" });
   }
   if (allowedDepartments.includes('Sales')) {
     row1.push({ text: "📈 Sales & Marketing", callback_data: "mode:demand_report" });
+    row2.push({ text: "🎧 Customer Service", callback_data: "mode:customer_service" });
   }
   if (allowedDepartments.includes('IT')) {
-    row2.push({ text: "⏰ Project Expiry", callback_data: "mode:project_expiry" });
-    row2.push({ text: "🔧 Website Update", callback_data: "mode:website_update" });
+    row3.push({ text: "⏰ Project Expiry", callback_data: "mode:project_expiry" });
+    row3.push({ text: "🔧 Website Update", callback_data: "mode:website_update" });
   }
   if (allowedDepartments.includes('Finance')) {
-    row3.push({ text: "📊 Business KPI Report", callback_data: "mode:business_report" });
+    row2.push({ text: "💳 Finance Transactions", callback_data: "mode:finance_transactions" });
+    row4.push({ text: "📊 Business KPI Report", callback_data: "mode:business_report" });
   }
 
   if (row1.length) buttons.push(row1);
   if (row2.length) buttons.push(row2);
   if (row3.length) buttons.push(row3);
+  if (row4.length) buttons.push(row4);
 
   return { inline_keyboard: buttons };
 }
 
 function getDepartmentForMode(mode: string): string | null {
-  if (mode === 'demand_report') return 'Sales';
+  if (mode === 'demand_report' || mode === 'customer_service') return 'Sales';
   if (mode === 'project_expiry' || mode === 'website_update') return 'IT';
-  if (mode === 'business_report') return 'Finance';
+  if (mode === 'business_report' || mode === 'finance_transactions') return 'Finance';
   if (mode === 'qa') return 'QA';
   return null;
 }
@@ -476,7 +564,6 @@ function getFormatPrompt(): string {
     "📈 ━━━━━━━━━━━━━━━━━━━━",
     "",
     "  <b>Sales & Marketing Mode</b>",
-    "  <i>June sample file columns နှင့် ကိုက်ညီသော အရောင်း/စျေးကွက်မှတ်တမ်း</i>",
     "",
     "━━━━━━━━━━━━━━━━━━━━",
     "",
@@ -497,6 +584,37 @@ function getFormatPrompt(): string {
     "</pre>",
     "",
     "💡 <i>မလိုအပ်သော စာကြောင်းများ ချန်လှပ်ထားနိုင်ပါသည်</i>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+  ].join("\n");
+}
+
+function getCustomerServiceFormatPrompt(): string {
+  return [
+    "🎧 ━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "  <b>Customer Service Mode</b>",
+    "  <i>ဝယ်ယူပြီး customer service / follow-up မှတ်တမ်း</i>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "📄 စာသား <b>သို့မဟုတ်</b> Excel/CSV",
+    "    ဖိုင်ကို တိုက်ရိုက်ပို့နိုင်ပါသည်",
+    "",
+    "📝 <b>စာသားပုံစံ:</b>",
+    "<pre>",
+    "• Date: [YYYY-MM-DD]",
+    "• Customer Name: [နာမည်]",
+    "• Company: [ကုမ္ပဏီအမည်]",
+    "• Phone: [ဖုန်းနံပါတ်]",
+    "• Email: [email]",
+    "• Purchased Service: [ဝယ်ယူထားသော ဝန်ဆောင်မှု]",
+    "• Purchase Amount MMK: [ငွေ]",
+    "• Status: [active / pending / closed]",
+    "• Next Follow Up: [YYYY-MM-DD]",
+    "• CSAT: [အမှတ်]",
+    "• Last Contact Note: [မှတ်ချက်]",
+    "</pre>",
     "",
     "━━━━━━━━━━━━━━━━━━━━",
   ].join("\n");
@@ -559,6 +677,34 @@ function getWebsiteUpdateFormatPrompt(): string {
   ].join("\n");
 }
 
+function getFinanceTransactionsFormatPrompt(): string {
+  return [
+    "💳 ━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "  <b>Finance Transactions Mode</b>",
+    "  <i>ငွေဝင်/ငွေထွက် မှတ်တမ်း</i>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "📄 စာသား <b>သို့မဟုတ်</b> Excel/CSV",
+    "    ဖိုင်ကို တိုက်ရိုက်ပို့နိုင်ပါသည်",
+    "",
+    "📝 <b>စာသားပုံစံ:</b>",
+    "<pre>",
+    "• Date: [YYYY-MM-DD]",
+    "• Description: [အကြောင်းအရာ]",
+    "• Category: [အမျိုးအစား]",
+    "• Type: [Income / Expense]",
+    "• Amount (MMK): [ငွေပမာဏ]",
+    "• Payment Method: [Cash / Bank / KPay]",
+    "• Reference: [ရည်ညွှန်းနံပါတ်]",
+    "• Notes: [မှတ်ချက်]",
+    "</pre>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+  ].join("\n");
+}
+
 function getBusinessReportFormatPrompt(): string {
   return [
     "📊 ━━━━━━━━━━━━━━━━━━━━",
@@ -594,10 +740,14 @@ function getBusinessReportFormatPrompt(): string {
 // Return the full format guide for whatever report mode the sender is in.
 function getFormatPromptForMode(mode: string | null | undefined): string {
   switch (mode) {
+    case 'customer_service':
+      return getCustomerServiceFormatPrompt();
     case 'project_expiry':
       return getProjectExpiryFormatPrompt();
     case 'website_update':
       return getWebsiteUpdateFormatPrompt();
+    case 'finance_transactions':
+      return getFinanceTransactionsFormatPrompt();
     case 'business_report':
       return getBusinessReportFormatPrompt();
     case 'demand_report':
@@ -626,10 +776,14 @@ function getFormatHintFooter(mode: string): string {
   let fields = "";
   if (mode === 'demand_report') {
     fields = "Date • Customer Name • Phone • Company • Service Name • Service Amount • Service Qty • Follow-up Date • Note";
+  } else if (mode === 'customer_service') {
+    fields = "Date • Customer Name • Company • Phone • Email • Purchased Service • Purchase Amount MMK • Status • Next Follow Up • CSAT • Last Contact Note";
   } else if (mode === 'project_expiry') {
     fields = "Date • Check List • URL • Package • Domain/Hosting • Remark";
   } else if (mode === 'website_update') {
     fields = "Date • Project Name • Website Link • Business Type • Package Name • Status • Remark";
+  } else if (mode === 'finance_transactions') {
+    fields = "Date • Description • Category • Type • Amount (MMK) • Payment Method • Reference • Notes";
   } else if (mode === 'business_report') {
     fields = "Date • Reporter • Marketing Budget • Marketing Channel • Calls • Appointments • Leads • Sales • Deals • Notes";
   }
@@ -725,6 +879,18 @@ function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
         "",
         "<code>• Date: \n• Customer Name: \n• Phone: \n• Company: \n• Service Name: \n• Service Amount: \n• Service Qty: \n• Follow-up Date: \n• Note: </code>",
       ].join("\n");
+    case 'customer_service':
+      return [
+        "🎧 ━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "  <b>Customer Service Template</b>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
+        "",
+        "<code>• Date: \n• Customer Name: \n• Company: \n• Phone: \n• Email: \n• Purchased Service: \n• Purchase Amount MMK: \n• Status: \n• Next Follow Up: \n• CSAT: \n• Last Contact Note: </code>",
+      ].join("\n");
     case 'project_expiry':
       return [
         "⏰ ━━━━━━━━━━━━━━━━━━━━",
@@ -748,6 +914,18 @@ function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
         "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
         "",
         "<code>• Date: \n• Project Name: \n• Website Link: \n• Business Type: \n• Package Name: \n• Status: \n• Remark: </code>",
+      ].join("\n");
+    case 'finance_transactions':
+      return [
+        "💳 ━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "  <b>Finance Transactions Template</b>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
+        "",
+        "<code>• Date: \n• Description: \n• Category: \n• Type: \n• Amount (MMK): \n• Payment Method: \n• Reference: \n• Notes: </code>",
       ].join("\n");
     case 'business_report':
       return [
@@ -1126,14 +1304,19 @@ function buildDemandImportPreviewText({
   fileName,
   parsedDemands,
   errors,
+  activeMode,
 }: {
   fileName: string;
   parsedDemands: ParsedDemandRecord[];
   errors: string[];
+  activeMode?: string;
 }) {
   const summary = summarizeParsedDemands(parsedDemands);
+  const title = activeMode === 'customer_service'
+    ? "🎧 <b>Customer Service file preview</b>"
+    : "📄 <b>Sales & Marketing file preview</b>";
   const parts = [
-    "📄 <b>Sales & Marketing file preview</b>",
+    title,
     "━━━━━━━━━━━━━━━━━━━━",
     `📎 <b>File:</b> <code>${escapeHtml(fileName)}</code>`,
     `📊 <b>Rows detected:</b> <code>${summary.total}</code>`,
@@ -1256,6 +1439,7 @@ async function processFileInBackground({
   telegramMessageId,
   progressMsgId,
   receivedAtMyanmar,
+  activeMode,
 }: {
   downloadedBuffer: Buffer;
   fileInfo: { fileName: string; mimeType: string; fileSize: number };
@@ -1266,6 +1450,7 @@ async function processFileInBackground({
   telegramMessageId: string;
   progressMsgId: number | null;
   receivedAtMyanmar: Date;
+  activeMode: string;
 }) {
   const errors: string[] = [];
   try {
@@ -1521,6 +1706,7 @@ async function processFileInBackground({
       fileName: fileInfo.fileName,
       parsedDemands,
       errors,
+      activeMode,
     });
     const replyMarkup = {
       inline_keyboard: [
@@ -1838,7 +2024,25 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: getFormatPrompt(),
-            replyMarkup: FORMAT_INLINE_BUTTONS,
+            replyMarkup: buildFormatInlineButtons('demand_report'),
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      if (data === 'mode:customer_service') {
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: { activeReportType: 'customer_service' },
+        });
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Customer Service selected');
+        if (chatId && messageId) {
+          await editTelegramMessage({
+            botToken: settings?.botToken,
+            chatId: BigInt(chatId),
+            messageId,
+            text: getCustomerServiceFormatPrompt(),
+            replyMarkup: buildFormatInlineButtons('customer_service'),
           });
         }
         return NextResponse.json({ ok: true });
@@ -1856,7 +2060,7 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: getProjectExpiryFormatPrompt(),
-            replyMarkup: FORMAT_INLINE_BUTTONS,
+            replyMarkup: buildFormatInlineButtons('project_expiry'),
           });
         }
         return NextResponse.json({ ok: true });
@@ -1874,7 +2078,25 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: getWebsiteUpdateFormatPrompt(),
-            replyMarkup: FORMAT_INLINE_BUTTONS,
+            replyMarkup: buildFormatInlineButtons('website_update'),
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      if (data === 'mode:finance_transactions') {
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: { activeReportType: 'finance_transactions' },
+        });
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Finance Transactions selected');
+        if (chatId && messageId) {
+          await editTelegramMessage({
+            botToken: settings?.botToken,
+            chatId: BigInt(chatId),
+            messageId,
+            text: getFinanceTransactionsFormatPrompt(),
+            replyMarkup: buildFormatInlineButtons('finance_transactions'),
           });
         }
         return NextResponse.json({ ok: true });
@@ -1892,7 +2114,7 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: getBusinessReportFormatPrompt(),
-            replyMarkup: FORMAT_INLINE_BUTTONS,
+            replyMarkup: buildFormatInlineButtons('business_report'),
           });
         }
         return NextResponse.json({ ok: true });
@@ -2293,18 +2515,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (message.text === '/format') {
-      const showButtons = ['project_expiry', 'website_update', 'business_report', 'demand_report'].includes(sender.activeReportType);
+      const showButtons = ['project_expiry', 'website_update', 'business_report', 'demand_report', 'customer_service', 'finance_transactions'].includes(sender.activeReportType);
       await sendTelegramMessage({
         botToken: settings?.botToken,
         chatId,
         text: getFormatPromptForMode(sender.activeReportType),
-        ...(showButtons ? { replyMarkup: FORMAT_INLINE_BUTTONS } : {}),
+        ...(showButtons ? { replyMarkup: buildFormatInlineButtons(sender.activeReportType) } : {}),
       });
       return NextResponse.json({ ok: true });
     }
 
     if (message.text === '/template') {
-      const showButtons = ['project_expiry', 'website_update', 'business_report', 'demand_report'].includes(sender.activeReportType);
+      const showButtons = ['project_expiry', 'website_update', 'business_report', 'demand_report', 'customer_service', 'finance_transactions'].includes(sender.activeReportType);
       await sendTelegramMessage({
         botToken: settings?.botToken,
         chatId,
@@ -2480,6 +2702,7 @@ export async function POST(req: NextRequest) {
             telegramMessageId: telegramMessage.id,
             progressMsgId,
             receivedAtMyanmar,
+            activeMode,
           });
         } catch (err) {
           console.error("Unhandled error in processFileInBackground:", err);
@@ -2666,6 +2889,67 @@ export async function POST(req: NextRequest) {
       if (parsedUpdate.status) confirmParts.push(`⚙️ <b>အခြေအနေ:</b> <code>${parsedUpdate.status}</code>`);
       if (parsedUpdate.remark) confirmParts.push(`📝 <b>မှတ်ချက်:</b> <i>${parsedUpdate.remark}</i>`);
       confirmParts.push(getFormatHintFooter('website_update'));
+
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId,
+        text: confirmParts.join('\n'),
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // ─── Finance Transactions Mode (text) ─────────────────────────────
+    if (activeMode === 'finance_transactions') {
+      const telegramMessage = await createTelegramMessageIfNew({
+        telegramMsgId: message.message_id,
+        text: message.text,
+        senderId: sender.id,
+        chatId,
+        chatTitle: message.chat.title || null,
+        receivedAt,
+      });
+      if (!telegramMessage) {
+        return NextResponse.json({ ok: true });
+      }
+
+      const parsed = await parseBusinessReportWithGemini({
+        text: message.text,
+        apiKey: settings?.geminiApiKey,
+        model: settings?.geminiModel,
+        fallbackDate: receivedAtMyanmar,
+      });
+
+      await prisma.businessReport.create({
+        data: {
+          reportDate: parsed.reportDate,
+          reporterName: parsed.reporterName || sender.displayName,
+          senderId: sender.id,
+          messageId: telegramMessage.id,
+          marketingBudget: parsed.marketingBudget,
+          marketingChannel: parsed.marketingChannel,
+          callsMade: parsed.callsMade,
+          appointmentsMade: parsed.appointmentsMade,
+          appointmentsKept: parsed.appointmentsKept,
+          newLeads: parsed.newLeads,
+          totalDemandCount: parsed.totalDemandCount,
+          totalSalesAmount: parsed.totalSalesAmount,
+          closedDeals: parsed.closedDeals,
+          pendingDeals: parsed.pendingDeals,
+          notes: parsed.notes,
+        },
+      });
+
+      const confirmParts = [
+        "✅ <b>ဘဏ္ဍာရေး ငွေသွင်း/ငွေထုတ် မှတ်တမ်း တင်သွင်းခြင်း အောင်မြင်ပါသည်</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        `📅 <b>ရက်စွဲ:</b> <code>${parsed.reportDate.toISOString().slice(0, 10)}</code>`,
+      ];
+      if (parsed.marketingChannel) confirmParts.push(`🏷️ <b>Category/Channel:</b> <code>${parsed.marketingChannel}</code>`);
+      if (parsed.marketingBudget != null) confirmParts.push(`💸 <b>Expense:</b> <code>${parsed.marketingBudget.toLocaleString()} Ks</code>`);
+      if (parsed.totalSalesAmount != null) confirmParts.push(`💰 <b>Income:</b> <code>${parsed.totalSalesAmount.toLocaleString()} Ks</code>`);
+      if (parsed.notes) confirmParts.push(`📝 <b>Notes:</b> <i>${parsed.notes}</i>`);
+      confirmParts.push(getFormatHintFooter('finance_transactions'));
 
       await sendTelegramMessage({
         botToken: settings?.botToken,
@@ -2900,7 +3184,7 @@ export async function POST(req: NextRequest) {
         data: {
           customerId: customer.id,
           senderId: sender.id,
-          action: 'demand_report',
+          action: activeMode === 'customer_service' ? 'customer_service' : 'demand_report',
           description: parsedDemand.note,
           createdAt: parsedDemand.createdAt || receivedAtMyanmar || undefined,
         },
@@ -2938,7 +3222,9 @@ export async function POST(req: NextRequest) {
 
     const recordDate = parsedDemand.createdAt || receivedAtMyanmar;
     const confirmParts = [
-      "✅ <b>ဝယ်လိုအားမှတ်တမ်းတင်ခြင်း အောင်မြင်ပါသည်</b>",
+      activeMode === 'customer_service'
+        ? "✅ <b>Customer Service မှတ်တမ်းတင်ခြင်း အောင်မြင်ပါသည်</b>"
+        : "✅ <b>Sales & Marketing မှတ်တမ်းတင်ခြင်း အောင်မြင်ပါသည်</b>",
       "━━━━━━━━━━━━━━━━━━━━",
       `📅 <b>ရက်စွဲ:</b> <code>${recordDate.toISOString().slice(0, 10)}</code>`,
       ""
@@ -2965,7 +3251,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    confirmParts.push(getFormatHintFooter('demand_report'));
+    confirmParts.push(getFormatHintFooter(activeMode === 'customer_service' ? 'customer_service' : 'demand_report'));
 
     await sendTelegramMessage({
       botToken: settings?.botToken,

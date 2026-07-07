@@ -3,9 +3,11 @@ import * as XLSX from "xlsx";
 
 export const REPORT_TYPES = {
   DEMAND_REPORT: "demand_report",
+  CUSTOMER_SERVICE: "customer_service",
   QA: "qa",
   PROJECT_EXPIRY: "project_expiry",
   WEBSITE_UPDATE: "website_update",
+  FINANCE_TRANSACTIONS: "finance_transactions",
   BUSINESS_REPORT: "business_report",
 } as const;
 
@@ -14,9 +16,11 @@ export type ReportType = (typeof REPORT_TYPES)[keyof typeof REPORT_TYPES];
 export function isReportType(value: string | null | undefined): value is ReportType {
   return (
     value === REPORT_TYPES.DEMAND_REPORT ||
+    value === REPORT_TYPES.CUSTOMER_SERVICE ||
     value === REPORT_TYPES.QA ||
     value === REPORT_TYPES.PROJECT_EXPIRY ||
     value === REPORT_TYPES.WEBSITE_UPDATE ||
+    value === REPORT_TYPES.FINANCE_TRANSACTIONS ||
     value === REPORT_TYPES.BUSINESS_REPORT
   );
 }
