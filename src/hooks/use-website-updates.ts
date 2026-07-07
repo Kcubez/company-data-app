@@ -47,7 +47,7 @@ export function useDeleteAllWebsiteUpdates() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => websiteUpdatesApi.deleteAll(),
+    mutationFn: (params: { dateFrom?: string; dateTo?: string } = {}) => websiteUpdatesApi.deleteAll(params),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: websiteUpdatesKeys.all });
       toast.success(`Deleted ${res.deleted} website record(s)`);

@@ -160,7 +160,7 @@ function ProjectExpiriesPageContent() {
   const deleteWebsiteAllMutation = useDeleteAllWebsiteUpdates();
 
   const handleWebsiteDeleteAll = async () => {
-    await deleteWebsiteAllMutation.mutateAsync();
+    await deleteWebsiteAllMutation.mutateAsync({ dateFrom, dateTo });
     setShowWebsiteDeleteConfirm(false);
   };
 
@@ -184,7 +184,7 @@ function ProjectExpiriesPageContent() {
   const updateMutation = useUpdateProjectExpiry();
 
   const handleDeleteAll = async () => {
-    await deleteAllMutation.mutateAsync();
+    await deleteAllMutation.mutateAsync({ dateFrom, dateTo });
     setShowDeleteConfirm(false);
   };
 
@@ -1284,12 +1284,12 @@ function ProjectExpiriesPageContent() {
       {/* Delete All Confirmation Modal */}
       {showDeleteConfirm && (
         <DestructiveConfirmDialog
-          title="Delete all project expiries?"
+          title="Delete project expiries for selected period?"
           description={
             <>
               This permanently removes{' '}
               <span className="font-semibold text-red-700 dark:text-red-300">
-                all {stats.total} project record(s)
+                {stats.total} project record(s) from {dateFrom} to {dateTo}
               </span>
               . This action cannot be undone. Use it only when clearing test data before re-uploading.
             </>
@@ -1374,12 +1374,12 @@ function ProjectExpiriesPageContent() {
       {/* Delete All Website Records Confirmation Modal */}
       {showWebsiteDeleteConfirm && (
         <DestructiveConfirmDialog
-          title="Delete all website records?"
+          title="Delete website records for selected period?"
           description={
             <>
               This permanently removes{' '}
               <span className="font-semibold text-red-700 dark:text-red-300">
-                all {websiteStats.total} website record(s)
+                {websiteStats.total} website record(s) from {dateFrom} to {dateTo}
               </span>
               . This action cannot be undone. Use it only when clearing test data before re-uploading.
             </>

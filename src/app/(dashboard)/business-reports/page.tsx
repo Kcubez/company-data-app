@@ -518,12 +518,12 @@ function BusinessReportsPageContent() {
       {/* ─── Delete All Confirm ───────────────────────────────────────── */}
       {showDeleteConfirm && (
         <DestructiveConfirmDialog
-          title="Delete all business report records?"
+          title="Delete business report records for selected period?"
           description={
             <>
               This permanently removes{' '}
               <span className="font-semibold text-red-700 dark:text-red-300">
-                all {total} business report record(s)
+                {total} business report record(s) from {dateFrom} to {dateTo}
               </span>
               . This action cannot be undone. Use it only when clearing test data before re-uploading.
             </>
@@ -531,7 +531,7 @@ function BusinessReportsPageContent() {
           isPending={deleteAllMutation.isPending}
           onCancel={() => setShowDeleteConfirm(false)}
           onConfirm={async () => {
-            await deleteAllMutation.mutateAsync();
+            await deleteAllMutation.mutateAsync({ dateFrom, dateTo });
             setShowDeleteConfirm(false);
           }}
         />

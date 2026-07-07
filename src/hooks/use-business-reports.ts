@@ -67,7 +67,7 @@ export function useDeleteBusinessReport() {
 export function useDeleteAllBusinessReports() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => businessReportsApi.deleteAll(),
+    mutationFn: (params: { dateFrom?: string; dateTo?: string } = {}) => businessReportsApi.deleteAll(params),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: businessReportKeys.all });
       toast.success(`Deleted ${data.deleted} records`);

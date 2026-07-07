@@ -110,10 +110,19 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
+  const { searchParams } = req.nextUrl;
+  const dateFrom = searchParams.get("dateFrom") || "";
+  const dateTo = searchParams.get("dateTo") || "";
   const isAdmin = session.user.role === "admin";
-  const where = isAdmin
+  const where: any = isAdmin
     ? {}
     : { OR: [{ uploadedByUserId: session.user.id }, { uploadedByUserId: null }] };
+
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+    if (dateTo) where.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+  }
 
   const result = await prisma.websiteUpdate.deleteMany({ where });
   return NextResponse.json({ success: true, deleted: result.count });

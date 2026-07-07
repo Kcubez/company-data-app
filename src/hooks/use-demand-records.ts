@@ -32,7 +32,7 @@ export function useDeleteAllDemandRecords() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => demandRecordsApi.deleteAll(),
+    mutationFn: (params: { dateFrom?: string; dateTo?: string } = {}) => demandRecordsApi.deleteAll(params),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["demand-records"] });
       queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });

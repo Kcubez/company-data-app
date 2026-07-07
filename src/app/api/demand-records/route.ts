@@ -110,7 +110,18 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await prisma.demandRecord.deleteMany({});
+  const { searchParams } = req.nextUrl;
+  const dateFrom = searchParams.get("dateFrom") || "";
+  const dateTo = searchParams.get("dateTo") || "";
+  const where: Record<string, any> = {};
+
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+    if (dateTo) where.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+  }
+
+  const result = await prisma.demandRecord.deleteMany({ where });
   return NextResponse.json({ success: true, count: result.count });
 }
 

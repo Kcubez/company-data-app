@@ -44,10 +44,19 @@ export async function DELETE(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
+  const { searchParams } = new URL(req.url);
+  const dateFrom = searchParams.get("dateFrom") || undefined;
+  const dateTo = searchParams.get("dateTo") || undefined;
   const isAdmin = session.user.role === "admin";
-  const where = isAdmin
+  const where: any = isAdmin
     ? {}
     : { OR: [{ uploadedByUserId: session.user.id }, { uploadedByUserId: null }] };
+
+  if (dateFrom || dateTo) {
+    where.reportDate = {};
+    if (dateFrom) where.reportDate.gte = new Date(dateFrom);
+    if (dateTo) where.reportDate.lte = new Date(dateTo + "T23:59:59.999Z");
+  }
 
   const result = await prisma.businessReport.deleteMany({ where });
   return NextResponse.json({ success: true, deleted: result.count });

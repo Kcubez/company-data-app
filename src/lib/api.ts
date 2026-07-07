@@ -6,6 +6,19 @@ type RequestOptions = {
   headers?: Record<string, string>;
 };
 
+type DateRangeParams = {
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+function buildDateRangeQuery(params: DateRangeParams = {}) {
+  const searchParams = new URLSearchParams();
+  if (params.dateFrom) searchParams.set("dateFrom", params.dateFrom);
+  if (params.dateTo) searchParams.set("dateTo", params.dateTo);
+  const qs = searchParams.toString();
+  return qs ? `?${qs}` : "";
+}
+
 async function request<T>(url: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, headers = {} } = options;
 
@@ -310,8 +323,8 @@ export const demandRecordsApi = {
     return request<DemandRecordStats>(`/api/demand-records/stats${qs ? `?${qs}` : ""}`);
   },
   recommendations: () => request<AIRecommendationsResponse>("/api/demand-records/recommendations"),
-  deleteAll: () =>
-    request<{ success: boolean; count: number }>("/api/demand-records", { method: "DELETE" }),
+  deleteAll: (params: DateRangeParams = {}) =>
+    request<{ success: boolean; count: number }>(`/api/demand-records${buildDateRangeQuery(params)}`, { method: "DELETE" }),
   importFile: async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -394,8 +407,8 @@ export const projectExpiriesApi = {
     request<ProjectExpiration>(`/api/project-expiries/${id}`, { method: "PATCH", body: data }),
   recommendations: () =>
     request<{ recommendations: ProjectExpiryRecommendation[] }>("/api/project-expiries/recommendations"),
-  deleteAll: () =>
-    request<{ success: boolean; deleted: number }>("/api/project-expiries", { method: "DELETE" }),
+  deleteAll: (params: DateRangeParams = {}) =>
+    request<{ success: boolean; deleted: number }>(`/api/project-expiries${buildDateRangeQuery(params)}`, { method: "DELETE" }),
 };
 
 export type ProjectExpiryRecommendation = {
@@ -457,8 +470,8 @@ export const websiteUpdatesApi = {
     request<{ success: boolean }>(`/api/website-updates/${id}`, { method: "DELETE" }),
   recommendations: () =>
     request<{ recommendations: WebsiteUpdateRecommendation[] }>("/api/website-updates/recommendations"),
-  deleteAll: () =>
-    request<{ success: boolean; deleted: number }>("/api/website-updates", { method: "DELETE" }),
+  deleteAll: (params: DateRangeParams = {}) =>
+    request<{ success: boolean; deleted: number }>(`/api/website-updates${buildDateRangeQuery(params)}`, { method: "DELETE" }),
 };
 
 export type WebsiteUpdateRecommendation = {
@@ -687,6 +700,6 @@ export const businessReportsApi = {
   },
   recommendations: () =>
     request<{ recommendations: BusinessReportRecommendation[] }>("/api/business-reports/recommendations"),
-  deleteAll: () =>
-    request<{ success: boolean; deleted: number }>("/api/business-reports", { method: "DELETE" }),
+  deleteAll: (params: DateRangeParams = {}) =>
+    request<{ success: boolean; deleted: number }>(`/api/business-reports${buildDateRangeQuery(params)}`, { method: "DELETE" }),
 };

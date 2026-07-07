@@ -320,7 +320,7 @@ function DemandSheetsPageContent() {
   ) || [];
 
   const handleDeleteAll = async () => {
-    await deleteAllMutation.mutateAsync();
+    await deleteAllMutation.mutateAsync({ dateFrom, dateTo });
     setShowDeleteConfirm(false);
   };
 
@@ -1242,12 +1242,12 @@ function DemandSheetsPageContent() {
       {/* Delete All Confirmation Modal */}
       {showDeleteConfirm && (
         <DestructiveConfirmDialog
-          title="Delete all demand records?"
+          title="Delete demand records for selected period?"
           description={
             <>
               This permanently removes{' '}
               <span className="font-semibold text-red-700 dark:text-red-300">
-                all {data?.total || 0} demand record(s)
+                {data?.total || 0} demand record(s) from {dateFrom} to {dateTo}
               </span>
               . Linked customers are kept, but their demand links are cleared. This action cannot be undone.
             </>

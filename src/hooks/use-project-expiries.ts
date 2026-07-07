@@ -31,7 +31,7 @@ export function useDeleteAllProjectExpiries() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => projectExpiriesApi.deleteAll(),
+    mutationFn: (params: { dateFrom?: string; dateTo?: string } = {}) => projectExpiriesApi.deleteAll(params),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: projectExpiriesKeys.all });
       toast.success(`Deleted ${res.deleted} project record(s)`);
