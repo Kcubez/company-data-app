@@ -153,11 +153,12 @@ function parseDemandSheet(text: string): Partial<ParsedDemandRecord> {
   ]);
 
   const serviceName = extractString(text, [
+    /(?:service[\s_-]?name|purchased[\s_-]?service)\s*[:=-]?\s*([^\n,\-]+?)(?:\s*[-:]|\s+amount|\s+qty|$)/i,
     /(?:service|package|product)\s*[:=-]?\s*([^\n,\-]+?)(?:\s*[-:]|\s+amount|\s+qty|$)/i,
   ]);
 
   const serviceAmount = extractNumber(text, [
-    /(?:service.*?amount|package.*?amount|amount|revenue|income|price)\s*[:=-]?\s*([\d,]+\.?\d*)/i,
+    /(?:service.*?amount|purchase.*?amount|package.*?amount|amount|revenue|income|price)\s*[:=-]?\s*([\d,]+\.?\d*)/i,
   ]);
 
   const serviceQty = extractNumber(text, [
@@ -165,7 +166,7 @@ function parseDemandSheet(text: string): Partial<ParsedDemandRecord> {
   ]);
 
   const followUpDateStr = extractString(text, [
-    /(?:follow[\s-]?up[\s-]?date|next[\s-]?fu[\s-]?date|next[\s-]?fu|fu[\s-]?date)\s*[:=-]?\s*([^\n]+)/i,
+    /(?:follow[\s-]?up[\s-]?date|next[\s-]?follow[\s-]?up|next[\s-]?fu[\s-]?date|next[\s-]?fu|fu[\s-]?date)\s*[:=-]?\s*([^\n]+)/i,
   ]);
 
   let followUpDate: Date | null = null;
@@ -489,15 +490,15 @@ The spreadsheet has these headers: [${headerList}].
 The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
 
 For each data row, extract:
-- "customerName": extract the client/customer name from name columns (e.g. 'FB account Name', 'FB account', 'Client Name', etc.).
-- "customerPhone": extract the client/customer phone number (e.g. from 'Phone', 'ph', 'Phone no', etc.).
-- "customerCompany": extract the client/customer business/company name or shop name (e.g. from 'Business', 'Company', 'Shop', etc.).
-- "note": extract/summarize remarks, chat/call notes, and business description (e.g. from 'Remarks', 'Call notes / Chat notes', 'Hp & Fu & No Potential', etc.).
-- "serviceName": extract service or package name (must be classified into one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other").
-- "serviceAmount": extract package price/amount.
-- "serviceQty": quantity of services/items.
-- "followUpDate": extract next follow-up date in YYYY-MM-DD format (e.g. from 'Next FU Date').
-- "createdAt": extract record/row date in YYYY-MM-DD format (e.g. from 'Date' or similar date columns).
+- "customerName": extract the client/customer name from 'Customer Name'.
+- "customerPhone": extract the client/customer phone number from 'Phone'.
+- "customerCompany": extract the client/customer business/company name from 'Company'.
+- "note": extract/summarize remarks from 'Note' or 'Last Contact Note'. Include CSAT/email/status details in the note if present.
+- "serviceName": extract service or package name from 'Service Name' or 'Purchased Service' (must be classified into one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other").
+- "serviceAmount": extract package price/amount from 'Service Amount' or 'Purchase Amount MMK'.
+- "serviceQty": quantity of services/items from 'Service Qty'.
+- "followUpDate": extract next follow-up date in YYYY-MM-DD format from 'Follow-up Date' or 'Next Follow Up'.
+- "createdAt": extract record/row date in YYYY-MM-DD format from 'Date'. If the date cell is empty, set it to null so the importer can use today's date.
 
 Return your response in this exact format:
 
@@ -941,6 +942,8 @@ export type ParsedWebsiteUpdate = {
   url: string | null;
   businessType: string | null;
   packageName: string | null;
+  status?: string | null;
+  remark?: string | null;
   createdAt?: Date | null;
 };
 
@@ -980,13 +983,28 @@ export function parseWebsiteUpdateSpreadsheet(fileBuffer: Buffer): ParsedWebsite
       const url = String(getVal(['Website Link', 'Website_Link', 'URL', 'Link']) || '').trim() || null;
       const businessType = String(getVal(['Business Type', 'Business_Type', 'Business']) || '').trim() || null;
       const packageName = String(getVal(['Package', 'Package Name', 'Package_Name']) || '').trim() || null;
+      const rawStatus = String(getVal(['Status', 'Update Status']) || '').trim();
+      const remark = String(getVal(['Remark', 'Remarks', 'Note', 'Notes']) || '').trim() || null;
       const createdAt = parseExcelDate(getVal(['Date', 'Record Date', 'Report Date'])) || null;
+      let status: string | null = rawStatus || null;
+      if (rawStatus) {
+        const lower = rawStatus.toLowerCase().replace(/[\s_]/g, '');
+        if (lower.includes('progress') || lower.includes('inprog')) {
+          status = 'in_progress';
+        } else if (lower.includes('pending') || lower.includes('pend')) {
+          status = 'pending_update';
+        } else if (lower.includes('up') || lower.includes('done') || lower.includes('complete')) {
+          status = 'up_to_date';
+        }
+      }
 
       allRecords.push({
         name,
         url,
         businessType,
         packageName,
+        status,
+        remark,
         createdAt,
       });
     }

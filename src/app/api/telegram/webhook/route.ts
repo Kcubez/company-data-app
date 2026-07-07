@@ -281,9 +281,9 @@ async function upsertSender(from: {
 
 const MAIN_MENU_BUTTONS = {
   inline_keyboard: [
-    [{ text: "🤖 Q&A မေးမြန်း", callback_data: "mode:qa" }, { text: "📋 Demand Sheet", callback_data: "mode:demand_report" }],
+    [{ text: "🤖 Q&A မေးမြန်း", callback_data: "mode:qa" }, { text: "📈 Sales & Marketing", callback_data: "mode:demand_report" }],
     [{ text: "⏰ Project Expiry", callback_data: "mode:project_expiry" }, { text: "🔧 Website Update", callback_data: "mode:website_update" }],
-    [{ text: "📊 Business Report", callback_data: "mode:business_report" }],
+    [{ text: "📊 Business KPI Report", callback_data: "mode:business_report" }],
   ],
 };
 
@@ -324,14 +324,14 @@ function buildMainMenuButtons(allowedDepartments: string[]) {
     row1.push({ text: "🤖 Q&A မေးမြန်း", callback_data: "mode:qa" });
   }
   if (allowedDepartments.includes('Sales')) {
-    row1.push({ text: "📋 Demand Sheet", callback_data: "mode:demand_report" });
+    row1.push({ text: "📈 Sales & Marketing", callback_data: "mode:demand_report" });
   }
   if (allowedDepartments.includes('IT')) {
     row2.push({ text: "⏰ Project Expiry", callback_data: "mode:project_expiry" });
     row2.push({ text: "🔧 Website Update", callback_data: "mode:website_update" });
   }
   if (allowedDepartments.includes('Finance')) {
-    row3.push({ text: "📊 Business Report", callback_data: "mode:business_report" });
+    row3.push({ text: "📊 Business KPI Report", callback_data: "mode:business_report" });
   }
 
   if (row1.length) buttons.push(row1);
@@ -473,10 +473,10 @@ async function sendPickModePrompt(
 
 function getFormatPrompt(): string {
   return [
-    "📋 ━━━━━━━━━━━━━━━━━━━━",
+    "📈 ━━━━━━━━━━━━━━━━━━━━",
     "",
-    "  <b>Demand Sheet Mode</b>",
-    "  <i>ဝယ်လိုအားနှင့် အရောင်းမှတ်တမ်း</i>",
+    "  <b>Sales & Marketing Mode</b>",
+    "  <i>June sample file columns နှင့် ကိုက်ညီသော အရောင်း/စျေးကွက်မှတ်တမ်း</i>",
     "",
     "━━━━━━━━━━━━━━━━━━━━",
     "",
@@ -486,11 +486,12 @@ function getFormatPrompt(): string {
     "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
     "• Date: [YYYY-MM-DD]",
-    "• Customer: [နာမည်]",
+    "• Customer Name: [နာမည်]",
     "• Phone: [ဖုန်းနံပါတ်]",
-    "• Business: [ကုမ္ပဏီအမည်]",
-    "• Service: [ဝန်ဆောင်မှု] - Amount: [ငွေ]",
-    "• Status: [new|contacted|quoted|pending|closed]",
+    "• Company: [ကုမ္ပဏီအမည်]",
+    "• Service Name: [ဝန်ဆောင်မှု]",
+    "• Service Amount: [ငွေ]",
+    "• Service Qty: [အရေအတွက်]",
     "• Follow-up Date: [YYYY-MM-DD]",
     "• Note: [မှတ်ချက်]",
     "</pre>",
@@ -516,13 +517,14 @@ function getProjectExpiryFormatPrompt(): string {
     "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
     "• Date: [YYYY-MM-DD]",
-    "• Project: [Project အမည်]",
+    "• Check List: [Project/Checklist အမည်]",
     "• URL: [Website URL]",
     "• Package: [Package]",
     "• Domain Provider: [Provider]",
     "• Hosting Provider: [Provider]",
-    "• Domain Expiry: [YYYY-MM-DD]",
-    "• Hosting Expiry: [YYYY-MM-DD]",
+    "• Hosting Remark: [မှတ်ချက်]",
+    "• Domain Expiration Date: [YYYY-MM-DD]",
+    "• Hosting Expiration Date: [YYYY-MM-DD]",
     "• Remark: [မှတ်ချက်]",
     "</pre>",
     "",
@@ -545,10 +547,10 @@ function getWebsiteUpdateFormatPrompt(): string {
     "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
     "• Date: [YYYY-MM-DD]",
-    "• Name: [ဝဘ်ဆိုဒ်/လုပ်ငန်း]",
-    "• URL: [Website URL]",
-    "• Business: [လုပ်ငန်းအမျိုးအစား]",
-    "• Package: [Package]",
+    "• Project Name: [Project/Website အမည်]",
+    "• Website Link: [Website URL]",
+    "• Business Type: [လုပ်ငန်းအမျိုးအစား]",
+    "• Package Name: [Package]",
     "• Status: [up_to_date / pending / in_progress]",
     "• Remark: [မှတ်ချက်]",
     "</pre>",
@@ -561,7 +563,7 @@ function getBusinessReportFormatPrompt(): string {
   return [
     "📊 ━━━━━━━━━━━━━━━━━━━━",
     "",
-    "  <b>Business Report Mode</b>",
+    "  <b>Business KPI Report Mode</b>",
     "  <i>လုပ်ငန်းလှုပ်ရှားမှု အစီရင်ခံစာ</i>",
     "",
     "━━━━━━━━━━━━━━━━━━━━",
@@ -572,14 +574,16 @@ function getBusinessReportFormatPrompt(): string {
     "📝 <b>စာသားပုံစံ:</b>",
     "<pre>",
     "• Date: [YYYY-MM-DD]",
+    "• Reporter: [အမည်]",
     "• Marketing Budget: [Ks]",
-    "• Channel: [FB / Google / Referral]",
+    "• Marketing Channel: [FB / Google / Referral]",
     "• Calls Made: [ဦးရေ]",
     "• Appointments Made: [ဦးရေ]",
     "• Appointments Kept: [ဦးရေ]",
     "• New Leads: [ဦးရေ]",
-    "• Total Sales: [Ks]",
+    "• Total Sales Amount: [Ks]",
     "• Closed Deals: [ဦးရေ]",
+    "• Pending Deals: [ဦးရေ]",
     "• Notes: [မှတ်ချက်]",
     "</pre>",
     "",
@@ -621,13 +625,13 @@ function getFormatPromptForMode(mode: string | null | undefined): string {
 function getFormatHintFooter(mode: string): string {
   let fields = "";
   if (mode === 'demand_report') {
-    fields = "Date • Customer • Phone • Service • Amount • Status • Follow-up";
+    fields = "Date • Customer Name • Phone • Company • Service Name • Service Amount • Service Qty • Follow-up Date • Note";
   } else if (mode === 'project_expiry') {
-    fields = "Date • Project • URL • Domain/Hosting Expiry";
+    fields = "Date • Check List • URL • Package • Domain/Hosting • Remark";
   } else if (mode === 'website_update') {
-    fields = "Date • Name • URL • Package • Status";
+    fields = "Date • Project Name • Website Link • Business Type • Package Name • Status • Remark";
   } else if (mode === 'business_report') {
-    fields = "Date • Budget • Calls • Appointments • Sales";
+    fields = "Date • Reporter • Marketing Budget • Marketing Channel • Calls • Appointments • Leads • Sales • Deals • Notes";
   }
   return [
     "",
@@ -711,15 +715,15 @@ function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
   switch (mode) {
     case 'demand_report':
       return [
-        "📋 ━━━━━━━━━━━━━━━━━━━━",
+        "📈 ━━━━━━━━━━━━━━━━━━━━",
         "",
-        "  <b>Demand Sheet Template</b>",
+        "  <b>Sales & Marketing Template</b>",
         "",
         "━━━━━━━━━━━━━━━━━━━━",
         "",
         "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
         "",
-        "<code>• Date: \n• Customer: \n• Phone: \n• Business: \n• Service:  - Amount: \n• Status: \n• Follow-up Date: \n• Note: </code>",
+        "<code>• Date: \n• Customer Name: \n• Phone: \n• Company: \n• Service Name: \n• Service Amount: \n• Service Qty: \n• Follow-up Date: \n• Note: </code>",
       ].join("\n");
     case 'project_expiry':
       return [
@@ -731,7 +735,7 @@ function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
         "",
         "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
         "",
-        "<code>• Date: \n• Project: \n• URL: \n• Package: \n• Domain Provider: \n• Hosting Provider: \n• Domain Expiry: \n• Hosting Expiry: \n• Remark: </code>",
+        "<code>• Date: \n• Check List: \n• URL: \n• Package: \n• Domain Provider: \n• Hosting Provider: \n• Hosting Remark: \n• Domain Expiration Date: \n• Hosting Expiration Date: \n• Remark: </code>",
       ].join("\n");
     case 'website_update':
       return [
@@ -743,19 +747,19 @@ function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
         "",
         "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
         "",
-        "<code>• Date: \n• Name: \n• URL: \n• Business: \n• Package: \n• Status: \n• Remark: </code>",
+        "<code>• Date: \n• Project Name: \n• Website Link: \n• Business Type: \n• Package Name: \n• Status: \n• Remark: </code>",
       ].join("\n");
     case 'business_report':
       return [
         "📊 ━━━━━━━━━━━━━━━━━━━━",
         "",
-        "  <b>Business Report Template</b>",
+        "  <b>Business KPI Report Template</b>",
         "",
         "━━━━━━━━━━━━━━━━━━━━",
         "",
         "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
         "",
-        "<code>• Date: \n• Marketing Budget: \n• Channel: \n• Calls Made: \n• Appointments Made: \n• Appointments Kept: \n• New Leads: \n• Total Sales: \n• Closed Deals: \n• Notes: </code>",
+        "<code>• Date: \n• Reporter: \n• Marketing Budget: \n• Marketing Channel: \n• Calls Made: \n• Appointments Made: \n• Appointments Kept: \n• New Leads: \n• Total Sales Amount: \n• Closed Deals: \n• Pending Deals: \n• Notes: </code>",
       ].join("\n");
     default:
       return [
@@ -1129,7 +1133,7 @@ function buildDemandImportPreviewText({
 }) {
   const summary = summarizeParsedDemands(parsedDemands);
   const parts = [
-    "📄 <b>Demand file preview</b>",
+    "📄 <b>Sales & Marketing file preview</b>",
     "━━━━━━━━━━━━━━━━━━━━",
     `📎 <b>File:</b> <code>${escapeHtml(fileName)}</code>`,
     `📊 <b>Rows detected:</b> <code>${summary.total}</code>`,
@@ -1352,9 +1356,8 @@ async function processFileInBackground({
         url: rec.url,
         businessType: rec.businessType,
         packageName: rec.packageName,
-        // Imported sites start as "pending_update" — a freshly uploaded list is a
-        // backlog of sites to work through. Team marks each "up_to_date" once done.
-        status: "pending_update",
+        status: rec.status || "pending_update",
+        remark: rec.remark,
         createdAt: rec.createdAt || receivedAtMyanmar,
       }));
 
@@ -1659,7 +1662,7 @@ export async function POST(req: NextRequest) {
               chatId: BigInt(chatId),
               messageId,
               text: [
-                "⌛ <b>Demand file preview expired</b>",
+                "⌛ <b>Sales & Marketing file preview expired</b>",
                 "━━━━━━━━━━━━━━━━━━━━",
                 `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
                 "ကျေးဇူးပြု၍ file ကိုပြန်ပို့ပြီး preview အသစ်လုပ်ပါ။",
@@ -1734,7 +1737,7 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: [
-              "✅ <b>Demand file imported</b>",
+              "✅ <b>Sales & Marketing file imported</b>",
               "━━━━━━━━━━━━━━━━━━━━",
               `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
               `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
@@ -1744,7 +1747,7 @@ export async function POST(req: NextRequest) {
               `• Medium: <b>${summary.medium}</b>`,
               `• Low: <b>${summary.low}</b>`,
               "",
-              "Dashboard မှာ Demand Sheets ကိုကြည့်ပြီး priority/action တွေကို ဆက်လုပ်နိုင်ပါပြီ။",
+              "Dashboard မှာ Sales & Marketing records ကိုကြည့်ပြီး priority/action တွေကို ဆက်လုပ်နိုင်ပါပြီ။",
             ].join("\n"),
           });
         }
@@ -1774,7 +1777,7 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: [
-              "❌ <b>Demand file import cancelled</b>",
+              "❌ <b>Sales & Marketing file import cancelled</b>",
               "━━━━━━━━━━━━━━━━━━━━",
               `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
               "Dashboard ထဲသို့ data မသွင်းထားပါ။ File ကိုပြင်ပြီးပြန်ပို့နိုင်ပါသည်။",
@@ -1828,7 +1831,7 @@ export async function POST(req: NextRequest) {
           where: { id: sender.id },
           data: { activeReportType: 'demand_report' },
         });
-        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Demand Sheet selected');
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Sales & Marketing selected');
         if (chatId && messageId) {
           await editTelegramMessage({
             botToken: settings?.botToken,
@@ -1882,7 +1885,7 @@ export async function POST(req: NextRequest) {
           where: { id: sender.id },
           data: { activeReportType: 'business_report' },
         });
-        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Business Report selected');
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Business KPI Report selected');
         if (chatId && messageId) {
           await editTelegramMessage({
             botToken: settings?.botToken,
@@ -2382,8 +2385,8 @@ export async function POST(req: NextRequest) {
           text: [
             "⚠️ <b>Q&A မေးမြန်းခြင်း ကဏ္ဍတွင် ဖိုင်များ ပေးပို့၍ မရနိုင်ပါ။</b>",
             "",
-            "အစီရင်ခံစာ (Report) တင်သွင်းရန်အတွက် Demand Sheet Mode သို့ ပြောင်းလဲပေးပို့ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
-            "/start သို့မဟုတ် /menu ကိုနှိပ်၍ 'Demand Sheet' ကို ရွေးချယ်နိုင်ပါသည်။",
+            "အစီရင်ခံစာ (Report) တင်သွင်းရန်အတွက် သက်ဆိုင်ရာ mode သို့ ပြောင်းလဲပေးပို့ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။",
+            "/start သို့မဟုတ် /menu ကိုနှိပ်၍ သက်ဆိုင်ရာ mode ကို ရွေးချယ်နိုင်ပါသည်။",
           ].join("\n"),
         });
         return NextResponse.json({ ok: true });

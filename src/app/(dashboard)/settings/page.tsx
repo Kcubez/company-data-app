@@ -426,9 +426,9 @@ function TelegramSendersList() {
   };
 
   const DEPARTMENTS = [
-    { key: 'Sales', label: 'Sales & Marketing', desc: 'Allows submitting Demand Sheets' },
+    { key: 'Sales', label: 'Sales & Marketing', desc: 'Allows submitting Sales & Marketing records' },
     { key: 'IT', label: 'IT & Projects', desc: 'Allows submitting Project Expiries & Website Updates' },
-    { key: 'Finance', label: 'Finance & Operations', desc: 'Allows submitting Business Reports' },
+    { key: 'Finance', label: 'Finance & Operations', desc: 'Allows submitting Finance records and Business KPI reports' },
     { key: 'QA', label: 'QA / Support', desc: 'Allows asking questions to Gemini AI chatbot' },
   ];
 

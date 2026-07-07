@@ -25,11 +25,11 @@ const FIELD_ALIASES: Array<{ field: keyof ParsedDemandRecord; aliases: string[] 
   },
   {
     field: "serviceName",
-    aliases: ["service", "package", "product", "plan", "interest", "requirement", "လိုချင်", "ဝန်ဆောင်မှု"],
+    aliases: ["service", "service name", "purchased service", "package", "product", "plan", "interest", "requirement", "လိုချင်", "ဝန်ဆောင်မှု"],
   },
   {
     field: "serviceAmount",
-    aliases: ["amount", "price", "revenue", "income", "budget", "service amount", "total", "ငွေပမာဏ", "စျေး"],
+    aliases: ["amount", "price", "revenue", "income", "budget", "service amount", "purchase amount", "purchase amount mmk", "total", "ငွေပမာဏ", "စျေး"],
   },
   {
     field: "serviceQty",
@@ -37,7 +37,7 @@ const FIELD_ALIASES: Array<{ field: keyof ParsedDemandRecord; aliases: string[] 
   },
   {
     field: "followUpDate",
-    aliases: ["follow up", "follow-up", "follow up date", "next fu", "next fu date", "fu date", "next action date"],
+    aliases: ["follow up", "follow-up", "follow up date", "next follow up", "next fu", "next fu date", "fu date", "next action date"],
   },
   {
     field: "status",
@@ -45,7 +45,7 @@ const FIELD_ALIASES: Array<{ field: keyof ParsedDemandRecord; aliases: string[] 
   },
   {
     field: "note",
-    aliases: ["note", "notes", "remark", "remarks", "call notes", "chat notes", "summary", "description", "မှတ်စု"],
+    aliases: ["note", "notes", "last contact note", "remark", "remarks", "call notes", "chat notes", "summary", "description", "မှတ်စု"],
   },
   {
     field: "createdAt",
