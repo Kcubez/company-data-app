@@ -562,8 +562,8 @@ export const customersApi = {
     request<Customer>(`/api/customers/${id}`, { method: "PATCH", body: data }),
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/customers/${id}`, { method: "DELETE" }),
-  deleteAll: () =>
-    request<{ success: boolean; count: number }>("/api/customers", { method: "DELETE" }),
+  deleteAll: (params: DateRangeParams = {}) =>
+    request<{ success: boolean; count: number }>(`/api/customers${buildDateRangeQuery(params)}`, { method: "DELETE" }),
 };
 
 // ─── Page-specific Stats API ─────────────────────────────────────────────────

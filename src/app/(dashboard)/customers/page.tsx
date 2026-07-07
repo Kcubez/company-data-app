@@ -273,7 +273,7 @@ function CustomersPageContent() {
   });
 
   const deleteAllCustomers = useMutation({
-    mutationFn: () => customersApi.deleteAll(),
+    mutationFn: (params: { dateFrom?: string; dateTo?: string }) => customersApi.deleteAll(params),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast.success(`${res.count} customer${res.count === 1 ? '' : 's'} deleted`);
@@ -482,9 +482,9 @@ function CustomersPageContent() {
             </button>
           <AlertDialogContent className="bg-card border-border text-foreground">
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete all customers?</AlertDialogTitle>
+              <AlertDialogTitle>Delete customers for selected period?</AlertDialogTitle>
               <AlertDialogDescription className="text-muted-foreground">
-                This will permanently delete <strong>{customerData?.total ?? 0}</strong> customer(s) and all related activity history.
+                This will permanently delete <strong>{customerData?.total ?? 0}</strong> customer(s) from <strong>{dateFrom}</strong> to <strong>{dateTo}</strong> and all related activity history.
                 Associated demand records will keep their data but lose the customer link.
                 This action cannot be undone.
               </AlertDialogDescription>
@@ -492,7 +492,7 @@ function CustomersPageContent() {
             <AlertDialogFooter>
               <AlertDialogCancel className="border-border text-foreground">Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => deleteAllCustomers.mutate()}
+                onClick={() => deleteAllCustomers.mutate({ dateFrom, dateTo })}
                 disabled={deleteAllCustomers.isPending}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >

@@ -162,7 +162,7 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ customer });
 }
 
-// DELETE /api/customers — remove ALL customers (any signed-in user).
+// DELETE /api/customers — remove customers matching the selected period.
 // CustomerActivity cascades; DemandRecord.customerId is set to null (see schema).
 export async function DELETE(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -170,7 +170,23 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await prisma.customer.deleteMany({});
+  const { searchParams } = req.nextUrl;
+  const dateFrom = searchParams.get("dateFrom") || "";
+  const dateTo = searchParams.get("dateTo") || "";
+  const where: Record<string, any> = {};
+
+  if (dateFrom || dateTo) {
+    const rangeCondition: Record<string, Date> = {};
+    if (dateFrom) rangeCondition.gte = new Date(dateFrom);
+    if (dateTo) rangeCondition.lte = new Date(dateTo + "T23:59:59.999Z");
+
+    where.OR = [
+      { createdAt: rangeCondition },
+      { demandRecords: { some: { createdAt: rangeCondition } } },
+      { activities: { some: { createdAt: rangeCondition } } },
+    ];
+  }
+
+  const result = await prisma.customer.deleteMany({ where });
   return NextResponse.json({ success: true, count: result.count });
 }
-
