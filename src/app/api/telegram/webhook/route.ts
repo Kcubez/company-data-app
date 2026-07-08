@@ -2485,27 +2485,30 @@ export async function POST(req: NextRequest) {
         if (preRegistered) {
           const displayName = displayNameFromTelegramUser(from);
           if (preRegistered.id !== sender.id) {
-            // Delete the temporary record to free the unique telegramUserId constraint
-            await prisma.telegramSender.delete({
-              where: { id: sender.id },
-            });
-
-            // Update the pre-registered record with the telegram user details!
+            // Merge the pre-registered record's permissions INTO the active
+            // Telegram sender (which already owns messages, demand records, etc.)
+            // then delete the empty placeholder to avoid duplicates.
             await prisma.telegramSender.update({
-              where: { id: preRegistered.id },
+              where: { id: sender.id },
               data: {
-                telegramUserId: sender.telegramUserId,
                 firstName: from.first_name || "Unknown",
                 lastName: from.last_name || null,
                 username: from.username || null,
                 displayName: displayName || "Unknown",
                 userId: settings.userId,
+                email: sender.email,
                 isVerified: true,
-                isAuthorized: true, // Pre-authorized by business owner!
+                isAuthorized: preRegistered.isAuthorized,
+                allowedDepartments: preRegistered.allowedDepartments,
                 activeReportType: 'none',
                 otpCode: null,
                 otpExpiresAt: null,
               },
+            });
+
+            // Delete the empty pre-registered placeholder (no linked data)
+            await prisma.telegramSender.delete({
+              where: { id: preRegistered.id },
             });
           } else {
             // They were already on the same record (e.g. re-linking)
