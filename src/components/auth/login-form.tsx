@@ -30,7 +30,7 @@ export function LoginForm({ requiredRole }: { requiredRole?: 'admin' | 'user' })
   const isAdmin = requiredRole === 'admin';
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') ?? '/dashboard';
+  const callbackUrl = searchParams.get('callbackUrl') ?? (isAdmin ? '/admin/users' : '/dashboard');
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState('');
 

@@ -419,7 +419,7 @@ export async function GET(req: NextRequest) {
     quantity: r.serviceQty,
     status: r.status,
     note: r.note,
-    senderName: r.sender.displayName,
+    senderName: r.sender?.displayName || "System / Uploaded",
     followUpDate: r.followUpDate ? r.followUpDate.toISOString() : null,
   }));
   const dueTodayFollowUps = dueTodayRecords.length;
@@ -446,7 +446,7 @@ export async function GET(req: NextRequest) {
     quantity: r.serviceQty,
     status: r.status,
     note: r.note,
-    senderName: r.sender.displayName,
+    senderName: r.sender?.displayName || "System / Uploaded",
     followUpDate: r.followUpDate ? r.followUpDate.toISOString() : null,
   }));
 

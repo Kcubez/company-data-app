@@ -1041,7 +1041,7 @@ async function buildQAContext(ownerUserId: string | null): Promise<string> {
     for (const r of demandRecords) {
       const fields = [
         `Date: ${r.createdAt.toISOString().slice(0, 10)}`,
-        `Reporter: ${r.sender.displayName}`,
+        `Reporter: ${r.sender?.displayName || "System / Uploaded"}`,
         r.customerName ? `Customer: ${r.customerName}` : 'Customer: —',
         r.serviceName ? `Service: ${r.serviceName} (Amount: ${r.serviceAmount ?? '—'}, Qty: ${r.serviceQty ?? '—'})` : 'Service: —',
         r.followUpDate ? `Follow-up Date: ${r.followUpDate.toISOString().slice(0, 10)}` : 'Follow-up: —',
