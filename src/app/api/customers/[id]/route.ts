@@ -120,13 +120,24 @@ export async function DELETE(
 
   const { id } = await params;
 
-  const result = await prisma.customer.updateMany({
+  const customer = await prisma.customer.findFirst({
     where: { id, ...customerOwnedByUserOrAdmin(session), ...notDeleted },
-    data: softDeleteData(session.user.id),
   });
-  if (result.count === 0) {
+
+  if (!customer) {
     return NextResponse.json({ message: "Customer not found or access denied" }, { status: 404 });
   }
+
+  await prisma.$transaction([
+    prisma.customer.update({
+      where: { id },
+      data: softDeleteData(session.user.id),
+    }),
+    prisma.demandRecord.updateMany({
+      where: { customerId: id, ...notDeleted },
+      data: softDeleteData(session.user.id, "Deleted along with customer"),
+    }),
+  ]);
 
   return NextResponse.json({ success: true });
 }

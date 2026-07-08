@@ -211,8 +211,14 @@ async function restoreRecord(
   const data = restoreData(userId);
 
   switch (type) {
-    case "customers":
-      return prisma.customer.updateMany({ where, data });
+    case "customers": {
+      const result = await prisma.customer.updateMany({ where, data });
+      await prisma.demandRecord.updateMany({
+        where: { customerId: id, deletedReason: "Deleted along with customer" },
+        data: restoreData(userId),
+      });
+      return result;
+    }
     case "sales":
       return prisma.demandRecord.updateMany({ where, data });
     case "finance":
@@ -228,8 +234,12 @@ async function permanentlyDeleteRecord(type: TrashType, id: string) {
   const where = { id, ...onlyDeleted };
 
   switch (type) {
-    case "customers":
+    case "customers": {
+      await prisma.demandRecord.deleteMany({
+        where: { customerId: id, deletedReason: "Deleted along with customer" },
+      });
       return prisma.customer.deleteMany({ where });
+    }
     case "sales":
       return prisma.demandRecord.deleteMany({ where });
     case "finance":
@@ -287,7 +297,103 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { type, id, action } = body;
+  const { type, id, action, dateFrom, dateTo } = body;
+
+  if (action === "restore_all") {
+    if (!isAdminSession(session)) {
+      return NextResponse.json({ message: "Admin access required to restore records" }, { status: 403 });
+    }
+
+    const selectedType: TrashType | null = isTrashType(type) ? type : null;
+    const types: readonly TrashType[] = selectedType ? [selectedType] : trashTypes;
+    const data = restoreData(session.user.id);
+    const dateQuery = dateRangeWhere(dateFrom, dateTo);
+
+    await prisma.$transaction(
+      types.map((t) => {
+        const where = { ...scopedWhere(t, session), ...onlyDeleted, ...dateQuery };
+        switch (t) {
+          case "customers":
+            return prisma.customer.updateMany({ where, data });
+          case "sales":
+            return prisma.demandRecord.updateMany({ where, data });
+          case "finance":
+            return prisma.businessReport.updateMany({ where, data });
+          case "projects":
+            return prisma.projectExpiration.updateMany({ where, data });
+          case "websites":
+            return prisma.websiteUpdate.updateMany({ where, data });
+        }
+      })
+    );
+
+    await prisma.restoreRequest.updateMany({
+      where: {
+        recordType: selectedType ? selectedType : { in: [...trashTypes] },
+        status: "pending",
+      },
+      data: {
+        status: "approved",
+        resolvedAt: new Date(),
+        resolvedByUserId: session.user.id,
+      },
+    });
+
+    return NextResponse.json({ success: true, message: "All matching records restored" });
+  }
+
+  if (action === "request_restore_all") {
+    const selectedType: TrashType | null = isTrashType(type) ? type : null;
+    const types: readonly TrashType[] = selectedType ? [selectedType] : trashTypes;
+    const dateQuery = dateRangeWhere(dateFrom, dateTo);
+
+    for (const t of types) {
+      const where = { ...scopedWhere(t, session), ...onlyDeleted, ...dateQuery };
+      let records: { id: string }[] = [];
+      switch (t) {
+        case "customers":
+          records = await prisma.customer.findMany({ where, select: { id: true } });
+          break;
+        case "sales":
+          records = await prisma.demandRecord.findMany({ where, select: { id: true } });
+          break;
+        case "finance":
+          records = await prisma.businessReport.findMany({ where, select: { id: true } });
+          break;
+        case "projects":
+          records = await prisma.projectExpiration.findMany({ where, select: { id: true } });
+          break;
+        case "websites":
+          records = await prisma.websiteUpdate.findMany({ where, select: { id: true } });
+          break;
+      }
+
+      if (records.length > 0) {
+        await Promise.all(
+          records.map((r) =>
+            prisma.restoreRequest.upsert({
+              where: {
+                recordType_recordId_requestedByUserId_status: {
+                  recordType: t,
+                  recordId: r.id,
+                  requestedByUserId: session.user.id,
+                  status: "pending",
+                },
+              },
+              update: { updatedAt: new Date() },
+              create: {
+                recordType: t,
+                recordId: r.id,
+                requestedByUserId: session.user.id,
+              },
+            })
+          )
+        );
+      }
+    }
+
+    return NextResponse.json({ success: true, message: "Restore request sent for all matching records" });
+  }
 
   if (!isTrashType(type) || typeof id !== "string") {
     return NextResponse.json({ message: "Invalid trash record" }, { status: 400 });
@@ -341,7 +447,49 @@ export async function DELETE(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const { type, id, confirmation } = body;
+  const { type, id, confirmation, action, dateFrom, dateTo } = body;
+
+  if (action === "delete_all") {
+    if (confirmation !== "PERMANENT DELETE ALL") {
+      return NextResponse.json({ message: "Type PERMANENT DELETE ALL to confirm" }, { status: 400 });
+    }
+
+    const selectedType: TrashType | null = isTrashType(type) ? type : null;
+    const types: readonly TrashType[] = selectedType ? [selectedType] : trashTypes;
+    const dateQuery = dateRangeWhere(dateFrom, dateTo);
+
+    await prisma.$transaction(
+      types.map((t) => {
+        const where = { ...scopedWhere(t, session), ...onlyDeleted, ...dateQuery };
+        switch (t) {
+          case "customers":
+            return prisma.customer.deleteMany({ where });
+          case "sales":
+            return prisma.demandRecord.deleteMany({ where });
+          case "finance":
+            return prisma.businessReport.deleteMany({ where });
+          case "projects":
+            return prisma.projectExpiration.deleteMany({ where });
+          case "websites":
+            return prisma.websiteUpdate.deleteMany({ where });
+        }
+      })
+    );
+
+    await prisma.restoreRequest.updateMany({
+      where: {
+        recordType: selectedType ? selectedType : { in: [...trashTypes] },
+        status: "pending",
+      },
+      data: {
+        status: "rejected",
+        resolvedAt: new Date(),
+        resolvedByUserId: session.user.id,
+      },
+    });
+
+    return NextResponse.json({ success: true, message: "All matching records permanently deleted" });
+  }
 
   if (!isTrashType(type) || typeof id !== "string") {
     return NextResponse.json({ message: "Invalid trash record" }, { status: 400 });

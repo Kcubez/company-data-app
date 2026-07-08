@@ -61,6 +61,7 @@ export function useDeleteBusinessReport() {
       removeListItemQueryData(queryClient, businessReportKeys.all, "records", id);
       queryClient.invalidateQueries({ queryKey: businessReportKeys.all });
       queryClient.invalidateQueries({ queryKey: ["trash"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       toast.success("Record deleted");
     },
     onError: () => toast.error("Failed to delete record"),
@@ -75,6 +76,7 @@ export function useDeleteAllBusinessReports() {
       clearListQueryData(queryClient, businessReportKeys.all, "records");
       queryClient.invalidateQueries({ queryKey: businessReportKeys.all });
       queryClient.invalidateQueries({ queryKey: ["trash"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       toast.success(`Deleted ${data.deleted} records`);
     },
     onError: () => toast.error("Failed to delete records"),

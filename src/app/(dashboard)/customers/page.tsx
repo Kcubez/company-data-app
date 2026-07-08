@@ -271,6 +271,9 @@ function CustomersPageContent() {
       removeListItemQueryData(queryClient, ['customers'], 'customers', id);
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['trash'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['demand-records'] });
+      queryClient.invalidateQueries({ queryKey: ['demand-record-stats'] });
       toast.success('Customer moved to Trash');
     },
     onError: (err: Error) => {
@@ -284,6 +287,9 @@ function CustomersPageContent() {
       clearListQueryData(queryClient, ['customers'], 'customers');
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['trash'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['demand-records'] });
+      queryClient.invalidateQueries({ queryKey: ['demand-record-stats'] });
       toast.success(`${res.count} customer${res.count === 1 ? '' : 's'} moved to Trash`);
       setIsDeleteAllOpen(false);
       setDeleteAllConfirmText('');

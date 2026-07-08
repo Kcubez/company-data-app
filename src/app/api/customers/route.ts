@@ -208,9 +208,22 @@ export async function DELETE(req: NextRequest) {
     ];
   }
 
-  const result = await prisma.customer.updateMany({
+  const customers = await prisma.customer.findMany({
     where,
-    data: softDeleteData(session.user.id, searchParams.get("reason")),
+    select: { id: true },
   });
-  return NextResponse.json({ success: true, count: result.count });
+  const customerIds = customers.map((c) => c.id);
+
+  const result = await prisma.$transaction([
+    prisma.customer.updateMany({
+      where,
+      data: softDeleteData(session.user.id, searchParams.get("reason")),
+    }),
+    prisma.demandRecord.updateMany({
+      where: { customerId: { in: customerIds }, ...notDeleted },
+      data: softDeleteData(session.user.id, "Deleted along with customer"),
+    }),
+  ]);
+
+  return NextResponse.json({ success: true, count: result[0].count });
 }

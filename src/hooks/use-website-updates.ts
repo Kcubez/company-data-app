@@ -53,6 +53,7 @@ export function useDeleteAllWebsiteUpdates() {
       clearListQueryData(queryClient, websiteUpdatesKeys.all, "records");
       queryClient.invalidateQueries({ queryKey: websiteUpdatesKeys.all });
       queryClient.invalidateQueries({ queryKey: ["trash"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       toast.success(`Deleted ${res.deleted} website record(s)`);
     },
     onError: (error: any) => {

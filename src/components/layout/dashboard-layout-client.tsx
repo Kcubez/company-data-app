@@ -78,7 +78,6 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       items: [
         { title: 'Data Feed', href: '/data-feed', icon: MessageSquare, adminOnly: false },
         { title: 'Trash', href: '/trash', icon: Trash2, adminOnly: false },
-        { title: 'Trash', href: '/trash', icon: Trash2, adminOnly: true },
       ],
     },
     {
@@ -86,6 +85,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       items: [
         { title: 'Settings', href: '/settings', icon: Settings, adminOnly: false },
         { title: 'User Management', href: '/admin/users', icon: Users, adminOnly: true },
+        { title: 'Trash', href: '/trash', icon: Trash2, adminOnly: true },
       ],
     },
   ];

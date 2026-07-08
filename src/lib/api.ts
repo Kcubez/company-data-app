@@ -634,10 +634,25 @@ export const trashApi = {
       method: "POST",
       body: { type, id, action: "request_restore" },
     }),
+  requestRestoreAll: (type: string, dateFrom?: string, dateTo?: string) =>
+    request<{ success: boolean; message: string }>("/api/trash", {
+      method: "POST",
+      body: { type, action: "request_restore_all", dateFrom, dateTo },
+    }),
   permanentDelete: (type: TrashRecordType, id: string, confirmation: "PERMANENT DELETE") =>
     request<{ success: boolean; deleted: number }>("/api/trash", {
       method: "DELETE",
       body: { type, id, confirmation },
+    }),
+  restoreAll: (type: string, dateFrom?: string, dateTo?: string) =>
+    request<{ success: boolean; message: string }>("/api/trash", {
+      method: "POST",
+      body: { type, action: "restore_all", dateFrom, dateTo },
+    }),
+  permanentDeleteAll: (type: string, confirmation: "PERMANENT DELETE ALL", dateFrom?: string, dateTo?: string) =>
+    request<{ success: boolean; message: string }>("/api/trash", {
+      method: "DELETE",
+      body: { type, action: "delete_all", confirmation, dateFrom, dateTo },
     }),
 };
 

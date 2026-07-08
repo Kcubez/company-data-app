@@ -36,6 +36,8 @@ import {
   Bot,
   MessageSquare,
   UserCheck,
+  Building2,
+  Database,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -411,9 +413,9 @@ export default function AdminUsersPage() {
             <TableHeader className="bg-muted/50 hover:bg-muted/50">
               <TableRow className="border-border">
                 <TableHead className="text-muted-foreground font-medium">User</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Telegram Bot</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Workspace Stats</TableHead>
                 <TableHead className="text-muted-foreground font-medium">Role</TableHead>
-                <TableHead className="text-muted-foreground font-medium">Bot</TableHead>
-                <TableHead className="text-muted-foreground font-medium">Workspace</TableHead>
                 <TableHead className="text-muted-foreground font-medium">Status</TableHead>
                 <TableHead className="text-muted-foreground font-medium whitespace-nowrap">
                   Joined Date
@@ -489,37 +491,58 @@ export default function AdminUsersPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="grid min-w-48 gap-1 text-xs text-muted-foreground">
-                        <div className="flex items-center justify-between gap-3">
-                          <span>Staff</span>
-                          <span className="font-semibold text-foreground">
-                            {user.businessOwner?.authorizedStaffCount ?? 0}/{user.businessOwner?.staffCount ?? 0}
-                          </span>
+                      {user.role === 'admin' ? (
+                        <span className="text-xs text-muted-foreground italic font-normal">N/A (Platform Admin)</span>
+                      ) : (
+                        <div className="flex flex-col gap-1.5 max-w-[200px] py-1">
+                          <div className="flex items-center justify-between text-xs border-b border-slate-100 dark:border-slate-800/40 pb-1">
+                            <span className="flex items-center gap-1.5 text-muted-foreground">
+                              <Users className="w-3.5 h-3.5 text-sky-500" />
+                              Staff
+                            </span>
+                            <Badge variant="secondary" className="px-1.5 py-0 bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-400 font-bold border-0 text-[10px]">
+                              {user.businessOwner?.authorizedStaffCount ?? 0}/{user.businessOwner?.staffCount ?? 0}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between text-xs border-b border-slate-100 dark:border-slate-800/40 pb-1">
+                            <span className="flex items-center gap-1.5 text-muted-foreground">
+                              <UserCheck className="w-3.5 h-3.5 text-indigo-500" />
+                              Customers
+                            </span>
+                            <Badge variant="secondary" className="px-1.5 py-0 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 font-bold border-0 text-[10px]">
+                              {user.businessOwner?.customerCount ?? 0}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1.5 text-muted-foreground">
+                              <Database className="w-3.5 h-3.5 text-emerald-500" />
+                              Records
+                            </span>
+                            <Badge variant="secondary" className="px-1.5 py-0 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 font-bold border-0 text-[10px]">
+                              {((user.businessOwner?.demandRecordCount ?? 0) + (user.businessOwner?.businessReportCount ?? 0)).toLocaleString()}
+                            </Badge>
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span>Customers</span>
-                          <span className="font-semibold text-foreground">{user.businessOwner?.customerCount ?? 0}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span>Records</span>
-                          <span className="font-semibold text-foreground">
-                            {((user.businessOwner?.demandRecordCount ?? 0) + (user.businessOwner?.businessReportCount ?? 0)).toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
+                      )}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={user.role === 'admin' ? 'default' : 'secondary'}
-                        className={
-                          user.role === 'admin'
-                            ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/30'
-                            : 'bg-muted text-muted-foreground'
-                        }
-                      >
-                        {user.role === 'admin' ? <Shield className="w-3 h-3 mr-1" /> : null}
-                        {user.role}
-                      </Badge>
+                      {user.role === 'admin' ? (
+                        <Badge
+                          variant="outline"
+                          className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/25 px-2.5 py-1 text-xs font-semibold flex items-center gap-1.5 rounded-md w-fit shadow-sm"
+                        >
+                          <Shield className="w-3.5 h-3.5" />
+                          Platform Admin
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25 px-2.5 py-1 text-xs font-semibold flex items-center gap-1.5 rounded-md w-fit shadow-sm"
+                        >
+                          <Building2 className="w-3.5 h-3.5" />
+                          Business Owner
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       {user.banned ? (

@@ -37,6 +37,7 @@ export function useDeleteAllProjectExpiries() {
       clearListQueryData(queryClient, projectExpiriesKeys.all, "records");
       queryClient.invalidateQueries({ queryKey: projectExpiriesKeys.all });
       queryClient.invalidateQueries({ queryKey: ["trash"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       toast.success(`Deleted ${res.deleted} project record(s)`);
     },
     onError: (error: any) => {

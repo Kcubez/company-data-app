@@ -40,6 +40,8 @@ export function useDeleteAllDemandRecords() {
       queryClient.invalidateQueries({ queryKey: ["trash"] });
       queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });
       queryClient.invalidateQueries({ queryKey: ["demand-record-recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success(`Deleted ${res.count} demand record(s)`);
     },
     onError: (error: any) => {
@@ -111,6 +113,8 @@ export function useDeleteDemandRecord() {
       queryClient.invalidateQueries({ queryKey: ["demand-records"] });
       queryClient.invalidateQueries({ queryKey: ["trash"] });
       queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success("Lead deleted successfully");
     },
     onError: (error: any) => {

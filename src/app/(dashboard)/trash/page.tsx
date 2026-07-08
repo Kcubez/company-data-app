@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { RotateCcw, SearchX, Trash2 } from "lucide-react";
+import { RotateCcw, SearchX, Trash2, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DestructiveConfirmDialog } from "@/components/ui/destructive-confirm-dialog";
@@ -25,6 +25,9 @@ import {
   usePermanentDeleteTrashRecord,
   useRequestTrashRestore,
   useRestoreTrashRecord,
+  useRestoreAllTrash,
+  usePermanentDeleteAllTrash,
+  useRequestRestoreAllTrash,
   useTrash,
 } from "@/hooks/use-trash";
 import type { TrashRecord, TrashRecordType } from "@/lib/api";
@@ -52,6 +55,9 @@ export default function TrashPage() {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [pendingPermanentDelete, setPendingPermanentDelete] = useState<TrashRecord | null>(null);
+  const [showRestoreAllConfirm, setShowRestoreAllConfirm] = useState(false);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [showRequestAllConfirm, setShowRequestAllConfirm] = useState(false);
 
   const params = useMemo(
     () => ({
@@ -68,10 +74,28 @@ export default function TrashPage() {
   const restoreMutation = useRestoreTrashRecord();
   const requestRestoreMutation = useRequestTrashRestore();
   const permanentDeleteMutation = usePermanentDeleteTrashRecord();
+  const restoreAllMutation = useRestoreAllTrash();
+  const deleteAllMutation = usePermanentDeleteAllTrash();
+  const requestRestoreAllMutation = useRequestRestoreAllTrash();
 
   const handleTypeChange = (value: string | null) => {
     setType((value || "all") as TrashRecordType | "all");
     setPage(1);
+  };
+
+  const handleRestoreAll = async () => {
+    await restoreAllMutation.mutateAsync({ type, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined });
+    setShowRestoreAllConfirm(false);
+  };
+
+  const handleDeleteAll = async () => {
+    await deleteAllMutation.mutateAsync({ type, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined });
+    setShowDeleteAllConfirm(false);
+  };
+
+  const handleRequestAll = async () => {
+    await requestRestoreAllMutation.mutateAsync({ type, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined });
+    setShowRequestAllConfirm(false);
   };
 
   const handlePermanentDelete = async () => {
@@ -147,6 +171,46 @@ export default function TrashPage() {
                 className="h-9 w-full bg-card md:w-40"
               />
             </div>
+
+            {canRestore && canPermanentDelete && (
+              <div className="flex items-center gap-2 md:ml-auto w-full md:w-auto mt-4 md:mt-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1 rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300 dark:hover:bg-emerald-950/40 cursor-pointer w-full md:w-auto font-bold"
+                  disabled={records.length === 0 || restoreAllMutation.isPending}
+                  onClick={() => setShowRestoreAllConfirm(true)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Restore All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1 rounded-lg border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40 cursor-pointer w-full md:w-auto font-bold"
+                  disabled={records.length === 0 || deleteAllMutation.isPending}
+                  onClick={() => setShowDeleteAllConfirm(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete All
+                </Button>
+              </div>
+            )}
+
+            {!canRestore && (
+              <div className="flex items-center gap-2 md:ml-auto w-full md:w-auto mt-4 md:mt-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1 rounded-lg border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/40 cursor-pointer w-full md:w-auto font-bold"
+                  disabled={records.length === 0 || requestRestoreAllMutation.isPending}
+                  onClick={() => setShowRequestAllConfirm(true)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Request All
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="min-h-96">
@@ -208,10 +272,14 @@ export default function TrashPage() {
                               variant="outline"
                               size="sm"
                               className="h-8 gap-1 rounded-lg"
-                              disabled={restoreMutation.isPending}
+                              disabled={restoreMutation.isPending && restoreMutation.variables?.id === record.id}
                               onClick={() => restoreMutation.mutate({ type: record.type, id: record.id })}
                             >
-                              <RotateCcw className="h-3.5 w-3.5" />
+                              {restoreMutation.isPending && restoreMutation.variables?.id === record.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              )}
                               Restore
                             </Button>
                           ) : (
@@ -219,10 +287,14 @@ export default function TrashPage() {
                               variant="outline"
                               size="sm"
                               className="h-8 gap-1 rounded-lg"
-                              disabled={requestRestoreMutation.isPending || record.restoreRequested}
+                              disabled={(requestRestoreMutation.isPending && requestRestoreMutation.variables?.id === record.id) || record.restoreRequested}
                               onClick={() => requestRestoreMutation.mutate({ type: record.type, id: record.id })}
                             >
-                              <RotateCcw className="h-3.5 w-3.5" />
+                              {requestRestoreMutation.isPending && requestRestoreMutation.variables?.id === record.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              )}
                               {record.restoreRequested ? "Requested" : "Request"}
                             </Button>
                           )}
@@ -291,6 +363,57 @@ export default function TrashPage() {
           isPending={permanentDeleteMutation.isPending}
           onCancel={() => setPendingPermanentDelete(null)}
           onConfirm={handlePermanentDelete}
+        />
+      )}
+
+      {showRestoreAllConfirm && (
+        <DestructiveConfirmDialog
+          title="Restore all matching records?"
+          description={
+            <span>
+              This will restore all <strong>{typeLabels[type]}</strong> records in the selected date range back to the active dashboard.
+            </span>
+          }
+          confirmLabel="Restore All"
+          confirmationText="confirm"
+          confirmationLabel="Type confirm to restore all matching records"
+          isPending={restoreAllMutation.isPending}
+          onCancel={() => setShowRestoreAllConfirm(false)}
+          onConfirm={handleRestoreAll}
+        />
+      )}
+
+      {showDeleteAllConfirm && (
+        <DestructiveConfirmDialog
+          title="Permanently delete all matching records?"
+          description={
+            <span>
+              This will permanently remove all <strong>{typeLabels[type]}</strong> records in the selected date range from the database. <strong>This action cannot be undone.</strong>
+            </span>
+          }
+          confirmLabel="Permanent Delete All"
+          confirmationText="PERMANENT DELETE ALL"
+          confirmationLabel="Type PERMANENT DELETE ALL to confirm"
+          isPending={deleteAllMutation.isPending}
+          onCancel={() => setShowDeleteAllConfirm(false)}
+          onConfirm={handleDeleteAll}
+        />
+      )}
+
+      {showRequestAllConfirm && (
+        <DestructiveConfirmDialog
+          title="Request restore for all matching records?"
+          description={
+            <span>
+              This will request an admin to restore all <strong>{typeLabels[type]}</strong> records in the selected date range back to active.
+            </span>
+          }
+          confirmLabel="Request All"
+          confirmationText="confirm"
+          confirmationLabel="Type confirm to request restore for all matching records"
+          isPending={requestRestoreAllMutation.isPending}
+          onCancel={() => setShowRequestAllConfirm(false)}
+          onConfirm={handleRequestAll}
         />
       )}
     </div>

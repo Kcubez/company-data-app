@@ -41,14 +41,33 @@ export function useRestoreTrashRecord() {
 }
 
 export function useRequestTrashRestore() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: ({ type, id }: { type: TrashRecordType; id: string }) =>
       trashApi.requestRestore(type, id),
     onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: trashKeys.all });
       toast.success(res.message || "Restore request sent");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to request restore");
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Failed to request restore");
+    },
+  });
+}
+
+export function useRequestRestoreAllTrash() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ type, dateFrom, dateTo }: { type: string; dateFrom?: string; dateTo?: string }) =>
+      trashApi.requestRestoreAll(type, dateFrom, dateTo),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: trashKeys.all });
+      toast.success(res.message || "Restore request sent for all matching records");
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Failed to request bulk restore");
     },
   });
 }
@@ -63,8 +82,40 @@ export function usePermanentDeleteTrashRecord() {
       invalidateBusinessData(queryClient);
       toast.success(res.deleted ? "Record permanently deleted" : "Record was already removed");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to permanently delete record");
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Failed to permanently delete record");
+    },
+  });
+}
+
+export function useRestoreAllTrash() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ type, dateFrom, dateTo }: { type: string; dateFrom?: string; dateTo?: string }) =>
+      trashApi.restoreAll(type, dateFrom, dateTo),
+    onSuccess: (res) => {
+      invalidateBusinessData(queryClient);
+      toast.success(res.message || "All matching records restored");
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Failed to restore records");
+    },
+  });
+}
+
+export function usePermanentDeleteAllTrash() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ type, dateFrom, dateTo }: { type: string; dateFrom?: string; dateTo?: string }) =>
+      trashApi.permanentDeleteAll(type, "PERMANENT DELETE ALL", dateFrom, dateTo),
+    onSuccess: (res) => {
+      invalidateBusinessData(queryClient);
+      toast.success(res.message || "All matching records permanently deleted");
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Failed to permanently delete records");
     },
   });
 }
