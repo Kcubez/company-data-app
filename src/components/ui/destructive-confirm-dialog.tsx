@@ -33,7 +33,7 @@ export function DestructiveConfirmDialog({
   const [mounted, setMounted] = useState(false);
   const [typedConfirmation, setTypedConfirmation] = useState('');
   const requiresConfirmation = Boolean(confirmationText);
-  const canConfirm = !requiresConfirmation || typedConfirmation.toLowerCase() === confirmationText.toLowerCase();
+  const canConfirm = !requiresConfirmation || typedConfirmation.toLowerCase() === (confirmationText ?? '').toLowerCase();
 
   useEffect(() => {
     setMounted(true);
