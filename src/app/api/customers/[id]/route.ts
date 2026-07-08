@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted, softDeleteData } from "@/lib/soft-delete";
+import { customerOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -13,8 +15,8 @@ export async function GET(
 
   const { id } = await params;
 
-  const customer = await prisma.customer.findUnique({
-    where: { id },
+  const customer = await prisma.customer.findFirst({
+    where: { id, ...customerOwnedByUserOrAdmin(session), ...notDeleted },
     include: {
       activities: {
         include: {
@@ -23,6 +25,7 @@ export async function GET(
         orderBy: { createdAt: "desc" },
       },
       demandRecords: {
+        where: notDeleted,
         include: {
           sender: true,
         },
@@ -90,6 +93,14 @@ export async function PATCH(
   const body = await req.json();
   const { name, phone, email, company, notes, status } = body;
 
+  const existing = await prisma.customer.findFirst({
+    where: { id, ...customerOwnedByUserOrAdmin(session), ...notDeleted },
+    select: { id: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ message: "Customer not found or access denied" }, { status: 404 });
+  }
+
   const customer = await prisma.customer.update({
     where: { id },
     data: { name, phone, email, company, notes, status },
@@ -109,7 +120,13 @@ export async function DELETE(
 
   const { id } = await params;
 
-  await prisma.customer.delete({ where: { id } });
+  const result = await prisma.customer.updateMany({
+    where: { id, ...customerOwnedByUserOrAdmin(session), ...notDeleted },
+    data: softDeleteData(session.user.id),
+  });
+  if (result.count === 0) {
+    return NextResponse.json({ message: "Customer not found or access denied" }, { status: 404 });
+  }
 
   return NextResponse.json({ success: true });
 }

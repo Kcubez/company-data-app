@@ -521,13 +521,15 @@ function BusinessReportsPageContent() {
           title="Delete business report records for selected period?"
           description={
             <>
-              This permanently removes{' '}
+              This moves{' '}
               <span className="font-semibold text-red-700 dark:text-red-300">
                 {total} business report record(s) from {dateFrom} to {dateTo}
               </span>
-              . This action cannot be undone. Use it only when clearing test data before re-uploading.
+              {' '}to Trash. Admins can restore them later or permanently delete them from Trash.
             </>
           }
+          confirmationText="confirm"
+          confirmationLabel="Type confirm to move these records to Trash"
           isPending={deleteAllMutation.isPending}
           onCancel={() => setShowDeleteConfirm(false)}
           onConfirm={async () => {

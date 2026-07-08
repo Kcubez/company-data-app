@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/card';
 
 export function LoginForm({ requiredRole }: { requiredRole?: 'admin' | 'user' }) {
+  const isAdmin = requiredRole === 'admin';
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') ?? '/dashboard';
@@ -163,7 +164,11 @@ export function LoginForm({ requiredRole }: { requiredRole?: 'admin' | 'user' })
             <Button
               id="login-submit"
               type="submit"
-              className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg  hover:bg-primary/90 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className={`w-full h-11 font-semibold rounded-lg transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                isAdmin
+                  ? 'bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-amber-500'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring'
+              }`}
               disabled={isLoading}
             >
               {isLoading ? (

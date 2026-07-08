@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted, softDeleteData } from "@/lib/soft-delete";
+import { uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/business-reports
@@ -16,6 +18,8 @@ export async function GET(req: NextRequest) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {
+    ...uploadedByUserOrAdmin(session),
+    ...notDeleted,
     reporterName: { not: "Daily Bot Ingestion" }
   };
   if (channel) where.marketingChannel = channel;
@@ -39,7 +43,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ records, total, page, limit });
 }
 
-// DELETE /api/business-reports — admin deletes all; user deletes own + bot rows
+// DELETE /api/business-reports — soft-delete selected business reports
 export async function DELETE(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -47,10 +51,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const dateFrom = searchParams.get("dateFrom") || undefined;
   const dateTo = searchParams.get("dateTo") || undefined;
-  const isAdmin = session.user.role === "admin";
-  const where: any = isAdmin
-    ? {}
-    : { OR: [{ uploadedByUserId: session.user.id }, { uploadedByUserId: null }] };
+  const where: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     where.reportDate = {};
@@ -58,6 +59,9 @@ export async function DELETE(req: NextRequest) {
     if (dateTo) where.reportDate.lte = new Date(dateTo + "T23:59:59.999Z");
   }
 
-  const result = await prisma.businessReport.deleteMany({ where });
+  const result = await prisma.businessReport.updateMany({
+    where,
+    data: softDeleteData(session.user.id, searchParams.get("reason")),
+  });
   return NextResponse.json({ success: true, deleted: result.count });
 }

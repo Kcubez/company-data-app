@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect } from 'react';
+import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +58,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const { id } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['customer', id],
@@ -77,7 +79,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     mutationFn: () => customersApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success('Customer deleted');
+      queryClient.invalidateQueries({ queryKey: ['trash'] });
+      toast.success('Customer moved to Trash');
       router.push('/customers');
     },
     onError: (err: Error) => {
@@ -150,19 +153,32 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <AlertDialogHeader>
               <AlertDialogTitle>Delete {customer.name}?</AlertDialogTitle>
               <AlertDialogDescription className="text-muted-foreground">
-                This will permanently delete the customer and all related activity history.
-                Associated demand records will keep their data but lose the customer link.
-                This action cannot be undone.
+                This will move the customer to Trash. Related activity history stays linked, and admins can restore the customer later.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">Type confirm to move this customer to Trash</label>
+              <Input
+                value={deleteConfirmText}
+                onChange={(event) => setDeleteConfirmText(event.target.value)}
+                disabled={deleteCustomer.isPending}
+                placeholder="confirm"
+                className="h-10 font-mono"
+              />
+            </div>
             <AlertDialogFooter>
-              <AlertDialogCancel className="border-border text-foreground">Cancel</AlertDialogCancel>
+              <AlertDialogCancel
+                className="border-border text-foreground"
+                onClick={() => setDeleteConfirmText('')}
+              >
+                Cancel
+              </AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => deleteCustomer.mutate()}
-                disabled={deleteCustomer.isPending}
+                disabled={deleteCustomer.isPending || deleteConfirmText.toLowerCase() !== 'confirm'}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
-                {deleteCustomer.isPending ? 'Deleting…' : 'Delete'}
+                {deleteCustomer.isPending ? 'Deleting…' : 'Move to Trash'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

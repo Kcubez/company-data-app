@@ -33,6 +33,9 @@ model User {
   businessReports    BusinessReport[]
   demandImportBatches DemandImportBatch[]
   telegramSenders    TelegramSender[]
+  customers          Customer[]
+  periodTargets      PeriodTarget[]
+  qaDocuments        QADocument[]
 
   @@map("user")
 }
@@ -85,7 +88,9 @@ model Verification {
 
 model Customer {
   id            String    @id @default(cuid())
-  name            String    @unique
+  userId        String?   @map("user_id")
+  user          User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
   nameNormalized  String?
   phone           String?
   email         String?
@@ -94,11 +99,19 @@ model Customer {
   status        String    @default("active")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime? @map("deleted_at")
+  deletedByUserId String? @map("deleted_by_user_id")
+  deletedReason String?   @map("deleted_reason")
+  restoredAt    DateTime? @map("restored_at")
+  restoredByUserId String? @map("restored_by_user_id")
 
   demandRecords DemandRecord[]
   activities    CustomerActivity[]
 
   @@index([nameNormalized])
+  @@index([userId])
+  @@index([deletedAt])
+  @@unique([userId, nameNormalized])
   @@map("customer")
 }
 
@@ -121,7 +134,7 @@ model CustomerActivity {
 
 model TelegramSender {
   id              String   @id @default(cuid())
-  telegramUserId  BigInt?  @unique
+  telegramUserId  BigInt?
   firstName       String?
   lastName        String?
   username        String?
@@ -151,11 +164,13 @@ model TelegramSender {
   pendingDemandImports PendingDemandImport[]
 
   @@map("telegram_sender")
+  @@index([telegramUserId])
+  @@unique([userId, telegramUserId])
 }
 
 model TelegramMessage {
   id              String          @id @default(cuid())
-  telegramMsgId   Int             @unique
+  telegramMsgId   Int
   text            String
   senderId        String
   sender          TelegramSender  @relation(fields: [senderId], references: [id], onDelete: Cascade)
@@ -170,6 +185,7 @@ model TelegramMessage {
   @@map("telegram_message")
   @@index([senderId])
   @@index([receivedAt])
+  @@unique([senderId, telegramMsgId])
 }
 
 model PendingDemandImport {
@@ -260,6 +276,11 @@ model DemandRecord {
   extractedAt     DateTime         @default(now())
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?        @map("deleted_at")
+  deletedByUserId String?          @map("deleted_by_user_id")
+  deletedReason   String?          @map("deleted_reason")
+  restoredAt      DateTime?        @map("restored_at")
+  restoredByUserId String?         @map("restored_by_user_id")
 
   @@map("demand_record")
   @@index([messageId])
@@ -268,6 +289,7 @@ model DemandRecord {
   @@index([status])
   @@index([followUpDate])
   @@index([createdAt])
+  @@index([deletedAt])
   @@index([customerId])
   @@index([serviceName])
   @@index([priority])
@@ -280,6 +302,8 @@ model DemandRecord {
 
 model QADocument {
   id         String   @id @default(cuid())
+  userId     String?  @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   title      String
   content    String
   source     String   @default("telegram")   // "telegram" | "telegram_file" | "upload"
@@ -290,6 +314,7 @@ model QADocument {
   updatedAt  DateTime @updatedAt
 
   @@map("qa_document")
+  @@index([userId])
   @@index([createdAt])
 }
 
@@ -300,6 +325,7 @@ model BotSettings {
   userId          String   @unique
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   botToken        String?
+  webhookSecret   String?  @unique @map("webhook_secret")
   geminiApiKey    String?
   geminiModel     String   @default("gemini-3.1-flash-lite-preview")
   isActive        Boolean  @default(false)
@@ -324,7 +350,13 @@ model ProjectExpiration {
   uploadedBy            User?             @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
   createdAt             DateTime          @default(now()) @map("created_at")
   updatedAt             DateTime          @updatedAt @map("updated_at")
+  deletedAt             DateTime?         @map("deleted_at")
+  deletedByUserId       String?           @map("deleted_by_user_id")
+  deletedReason         String?           @map("deleted_reason")
+  restoredAt            DateTime?         @map("restored_at")
+  restoredByUserId      String?           @map("restored_by_user_id")
 
+  @@index([deletedAt])
   @@map("project_expiration")
 }
 
@@ -340,7 +372,13 @@ model WebsiteUpdate {
   uploadedBy      User?             @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
+  deletedAt       DateTime?         @map("deleted_at")
+  deletedByUserId String?           @map("deleted_by_user_id")
+  deletedReason   String?           @map("deleted_reason")
+  restoredAt      DateTime?         @map("restored_at")
+  restoredByUserId String?          @map("restored_by_user_id")
 
+  @@index([deletedAt])
   @@map("website_update")
 }
 
@@ -383,16 +421,42 @@ model BusinessReport {
 
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
+  deletedAt          DateTime?       @map("deleted_at")
+  deletedByUserId    String?         @map("deleted_by_user_id")
+  deletedReason      String?         @map("deleted_reason")
+  restoredAt         DateTime?       @map("restored_at")
+  restoredByUserId   String?         @map("restored_by_user_id")
 
   @@index([reportDate])
+  @@index([deletedAt])
   @@index([senderId])
   @@index([messageId])
   @@index([marketingChannel])
   @@map("business_report")
 }
 
+model RestoreRequest {
+  id                String    @id @default(cuid())
+  recordType        String    @map("record_type")
+  recordId          String    @map("record_id")
+  requestedByUserId String    @map("requested_by_user_id")
+  status            String    @default("pending")
+  resolvedByUserId  String?   @map("resolved_by_user_id")
+  resolvedAt        DateTime? @map("resolved_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([recordType, recordId])
+  @@index([requestedByUserId])
+  @@index([status])
+  @@unique([recordType, recordId, requestedByUserId, status])
+  @@map("restore_request")
+}
+
 model PeriodTarget {
   id                 String   @id @default(cuid())
+  userId             String?  @map("user_id")
+  user               User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   period             String   // "month" | "year"
   year               Int
   month              Int?     // null if period is "year"
@@ -405,7 +469,7 @@ model PeriodTarget {
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
-  @@unique([period, year, month])
+  @@index([userId])
+  @@unique([userId, period, year, month])
   @@map("period_targets")
 }
-

@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted } from "@/lib/soft-delete";
+import { senderOwnedByUserOrAdmin, uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 function extractLabeledValue(text: string | null | undefined, labels: string[]) {
@@ -36,6 +38,8 @@ export async function GET(req: NextRequest) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {
+    ...uploadedByUserOrAdmin(session),
+    ...notDeleted,
     reporterName: { not: "Daily Bot Ingestion" }
   };
   if (dateFrom || dateTo) {
@@ -45,6 +49,8 @@ export async function GET(req: NextRequest) {
   }
 
   const demandWhere: any = {
+    ...senderOwnedByUserOrAdmin(session),
+    ...notDeleted,
     status: { in: ['closed', 'completed'] },
   };
   if (dateFrom || dateTo) {

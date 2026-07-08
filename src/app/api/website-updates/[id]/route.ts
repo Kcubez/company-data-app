@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted, softDeleteData } from "@/lib/soft-delete";
+import { uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 type Params = { params: Promise<{ id: string }> };
@@ -12,6 +14,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id } = await params;
   const body = await req.json();
+  const existing = await prisma.websiteUpdate.findFirst({
+    where: { id, ...uploadedByUserOrAdmin(session), ...notDeleted },
+    select: { id: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ message: "Record not found or access denied" }, { status: 404 });
+  }
 
   const { status, remark } = body;
 
@@ -46,9 +55,13 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const { id } = await params;
 
   try {
-    await prisma.websiteUpdate.delete({
-      where: { id },
+    const result = await prisma.websiteUpdate.updateMany({
+      where: { id, ...uploadedByUserOrAdmin(session), ...notDeleted },
+      data: softDeleteData(session.user.id),
     });
+    if (result.count === 0) {
+      return NextResponse.json({ message: "Record not found or access denied" }, { status: 404 });
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error deleting website update record:", error);

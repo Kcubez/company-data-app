@@ -33,6 +33,9 @@ import {
   Users,
   Eye,
   EyeOff,
+  Bot,
+  MessageSquare,
+  UserCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -156,23 +159,28 @@ export default function AdminUsersPage() {
         u.email.toLowerCase().includes(searchTerm.toLowerCase())
     ) ?? [];
 
+  const totalOwners = users?.filter(u => u.role !== 'admin').length ?? 0;
+  const connectedBots = users?.filter(u => u.businessOwner?.botConnected).length ?? 0;
+  const totalStaff = users?.reduce((sum, u) => sum + (u.businessOwner?.authorizedStaffCount ?? 0), 0) ?? 0;
+  const totalMessages = users?.reduce((sum, u) => sum + (u.businessOwner?.messageCount ?? 0), 0) ?? 0;
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold  text-foreground mb-2">User Management</h1>
-          <p className="text-muted-foreground">Manage your system users, roles, and access.</p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Business Owners</h1>
+          <p className="text-muted-foreground">Manage owner accounts, platform admins, bot access, and account status.</p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger render={<Button className="bg-blue-600 hover:bg-blue-500 text-white shadow-sm" />}>
             <Plus className="w-4 h-4 mr-2" />
-            Add User
+            Add Account
           </DialogTrigger>
           <DialogContent className="bg-card border-border text-foreground">
             <DialogHeader>
-              <DialogTitle className="text-foreground">Create New User</DialogTitle>
+              <DialogTitle className="text-foreground">Create New Account</DialogTitle>
               <DialogDescription className="text-muted-foreground">
-                Add a new user manually to the system.
+                Add a business owner or platform admin account manually.
               </DialogDescription>
             </DialogHeader>
             <Form {...createForm}>
@@ -269,7 +277,7 @@ export default function AdminUsersPage() {
                     {createForm.formState.isSubmitting && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                    Create User
+                    Create Account
                   </Button>
                 </div>
               </form>
@@ -281,7 +289,7 @@ export default function AdminUsersPage() {
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle className="text-foreground">Edit User</DialogTitle>
+            <DialogTitle className="text-foreground">Edit Account</DialogTitle>
             <DialogDescription className="text-muted-foreground">
               Update details for {editingUser?.email}.
             </DialogDescription>
@@ -361,12 +369,36 @@ export default function AdminUsersPage() {
         </DialogContent>
       </Dialog>
 
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Business Owners', value: totalOwners, icon: Users },
+          { label: 'Connected Bots', value: connectedBots, icon: Bot },
+          { label: 'Authorized Staff', value: totalStaff, icon: UserCheck },
+          { label: 'Bot Messages', value: totalMessages, icon: MessageSquare },
+        ].map(item => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="rounded-lg border border-border bg-card p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                  <p className="mt-2 text-2xl font-bold text-foreground">{item.value.toLocaleString()}</p>
+                </div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                  <Icon className="h-5 w-5" />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
         <div className="p-4 border-b border-border bg-muted/50 flex items-center gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <Input
-              placeholder="Search users..."
+              placeholder="Search accounts..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="pl-9 bg-muted/50 border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-blue-500"
@@ -380,6 +412,8 @@ export default function AdminUsersPage() {
               <TableRow className="border-border">
                 <TableHead className="text-muted-foreground font-medium">User</TableHead>
                 <TableHead className="text-muted-foreground font-medium">Role</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Bot</TableHead>
+                <TableHead className="text-muted-foreground font-medium">Workspace</TableHead>
                 <TableHead className="text-muted-foreground font-medium">Status</TableHead>
                 <TableHead className="text-muted-foreground font-medium whitespace-nowrap">
                   Joined Date
@@ -410,12 +444,12 @@ export default function AdminUsersPage() {
                 ))
               ) : filteredUsers.length === 0 ? (
                 <TableRow className="border-border hover:bg-muted/30">
-                  <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
                         <Users className="w-6 h-6 text-slate-500" />
                       </div>
-                      <p>No users found matching your search.</p>
+                      <p>No accounts found matching your search.</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -435,6 +469,42 @@ export default function AdminUsersPage() {
                         <div className="flex flex-col">
                           <span className="font-medium text-foreground/85">{user.name}</span>
                           <span className="text-xs text-muted-foreground">{user.email}</span>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {user.role === 'admin' ? (
+                        <Badge variant="outline" className="border-slate-300 text-muted-foreground">
+                          Platform
+                        </Badge>
+                      ) : user.businessOwner?.botConnected ? (
+                        <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                          <Bot className="mr-1 h-3 w-3" />
+                          Connected
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-amber-500/30 text-amber-600 dark:text-amber-400">
+                          Not connected
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="grid min-w-48 gap-1 text-xs text-muted-foreground">
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Staff</span>
+                          <span className="font-semibold text-foreground">
+                            {user.businessOwner?.authorizedStaffCount ?? 0}/{user.businessOwner?.staffCount ?? 0}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Customers</span>
+                          <span className="font-semibold text-foreground">{user.businessOwner?.customerCount ?? 0}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Records</span>
+                          <span className="font-semibold text-foreground">
+                            {((user.businessOwner?.demandRecordCount ?? 0) + (user.businessOwner?.businessReportCount ?? 0)).toLocaleString()}
+                          </span>
                         </div>
                       </div>
                     </TableCell>
@@ -506,7 +576,7 @@ export default function AdminUsersPage() {
                               className="hover:bg-muted cursor-pointer text-emerald-600 dark:text-emerald-400 focus:text-emerald-700 dark:text-emerald-300 focus:bg-emerald-500/10"
                               onClick={() => unbanUser.mutate(user.id)}
                             >
-                              <Unlock className="w-4 h-4 mr-2" /> Unban User
+                              <Unlock className="w-4 h-4 mr-2" /> Unban Account
                             </DropdownMenuItem>
                           ) : (
                             <DropdownMenuItem
@@ -519,7 +589,7 @@ export default function AdminUsersPage() {
                                 if (reason !== null) banUser.mutate({ id: user.id, reason });
                               }}
                             >
-                              <Ban className="w-4 h-4 mr-2" /> Ban User
+                              <Ban className="w-4 h-4 mr-2" /> Ban Account
                             </DropdownMenuItem>
                           )}
 

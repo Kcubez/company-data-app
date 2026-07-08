@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted } from "@/lib/soft-delete";
+import { customerOwnedByUserOrAdmin, senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/customer-followups/stats — customer followup specific stats
@@ -13,7 +15,7 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
 
-  const rangeWhere: Record<string, any> = {};
+  const rangeWhere: Record<string, any> = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
   if (dateFrom || dateTo) {
     rangeWhere.createdAt = {};
     if (dateFrom) rangeWhere.createdAt.gte = new Date(dateFrom);
@@ -35,6 +37,8 @@ export async function GET(req: NextRequest) {
       where: {
         followUpDate: { not: null },
         createdAt: { gte: startOfToday },
+        ...senderOwnedByUserOrAdmin(session),
+        ...notDeleted,
       },
     }),
     prisma.demandRecord.count({
@@ -47,10 +51,16 @@ export async function GET(req: NextRequest) {
     prisma.demandRecord.count({
       where: {
         followUpDate: { gte: startOfToday, lt: endOfToday },
+        ...senderOwnedByUserOrAdmin(session),
+        ...notDeleted,
       },
     }),
     prisma.customer.count({
-      where: rangeWhere.createdAt ? { createdAt: rangeWhere.createdAt } : {},
+      where: {
+        ...customerOwnedByUserOrAdmin(session),
+        ...notDeleted,
+        ...(rangeWhere.createdAt ? { createdAt: rangeWhere.createdAt } : {}),
+      },
     }),
   ]);
 

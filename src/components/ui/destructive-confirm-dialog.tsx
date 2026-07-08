@@ -4,12 +4,15 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import type { ReactNode } from 'react';
 
 type DestructiveConfirmDialogProps = {
   title: string;
   description: ReactNode;
   confirmLabel?: string;
+  confirmationText?: string;
+  confirmationLabel?: string;
   cancelLabel?: string;
   isPending?: boolean;
   onCancel: () => void;
@@ -20,12 +23,17 @@ export function DestructiveConfirmDialog({
   title,
   description,
   confirmLabel = 'Delete All',
+  confirmationText,
+  confirmationLabel,
   cancelLabel = 'Cancel',
   isPending = false,
   onCancel,
   onConfirm,
 }: DestructiveConfirmDialogProps) {
   const [mounted, setMounted] = useState(false);
+  const [typedConfirmation, setTypedConfirmation] = useState('');
+  const requiresConfirmation = Boolean(confirmationText);
+  const canConfirm = !requiresConfirmation || typedConfirmation.toLowerCase() === confirmationText.toLowerCase();
 
   useEffect(() => {
     setMounted(true);
@@ -44,7 +52,7 @@ export function DestructiveConfirmDialog({
             <div className="min-w-0">
               <h3 className="text-lg font-semibold tracking-normal text-foreground">{title}</h3>
               <p className="mt-1 text-xs font-medium uppercase text-red-600 dark:text-red-400">
-                This is a permanent action
+                Deleted records move to Trash unless this is a permanent delete
               </p>
             </div>
           </div>
@@ -54,6 +62,21 @@ export function DestructiveConfirmDialog({
           <div className="rounded-lg border border-border/80 bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">
             {description}
           </div>
+
+          {confirmationText && (
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">
+                {confirmationLabel || `Type ${confirmationText} to confirm`}
+              </label>
+              <Input
+                value={typedConfirmation}
+                onChange={(event) => setTypedConfirmation(event.target.value)}
+                disabled={isPending}
+                className="h-10 rounded-lg border-red-200 bg-card font-mono text-sm dark:border-red-900/70"
+                autoFocus
+              />
+            </div>
+          )}
 
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button
@@ -66,7 +89,7 @@ export function DestructiveConfirmDialog({
             </Button>
             <Button
               onClick={onConfirm}
-              disabled={isPending}
+              disabled={isPending || !canConfirm}
               className="h-10 rounded-lg bg-red-600 px-4 font-semibold text-white hover:bg-red-700 disabled:opacity-60 cursor-pointer"
             >
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

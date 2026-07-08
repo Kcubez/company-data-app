@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 // DELETE /api/messages/:id — delete a message and all its linked data
@@ -16,8 +17,8 @@ export async function DELETE(
 
   try {
     // Find the message with its linked counts so we can report what was deleted
-    const message = await prisma.telegramMessage.findUnique({
-      where: { id },
+    const message = await prisma.telegramMessage.findFirst({
+      where: { id, ...senderOwnedByUserOrAdmin(session) },
       select: {
         senderId: true,
         _count: {

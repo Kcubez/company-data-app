@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted } from "@/lib/soft-delete";
+import { ownedByUserOrAdmin, senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { GoogleGenAI } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -44,7 +46,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const settings = await prisma.botSettings.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...ownedByUserOrAdmin(session) },
       select: { geminiApiKey: true, geminiModel: true },
     });
 
@@ -53,6 +55,8 @@ export async function GET(req: NextRequest) {
       where: {
         status: { notIn: ['closed', 'completed'] },
         customerName: { not: null },
+        ...senderOwnedByUserOrAdmin(session),
+        ...notDeleted,
       },
       orderBy: { createdAt: 'desc' },
       take: 15,
@@ -135,6 +139,8 @@ Example Output:
         where: {
           status: { notIn: ['closed', 'completed'] },
           customerName: { not: null },
+          ...senderOwnedByUserOrAdmin(session),
+          ...notDeleted,
         },
         orderBy: { createdAt: 'desc' },
         take: 5,

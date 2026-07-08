@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted } from "@/lib/soft-delete";
+import { ownedByUserOrAdmin, uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { GoogleGenAI } from "@google/genai";
 import { differenceInDays } from "date-fns";
 import { NextRequest, NextResponse } from "next/server";
@@ -42,7 +44,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const settings = await prisma.botSettings.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...ownedByUserOrAdmin(session) },
       select: { geminiApiKey: true, geminiModel: true },
     });
 
@@ -50,6 +52,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch all projects sorted by most urgent expiry
     const projects = await prisma.projectExpiration.findMany({
+      where: { ...uploadedByUserOrAdmin(session), ...notDeleted },
       orderBy: { createdAt: "desc" },
       take: 20,
     });
@@ -170,6 +173,7 @@ Example output:
     // Graceful fallback
     try {
       const projects = await prisma.projectExpiration.findMany({
+        where: { ...uploadedByUserOrAdmin(session), ...notDeleted },
         orderBy: { createdAt: "desc" },
         take: 5,
       });

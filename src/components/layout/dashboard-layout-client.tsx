@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Database,
   Wallet,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -55,8 +56,9 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
   useSyncPolling();
 
   const handleSignOut = async () => {
+    const isAdmin = session?.user?.role === 'admin';
     await signOut();
-    router.push('/login');
+    router.push(isAdmin ? '/admin/login' : '/login');
     router.refresh();
   };
 
@@ -75,6 +77,8 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       label: 'Operations',
       items: [
         { title: 'Data Feed', href: '/data-feed', icon: MessageSquare, adminOnly: false },
+        { title: 'Trash', href: '/trash', icon: Trash2, adminOnly: false },
+        { title: 'Trash', href: '/trash', icon: Trash2, adminOnly: true },
       ],
     },
     {
@@ -86,10 +90,13 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
     },
   ];
 
+  const isAdmin = session?.user?.role === 'admin';
   const filteredNavGroups = navGroups
     .map(group => ({
       ...group,
-      items: group.items.filter(item => !item.adminOnly || session?.user?.role === 'admin'),
+      items: group.items.filter(item =>
+        isAdmin ? item.adminOnly : !item.adminOnly
+      ),
     }))
     .filter(group => group.items.length > 0);
 

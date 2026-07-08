@@ -47,6 +47,7 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { customersApi, type Customer } from '@/lib/api';
+import { clearListQueryData, removeListItemQueryData } from '@/lib/query-cache';
 import { toast } from 'sonner';
 import { formatPhoneNumber } from '@/lib/utils';
 import {
@@ -183,6 +184,9 @@ function CustomersPageContent() {
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [leadToDelete, setLeadToDelete] = useState<any | null>(null);
   const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
+  const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
+  const [customerDeleteConfirmText, setCustomerDeleteConfirmText] = useState('');
+  const [leadDeleteConfirmText, setLeadDeleteConfirmText] = useState('');
 
   // Debounce effects
   useEffect(() => {
@@ -263,9 +267,11 @@ function CustomersPageContent() {
 
   const deleteCustomer = useMutation({
     mutationFn: (id: string) => customersApi.delete(id),
-    onSuccess: () => {
+    onSuccess: (_res, id) => {
+      removeListItemQueryData(queryClient, ['customers'], 'customers', id);
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success('Customer deleted');
+      queryClient.invalidateQueries({ queryKey: ['trash'] });
+      toast.success('Customer moved to Trash');
     },
     onError: (err: Error) => {
       toast.error(err.message || 'Failed to delete customer');
@@ -275,9 +281,12 @@ function CustomersPageContent() {
   const deleteAllCustomers = useMutation({
     mutationFn: (params: { dateFrom?: string; dateTo?: string }) => customersApi.deleteAll(params),
     onSuccess: (res) => {
+      clearListQueryData(queryClient, ['customers'], 'customers');
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success(`${res.count} customer${res.count === 1 ? '' : 's'} deleted`);
+      queryClient.invalidateQueries({ queryKey: ['trash'] });
+      toast.success(`${res.count} customer${res.count === 1 ? '' : 's'} moved to Trash`);
       setIsDeleteAllOpen(false);
+      setDeleteAllConfirmText('');
     },
     onError: (err: Error) => {
       toast.error(err.message || 'Failed to delete all customers');
@@ -470,11 +479,17 @@ function CustomersPageContent() {
             </SelectContent>
           </Select>
 
-          <AlertDialog open={isDeleteAllOpen} onOpenChange={setIsDeleteAllOpen}>
+          <AlertDialog open={isDeleteAllOpen} onOpenChange={(open) => {
+            setIsDeleteAllOpen(open);
+            if (!open) setDeleteAllConfirmText('');
+          }}>
             <button
               type="button"
               disabled={!customerData?.customers?.length}
-              onClick={() => setIsDeleteAllOpen(true)}
+              onClick={() => {
+                setDeleteAllConfirmText('');
+                setIsDeleteAllOpen(true);
+              }}
               className="inline-flex items-center gap-2 px-3 h-9 rounded-md text-sm border border-red-500/30 text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-bold shrink-0 cursor-pointer animate-none"
             >
               <Trash2 className="w-4 h-4" />
@@ -484,19 +499,28 @@ function CustomersPageContent() {
             <AlertDialogHeader>
               <AlertDialogTitle>Delete customers for selected period?</AlertDialogTitle>
               <AlertDialogDescription className="text-muted-foreground">
-                This will permanently delete <strong>{customerData?.total ?? 0}</strong> customer(s) from <strong>{dateFrom}</strong> to <strong>{dateTo}</strong> and all related activity history.
-                Associated demand records will keep their data but lose the customer link.
-                This action cannot be undone.
+                This will move <strong>{customerData?.total ?? 0}</strong> customer(s) from <strong>{dateFrom}</strong> to <strong>{dateTo}</strong> to Trash.
+                Related activity history stays linked, and admins can restore these customers later.
               </AlertDialogDescription>
             </AlertDialogHeader>
+             <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">Type confirm to move these customers to Trash</label>
+              <Input
+                value={deleteAllConfirmText}
+                onChange={(event) => setDeleteAllConfirmText(event.target.value)}
+                disabled={deleteAllCustomers.isPending}
+                placeholder="confirm"
+                className="h-10 font-mono"
+              />
+            </div>
             <AlertDialogFooter>
               <AlertDialogCancel className="border-border text-foreground">Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => deleteAllCustomers.mutate({ dateFrom, dateTo })}
-                disabled={deleteAllCustomers.isPending}
+                disabled={deleteAllCustomers.isPending || deleteAllConfirmText.toLowerCase() !== 'confirm'}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
-                {deleteAllCustomers.isPending ? 'Deleting…' : 'Delete All'}
+                {deleteAllCustomers.isPending ? 'Deleting…' : 'Move to Trash'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -740,7 +764,10 @@ function CustomersPageContent() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => setCustomerToDelete(customer)}
+                              onClick={() => {
+                                setCustomerDeleteConfirmText('');
+                                setCustomerToDelete(customer);
+                              }}
                               className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -913,7 +940,10 @@ function CustomersPageContent() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => setLeadToDelete(lead)}
+                              onClick={() => {
+                                setLeadDeleteConfirmText('');
+                                setLeadToDelete(lead);
+                              }}
                               className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1236,27 +1266,41 @@ function CustomersPageContent() {
 
       {/* Delete Single Customer Confirmation */}
       {customerToDelete && (
-        <AlertDialog open={!!customerToDelete} onOpenChange={(open) => !open && setCustomerToDelete(null)}>
+        <AlertDialog open={!!customerToDelete} onOpenChange={(open) => {
+          if (!open) {
+            setCustomerToDelete(null);
+            setCustomerDeleteConfirmText('');
+          }
+        }}>
           <AlertDialogContent className="bg-card border-border text-foreground">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete {customerToDelete.name}?</AlertDialogTitle>
               <AlertDialogDescription className="text-muted-foreground">
-                This will permanently delete this client and all related activity history.
-                Associated demand records will keep their data but lose the customer link.
-                This action cannot be undone.
+                This will move this client to Trash. Related activity history stays linked, and admins can restore the client later.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">Type confirm to move this client to Trash</label>
+              <Input
+                value={customerDeleteConfirmText}
+                onChange={(event) => setCustomerDeleteConfirmText(event.target.value)}
+                disabled={deleteCustomer.isPending}
+                placeholder="confirm"
+                className="h-10 font-mono"
+              />
+            </div>
             <AlertDialogFooter>
               <AlertDialogCancel className="border-border text-foreground">Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={async () => {
                   await deleteCustomer.mutateAsync(customerToDelete.id);
                   setCustomerToDelete(null);
+                  setCustomerDeleteConfirmText('');
                 }}
-                disabled={deleteCustomer.isPending}
+                disabled={deleteCustomer.isPending || customerDeleteConfirmText.toLowerCase() !== 'confirm'}
                 className="bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer"
               >
-                {deleteCustomer.isPending ? 'Deleting…' : 'Delete Client'}
+                {deleteCustomer.isPending ? 'Deleting…' : 'Move to Trash'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1265,26 +1309,41 @@ function CustomersPageContent() {
 
       {/* Delete Single Lead Confirmation */}
       {leadToDelete && (
-        <AlertDialog open={!!leadToDelete} onOpenChange={(open) => !open && setLeadToDelete(null)}>
+        <AlertDialog open={!!leadToDelete} onOpenChange={(open) => {
+          if (!open) {
+            setLeadToDelete(null);
+            setLeadDeleteConfirmText('');
+          }
+        }}>
           <AlertDialogContent className="bg-card border-border text-foreground">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Lead for {leadToDelete.customerName || 'Unknown'}?</AlertDialogTitle>
               <AlertDialogDescription className="text-muted-foreground">
-                This will permanently delete this demand lead record from the database.
-                This action cannot be undone.
+                This will move this demand lead record to Trash. Admins can restore it later.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">Type confirm to move this lead to Trash</label>
+              <Input
+                value={leadDeleteConfirmText}
+                onChange={(event) => setLeadDeleteConfirmText(event.target.value)}
+                disabled={deleteLeadMutation.isPending}
+                placeholder="confirm"
+                className="h-10 font-mono"
+              />
+            </div>
             <AlertDialogFooter>
               <AlertDialogCancel className="border-border text-foreground">Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={async () => {
                   await deleteLeadMutation.mutateAsync(leadToDelete.id);
                   setLeadToDelete(null);
+                  setLeadDeleteConfirmText('');
                 }}
-                disabled={deleteLeadMutation.isPending}
+                disabled={deleteLeadMutation.isPending || leadDeleteConfirmText.toLowerCase() !== 'confirm'}
                 className="bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer"
               >
-                {deleteLeadMutation.isPending ? 'Deleting…' : 'Delete Lead'}
+                {deleteLeadMutation.isPending ? 'Deleting…' : 'Move to Trash'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted, restoreData, softDeleteData } from "@/lib/soft-delete";
+import { senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 function serializeDemandRecord(record: Record<string, unknown>) {
@@ -48,7 +50,7 @@ export async function GET(req: NextRequest) {
   const followUpStatus = searchParams.get("followUpStatus") || "";
   const missingField = searchParams.get("missingField") || "";
 
-  const where: Record<string, any> = {};
+  const where: Record<string, any> = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
 
   if (status) {
     where.status = status;
@@ -103,7 +105,7 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// DELETE /api/demand-records — remove ALL demand records (any signed-in user).
+// DELETE /api/demand-records — soft-delete demand records matching selected filters.
 export async function DELETE(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
@@ -113,7 +115,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
-  const where: Record<string, any> = {};
+  const where: Record<string, any> = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     where.createdAt = {};
@@ -121,7 +123,11 @@ export async function DELETE(req: NextRequest) {
     if (dateTo) where.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
   }
 
-  const result = await prisma.demandRecord.deleteMany({ where });
+  const reason = searchParams.get("reason") || null;
+  const result = await prisma.demandRecord.updateMany({
+    where,
+    data: softDeleteData(session.user.id, reason),
+  });
   return NextResponse.json({ success: true, count: result.count });
 }
 
@@ -152,6 +158,7 @@ export async function POST(req: NextRequest) {
     const normalizedName = customerName.toLowerCase().replace(/\s+/g, " ").trim();
     let customer = await prisma.customer.findFirst({
       where: {
+        userId: session.user.id,
         OR: [
           { nameNormalized: normalizedName },
           { name: { equals: customerName, mode: "insensitive" } }
@@ -162,6 +169,7 @@ export async function POST(req: NextRequest) {
     if (!customer) {
       customer = await prisma.customer.create({
         data: {
+          userId: session.user.id,
           name: customerName,
           nameNormalized: normalizedName,
           phone: customerPhone || null,
@@ -170,12 +178,14 @@ export async function POST(req: NextRequest) {
         }
       });
     } else {
-      if ((!customer.phone && customerPhone) || (!customer.company && customerCompany)) {
+      if (customer.deletedAt || (!customer.phone && customerPhone) || (!customer.company && customerCompany)) {
         customer = await prisma.customer.update({
           where: { id: customer.id },
           data: {
+            ...(customer.deletedAt ? restoreData(session.user.id) : {}),
             phone: customer.phone || customerPhone || null,
             company: customer.company || customerCompany || null,
+            status: "active",
           }
         });
       }
@@ -184,25 +194,28 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Ensure dashboard system sender exists
-  const sender = await prisma.telegramSender.upsert({
-    where: { telegramUserId: 0 },
-    update: {},
-    create: {
-      telegramUserId: 0,
-      firstName: "Dashboard",
-      lastName: "System",
-      username: "dashboard_system",
-      displayName: "Dashboard System",
-      activeReportType: "none",
-    },
-  });
+  const sender =
+    (await prisma.telegramSender.findFirst({
+      where: { telegramUserId: 0, userId: session.user.id },
+    })) ||
+    (await prisma.telegramSender.create({
+      data: {
+        userId: session.user.id,
+        telegramUserId: 0,
+        firstName: "Dashboard",
+        lastName: "System",
+        username: "dashboard_system",
+        displayName: "Dashboard System",
+        activeReportType: "none",
+      },
+    }));
 
   // 3. Ensure dashboard placeholder message exists
   const message = await prisma.telegramMessage.upsert({
-    where: { id: "dashboard_placeholder_msg" },
+    where: { id: `dashboard_placeholder_msg_${session.user.id}` },
     update: {},
     create: {
-      id: "dashboard_placeholder_msg",
+      id: `dashboard_placeholder_msg_${session.user.id}`,
       telegramMsgId: 0,
       text: "Dashboard Manual Entry",
       senderId: sender.id,

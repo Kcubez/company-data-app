@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   // Check if a sender with this email already exists
   const existing = await prisma.telegramSender.findFirst({
-    where: { email: normalizedEmail },
+    where: { email: normalizedEmail, userId: session.user.id },
   });
 
   if (existing) {

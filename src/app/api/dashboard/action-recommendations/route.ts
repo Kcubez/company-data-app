@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted } from "@/lib/soft-delete";
+import { ownedByUserOrAdmin, senderOwnedByUserOrAdmin, uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { GoogleGenAI } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -192,6 +194,11 @@ export async function GET(req: NextRequest) {
   const periodStart = period === "year" ? new Date(Date.UTC(year, 0, 1)) : new Date(Date.UTC(year, month - 1, 1));
   const periodEnd = period === "year" ? new Date(Date.UTC(year + 1, 0, 1)) : new Date(Date.UTC(year, month, 1));
   const startOfToday = new Date(Date.UTC(nowMyanmar.getUTCFullYear(), nowMyanmar.getUTCMonth(), nowMyanmar.getUTCDate()));
+  const senderScope = senderOwnedByUserOrAdmin(session);
+  const uploadedScope = uploadedByUserOrAdmin(session);
+  const ownerScope = ownedByUserOrAdmin(session);
+  const demandScope = { ...senderScope, ...notDeleted };
+  const activeUploadedScope = { ...uploadedScope, ...notDeleted };
 
   try {
     const [
@@ -207,11 +214,12 @@ export async function GET(req: NextRequest) {
       demandAgg,
       latestTargets,
     ] = await Promise.all([
-      prisma.botSettings.findFirst({ where: { isActive: true }, select: { geminiApiKey: true, geminiModel: true } }),
+      prisma.botSettings.findFirst({ where: { isActive: true, ...ownerScope }, select: { geminiApiKey: true, geminiModel: true } }),
       // Scoped to the selected period so May data doesn't bleed into June view
       prisma.demandRecord.count({
         where: {
           priority: "high",
+          ...demandScope,
           status: { notIn: ["closed", "completed"] },
           createdAt: { gte: periodStart, lt: periodEnd },
         },
@@ -219,6 +227,7 @@ export async function GET(req: NextRequest) {
       prisma.demandRecord.count({
         where: {
           missingFields: { has: "phone" },
+          ...demandScope,
           status: { notIn: ["closed", "completed"] },
           createdAt: { gte: periodStart, lt: periodEnd },
         },
@@ -226,6 +235,7 @@ export async function GET(req: NextRequest) {
       prisma.demandRecord.count({
         where: {
           followUpStatus: "overdue",
+          ...demandScope,
           status: { notIn: ["closed", "completed"] },
           createdAt: { gte: periodStart, lt: periodEnd },
         },
@@ -233,6 +243,7 @@ export async function GET(req: NextRequest) {
       prisma.demandRecord.count({
         where: {
           followUpDate: { gte: startOfToday, lt: new Date(startOfToday.getTime() + 86400000) },
+          ...demandScope,
           status: { notIn: ["closed", "completed"] },
           createdAt: { gte: periodStart, lt: periodEnd },
         },
@@ -240,18 +251,21 @@ export async function GET(req: NextRequest) {
       prisma.demandRecord.count({
         where: {
           status: "closed",
+          ...demandScope,
           createdAt: { gte: periodStart, lt: periodEnd },
         },
       }),
       prisma.demandRecord.count({
         where: {
           status: "quoted",
+          ...demandScope,
           createdAt: { gte: periodStart, lt: periodEnd },
         },
       }),
       prisma.demandRecord.count({
         where: {
           status: "pending",
+          ...demandScope,
           createdAt: { gte: periodStart, lt: periodEnd },
         },
       }),
@@ -265,19 +279,18 @@ export async function GET(req: NextRequest) {
           closedDeals: true,
           pendingDeals: true,
         },
-        where: { reportDate: { gte: periodStart, lt: periodEnd } },
+        where: { reportDate: { gte: periodStart, lt: periodEnd }, ...activeUploadedScope },
       }),
       prisma.demandRecord.aggregate({
         _sum: { serviceAmount: true },
-        where: { createdAt: { gte: periodStart, lt: periodEnd } },
+        where: { createdAt: { gte: periodStart, lt: periodEnd }, ...demandScope },
       }),
-      prisma.periodTarget.findUnique({
+      prisma.periodTarget.findFirst({
         where: {
-          period_year_month: {
-            period,
-            year,
-            month: period === "year" ? 0 : month,
-          },
+          period,
+          year,
+          month: period === "year" ? 0 : month,
+          ...ownerScope,
         },
       }),
     ]);

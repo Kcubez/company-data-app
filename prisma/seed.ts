@@ -189,18 +189,18 @@ async function main() {
   console.log("Database cleaned successfully.");
 
   // Ensure dashboard system sender exists
-  const sender = await prisma.telegramSender.upsert({
-    where: { telegramUserId: 0 },
-    update: {},
-    create: {
+  const sender =
+    (await prisma.telegramSender.findFirst({ where: { telegramUserId: 0, userId: null } })) ||
+    (await prisma.telegramSender.create({
+      data: {
       telegramUserId: 0,
       firstName: "Dashboard",
       lastName: "System",
       username: "dashboard_system",
       displayName: "Dashboard System",
       activeReportType: "none",
-    },
-  });
+      },
+    }));
 
   const message = await prisma.telegramMessage.upsert({
     where: { id: "dashboard_placeholder_msg" },

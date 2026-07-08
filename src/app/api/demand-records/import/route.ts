@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseDemandRowsFromWorkbook } from "@/lib/demand-import";
+import { restoreData } from "@/lib/soft-delete";
 import { NextRequest, NextResponse } from "next/server";
 import { formatPhoneNumber } from "@/lib/utils";
 
@@ -16,16 +17,26 @@ function serializeRecord(record: Record<string, unknown>) {
   return result;
 }
 
-async function getDashboardSender() {
-  return prisma.telegramSender.upsert({
-    where: { telegramUserId: BigInt(0) },
-    update: {
-      displayName: "Dashboard Upload",
-      firstName: "Dashboard",
-      lastMessageAt: new Date(),
-      messageCount: { increment: 1 },
-    },
-    create: {
+async function getDashboardSender(userId: string) {
+  const existing = await prisma.telegramSender.findFirst({
+    where: { telegramUserId: BigInt(0), userId },
+  });
+
+  if (existing) {
+    return prisma.telegramSender.update({
+      where: { id: existing.id },
+      data: {
+        displayName: "Dashboard Upload",
+        firstName: "Dashboard",
+        lastMessageAt: new Date(),
+        messageCount: { increment: 1 },
+      },
+    });
+  }
+
+  return prisma.telegramSender.create({
+    data: {
+      userId,
       telegramUserId: BigInt(0),
       firstName: "Dashboard",
       displayName: "Dashboard Upload",
@@ -62,7 +73,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "No importable demand rows found" }, { status: 400 });
   }
 
-  const sender = await getDashboardSender();
+  const sender = await getDashboardSender(session.user.id);
   const telegramMsgId = -Math.floor(Date.now() % 2_000_000_000);
   const message = await prisma.telegramMessage.create({
     data: {
@@ -96,8 +107,8 @@ export async function POST(req: NextRequest) {
     if (row.normalized.customerName) {
       const nameNormalized = normalizeCustomerName(row.normalized.customerName);
       const existing =
-        (await prisma.customer.findFirst({ where: { nameNormalized } })) ||
-        (await prisma.customer.findUnique({ where: { name: row.normalized.customerName } }));
+        (await prisma.customer.findFirst({ where: { nameNormalized, userId: session.user.id } })) ||
+        (await prisma.customer.findFirst({ where: { name: row.normalized.customerName, userId: session.user.id } }));
 
       const customer = existing
         ? await prisma.customer.update({
@@ -106,11 +117,14 @@ export async function POST(req: NextRequest) {
               nameNormalized: existing.nameNormalized || nameNormalized,
               ...(row.normalized.customerPhone ? { phone: formatPhoneNumber(row.normalized.customerPhone) } : {}),
               ...(row.normalized.customerCompany ? { company: row.normalized.customerCompany } : {}),
+              ...(existing.deletedAt ? restoreData(session.user.id) : {}),
+              status: "active",
               updatedAt: new Date(),
             },
           })
         : await prisma.customer.create({
             data: {
+              userId: session.user.id,
               name: row.normalized.customerName,
               nameNormalized,
               phone: row.normalized.customerPhone ? formatPhoneNumber(row.normalized.customerPhone) : undefined,

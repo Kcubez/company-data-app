@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted, restoreData, softDeleteData } from "@/lib/soft-delete";
+import { customerOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -16,7 +18,7 @@ export async function GET(req: NextRequest) {
   const dateTo = searchParams.get("dateTo") || "";
   const status = searchParams.get("status") || "";
 
-  const where: Record<string, any> = {};
+  const where: Record<string, any> = { ...customerOwnedByUserOrAdmin(session), ...notDeleted };
   const conditions: any[] = [];
 
   if (status) where.status = status;
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
     conditions.push({
       OR: [
         { createdAt: rangeCondition },
-        { demandRecords: { some: { createdAt: rangeCondition } } },
+        { demandRecords: { some: { createdAt: rangeCondition, ...notDeleted } } },
         { activities: { some: { createdAt: rangeCondition } } }
       ]
     });
@@ -59,6 +61,7 @@ export async function GET(req: NextRequest) {
           take: 1,
         },
         demandRecords: {
+          where: notDeleted,
           select: {
             id: true,
             serviceName: true,
@@ -67,7 +70,7 @@ export async function GET(req: NextRequest) {
           }
         },
         _count: {
-          select: { demandRecords: true },
+          select: { demandRecords: { where: notDeleted } },
         },
       },
       orderBy: { updatedAt: "desc" },
@@ -121,16 +124,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Name is required" }, { status: 400 });
   }
 
-  const customer = await prisma.customer.create({
-    data: {
-      name,
-      nameNormalized: normalizeCustomerName(name),
-      phone,
-      email,
-      company,
-      notes,
-    },
+  const nameNormalized = normalizeCustomerName(name);
+  const existing = await prisma.customer.findFirst({
+    where: { userId: session.user.id, nameNormalized },
   });
+
+  const customer = existing
+    ? await prisma.customer.update({
+        where: { id: existing.id },
+        data: {
+          ...restoreData(session.user.id),
+          name,
+          phone,
+          email,
+          company,
+          notes,
+          status: "active",
+        },
+      })
+    : await prisma.customer.create({
+        data: {
+          userId: session.user.id,
+          name,
+          nameNormalized,
+          phone,
+          email,
+          company,
+          notes,
+        },
+      });
 
   return NextResponse.json({ customer });
 }
@@ -162,8 +184,7 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ customer });
 }
 
-// DELETE /api/customers — remove customers matching the selected period.
-// CustomerActivity cascades; DemandRecord.customerId is set to null (see schema).
+// DELETE /api/customers — soft-delete customers matching the selected period.
 export async function DELETE(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
@@ -173,7 +194,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
-  const where: Record<string, any> = {};
+  const where: Record<string, any> = { ...customerOwnedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     const rangeCondition: Record<string, Date> = {};
@@ -182,11 +203,14 @@ export async function DELETE(req: NextRequest) {
 
     where.OR = [
       { createdAt: rangeCondition },
-      { demandRecords: { some: { createdAt: rangeCondition } } },
+      { demandRecords: { some: { createdAt: rangeCondition, ...notDeleted } } },
       { activities: { some: { createdAt: rangeCondition } } },
     ];
   }
 
-  const result = await prisma.customer.deleteMany({ where });
+  const result = await prisma.customer.updateMany({
+    where,
+    data: softDeleteData(session.user.id, searchParams.get("reason")),
+  });
   return NextResponse.json({ success: true, count: result.count });
 }

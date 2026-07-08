@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { demandRecordsApi, type DemandRecordsParams, type UpdateDemandRecordPayload } from "@/lib/api";
+import { clearListQueryData, removeListItemQueryData } from "@/lib/query-cache";
 import { toast } from "sonner";
 
 export function useDemandRecords(params: DemandRecordsParams = {}) {
@@ -34,7 +35,9 @@ export function useDeleteAllDemandRecords() {
   return useMutation({
     mutationFn: (params: { dateFrom?: string; dateTo?: string } = {}) => demandRecordsApi.deleteAll(params),
     onSuccess: (res) => {
+      clearListQueryData(queryClient, ["demand-records"], "records");
       queryClient.invalidateQueries({ queryKey: ["demand-records"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });
       queryClient.invalidateQueries({ queryKey: ["demand-record-recommendations"] });
       toast.success(`Deleted ${res.count} demand record(s)`);
@@ -103,8 +106,10 @@ export function useDeleteDemandRecord() {
 
   return useMutation({
     mutationFn: (id: string) => demandRecordsApi.delete(id),
-    onSuccess: () => {
+    onSuccess: (_res, id) => {
+      removeListItemQueryData(queryClient, ["demand-records"], "records", id);
       queryClient.invalidateQueries({ queryKey: ["demand-records"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });
       toast.success("Lead deleted successfully");
     },

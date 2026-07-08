@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 // Helper to serialize BigInt fields for JSON response
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
   const senderId = searchParams.get("senderId") || "";
 
   // Build where clause
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = senderOwnedByUserOrAdmin(session);
 
   if (senderId) {
     where.senderId = senderId;

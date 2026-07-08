@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { websiteUpdatesApi, type WebsiteUpdatesParams } from "@/lib/api";
+import { clearListQueryData } from "@/lib/query-cache";
 import { toast } from "sonner";
 
 export const websiteUpdatesKeys = {
@@ -49,7 +50,9 @@ export function useDeleteAllWebsiteUpdates() {
   return useMutation({
     mutationFn: (params: { dateFrom?: string; dateTo?: string } = {}) => websiteUpdatesApi.deleteAll(params),
     onSuccess: (res) => {
+      clearListQueryData(queryClient, websiteUpdatesKeys.all, "records");
       queryClient.invalidateQueries({ queryKey: websiteUpdatesKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       toast.success(`Deleted ${res.deleted} website record(s)`);
     },
     onError: (error: any) => {

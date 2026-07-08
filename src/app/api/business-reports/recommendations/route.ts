@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted } from "@/lib/soft-delete";
+import { ownedByUserOrAdmin, uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { GoogleGenAI } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -39,12 +41,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const settings = await prisma.botSettings.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...ownedByUserOrAdmin(session) },
       select: { geminiApiKey: true, geminiModel: true },
     });
 
     // Aggregate last 30 reports for trend analysis
     const reports = await prisma.businessReport.findMany({
+      where: { ...uploadedByUserOrAdmin(session), ...notDeleted },
       orderBy: { reportDate: "desc" },
       take: 30,
       include: { sender: { select: { displayName: true } } },

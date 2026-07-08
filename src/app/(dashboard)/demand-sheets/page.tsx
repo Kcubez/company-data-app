@@ -1245,13 +1245,15 @@ function DemandSheetsPageContent() {
           title="Delete demand records for selected period?"
           description={
             <>
-              This permanently removes{' '}
+              This moves{' '}
               <span className="font-semibold text-red-700 dark:text-red-300">
                 {data?.total || 0} demand record(s) from {dateFrom} to {dateTo}
               </span>
-              . Linked customers are kept, but their demand links are cleared. This action cannot be undone.
+              {' '}to Trash. Linked customers are kept, and admins can restore these records later.
             </>
           }
+          confirmationText="confirm"
+          confirmationLabel="Type confirm to move these records to Trash"
           isPending={deleteAllMutation.isPending}
           onCancel={() => setShowDeleteConfirm(false)}
           onConfirm={handleDeleteAll}

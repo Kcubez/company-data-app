@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted, softDeleteData } from "@/lib/soft-delete";
+import { uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 // PATCH /api/business-reports/[id]
@@ -9,6 +11,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const body = await req.json();
+  const existing = await prisma.businessReport.findFirst({
+    where: { id, ...uploadedByUserOrAdmin(session), ...notDeleted },
+    select: { id: true },
+  });
+  if (!existing) return NextResponse.json({ message: "Record not found or access denied" }, { status: 404 });
 
   const allowed = [
     "reportDate", "reporterName", "marketingBudget", "marketingChannel",
@@ -38,6 +45,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  await prisma.businessReport.delete({ where: { id } });
+  const result = await prisma.businessReport.updateMany({
+    where: { id, ...uploadedByUserOrAdmin(session), ...notDeleted },
+    data: softDeleteData(session.user.id),
+  });
+  if (result.count === 0) return NextResponse.json({ message: "Record not found or access denied" }, { status: 404 });
   return NextResponse.json({ success: true });
 }

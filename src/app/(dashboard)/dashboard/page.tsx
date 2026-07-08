@@ -666,6 +666,16 @@ function DashboardPageContent() {
   const { data: recsData, isLoading: recsLoading } = useActionRecommendations(period, month, year);
   const router = useRouter();
 
+  useEffect(() => {
+    if (session?.user.role === 'admin') {
+      router.replace('/admin/users');
+    }
+  }, [router, session?.user.role]);
+
+  if (session?.user.role === 'admin') {
+    return <div className="space-y-6"><Skeleton className="h-24 w-full" /><Skeleton className="h-48 w-full" /></div>;
+  }
+
   const getActionLink = (rec: ActionRecommendation) => {
     // 1. Prioritize actionType if present
     if (rec.actionType) {

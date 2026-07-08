@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted, softDeleteData } from "@/lib/soft-delete";
+import { uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 function serializeProjectExpiration(record: any) {
@@ -25,7 +27,7 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
 
-  const where: any = {};
+  const where: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     where.createdAt = {};
@@ -96,7 +98,7 @@ export async function GET(req: NextRequest) {
     }),
     prisma.projectExpiration.count({ where }),
     prisma.$transaction(async (tx) => {
-      const statsWhere: any = {};
+      const statsWhere: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
       if (dateFrom || dateTo) {
         statsWhere.createdAt = {};
         if (dateFrom) statsWhere.createdAt.gte = new Date(dateFrom);
@@ -154,7 +156,7 @@ export async function GET(req: NextRequest) {
 
 // DELETE /api/project-expiries
 // Admin: deletes all records.
-// Regular user: deletes only rows they uploaded + bot-uploaded rows (uploadedByUserId = null).
+// Regular user: soft-deletes only rows they own.
 export async function DELETE(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
@@ -164,10 +166,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
-  const isAdmin = session.user.role === "admin";
-  const where: any = isAdmin
-    ? {}
-    : { OR: [{ uploadedByUserId: session.user.id }, { uploadedByUserId: null }] };
+  const where: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     where.createdAt = {};
@@ -175,6 +174,9 @@ export async function DELETE(req: NextRequest) {
     if (dateTo) where.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
   }
 
-  const result = await prisma.projectExpiration.deleteMany({ where });
+  const result = await prisma.projectExpiration.updateMany({
+    where,
+    data: softDeleteData(session.user.id, searchParams.get("reason")),
+  });
   return NextResponse.json({ success: true, deleted: result.count });
 }

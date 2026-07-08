@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { analyzeDemandRecord } from "@/lib/demand-analysis";
 import { prisma } from "@/lib/prisma";
+import { notDeleted, restoreData, softDeleteData } from "@/lib/soft-delete";
+import { senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function PATCH(
@@ -15,8 +17,8 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
 
-  const record = await prisma.demandRecord.findUnique({
-    where: { id },
+  const record = await prisma.demandRecord.findFirst({
+    where: { id, ...senderOwnedByUserOrAdmin(session), ...notDeleted },
     include: { customer: true },
   });
   if (!record) {
@@ -38,6 +40,7 @@ export async function PATCH(
       const normalizedName = customerName.toLowerCase().replace(/\s+/g, " ").trim();
       let customer = await prisma.customer.findFirst({
         where: {
+          userId: session.user.id,
           OR: [
             { nameNormalized: normalizedName },
             { name: { equals: customerName, mode: "insensitive" } }
@@ -48,6 +51,7 @@ export async function PATCH(
       if (!customer) {
         customer = await prisma.customer.create({
           data: {
+            userId: session.user.id,
             name: customerName,
             nameNormalized: normalizedName,
             phone: customerPhone || null,
@@ -60,14 +64,17 @@ export async function PATCH(
         if (
           (!customer.phone && customerPhone) ||
           (!customer.company && customerCompany) ||
-          customer.name !== customerName
+          customer.name !== customerName ||
+          customer.deletedAt
         ) {
           customer = await prisma.customer.update({
             where: { id: customer.id },
             data: {
+              ...(customer.deletedAt ? restoreData(session.user.id) : {}),
               name: customerName,
               phone: customerPhone || customer.phone || null,
               company: customerCompany || customer.company || null,
+              status: "active",
             }
           });
         }
@@ -161,7 +168,13 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    await prisma.demandRecord.delete({ where: { id } });
+    const result = await prisma.demandRecord.updateMany({
+      where: { id, ...senderOwnedByUserOrAdmin(session), ...notDeleted },
+      data: softDeleteData(session.user.id),
+    });
+    if (result.count === 0) {
+      return NextResponse.json({ message: "Record not found or access denied" }, { status: 404 });
+    }
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ message: "Record not found or delete failed" }, { status: 404 });

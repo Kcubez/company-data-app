@@ -21,6 +21,7 @@ import {
 import { analyzeDemandRecord } from "@/lib/demand-analysis";
 import { NextRequest, NextResponse, after } from "next/server";
 import { sendOTPEmail } from "@/lib/email";
+import { notDeleted, restoreData } from "@/lib/soft-delete";
 import { formatPhoneNumber } from "@/lib/utils";
 
 function displayNameFromTelegramUser(from: { first_name?: string; last_name?: string }) {
@@ -70,10 +71,33 @@ async function createTelegramMessageIfNew({
   }
 }
 
-async function getActiveBotSettings() {
+async function getActiveBotSettings(req: NextRequest) {
+  const secret = req.headers.get('x-telegram-bot-api-secret-token');
+  const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+  if (secret) {
+    const secretWhere =
+      expectedSecret && secret === expectedSecret
+        ? { isActive: true }
+        : { isActive: true, webhookSecret: secret };
+    const settings = await prisma.botSettings.findFirst({
+      where: secretWhere,
+      select: {
+        userId: true,
+        botToken: true,
+        geminiApiKey: true,
+        geminiModel: true,
+      },
+    });
+    if (settings) return settings;
+  }
+
+  if (expectedSecret && secret !== expectedSecret) return null;
+
   return prisma.botSettings.findFirst({
     where: { isActive: true },
     select: {
+      userId: true,
       botToken: true,
       geminiApiKey: true,
       geminiModel: true,
@@ -246,34 +270,39 @@ async function upsertSender(from: {
   first_name?: string;
   last_name?: string;
   username?: string;
-}) {
+}, ownerUserId: string | null | undefined) {
   const displayName = displayNameFromTelegramUser(from);
-  
-  // Find active bot owner to link to this sender
-  const settings = await prisma.botSettings.findFirst({
-    where: { isActive: true },
-    select: { userId: true },
-  });
-  const ownerUserId = settings?.userId || null;
 
-  return prisma.telegramSender.upsert({
-    where: { telegramUserId: BigInt(from.id) },
-    create: {
+  const existing = await prisma.telegramSender.findFirst({
+    where: {
       telegramUserId: BigInt(from.id),
+      userId: ownerUserId || null,
+    },
+  });
+
+  if (!existing) {
+    return prisma.telegramSender.create({
+      data: {
+        telegramUserId: BigInt(from.id),
+        firstName: from.first_name || "Unknown",
+        lastName: from.last_name || null,
+        username: from.username || null,
+        displayName: displayName || "Unknown",
+        messageCount: 0,
+        lastMessageAt: null,
+        activeReportType: 'none',
+        userId: ownerUserId || null,
+      },
+    });
+  }
+
+  return prisma.telegramSender.update({
+    where: { id: existing.id },
+    data: {
       firstName: from.first_name || "Unknown",
       lastName: from.last_name || null,
       username: from.username || null,
       displayName: displayName || "Unknown",
-      messageCount: 0,
-      lastMessageAt: null,
-      activeReportType: 'none',
-      userId: ownerUserId,
-    },
-    update: {
-      firstName: from.first_name || undefined,
-      lastName: from.last_name || null,
-      username: from.username || null,
-      displayName: displayName || undefined,
       ...(ownerUserId ? { userId: ownerUserId } : {}),
     },
   });
@@ -969,30 +998,36 @@ function getMyanmarFieldName(field: string): string {
 }
 
 
-async function buildQAContext(): Promise<string> {
+async function buildQAContext(ownerUserId: string | null): Promise<string> {
   const [demandRecords, qaDocs, customers, projectExpiries, websiteUpdates, businessReports] = await Promise.all([
     prisma.demandRecord.findMany({
+      where: { ...(ownerUserId ? { sender: { userId: ownerUserId } } : {}), ...notDeleted },
       orderBy: { createdAt: 'desc' },
       take: 30,
       include: { sender: true },
     }),
     prisma.qADocument.findMany({
+      where: ownerUserId ? { userId: ownerUserId } : {},
       orderBy: { createdAt: 'desc' },
       take: 10,
     }),
     prisma.customer.findMany({
+      where: { ...(ownerUserId ? { userId: ownerUserId } : {}), ...notDeleted },
       take: 20,
       orderBy: { updatedAt: 'desc' },
     }),
     prisma.projectExpiration.findMany({
+      where: { ...(ownerUserId ? { uploadedByUserId: ownerUserId } : {}), ...notDeleted },
       orderBy: { createdAt: 'desc' },
       take: 20,
     }),
     prisma.websiteUpdate.findMany({
+      where: { ...(ownerUserId ? { uploadedByUserId: ownerUserId } : {}), ...notDeleted },
       orderBy: { createdAt: 'desc' },
       take: 20,
     }),
     prisma.businessReport.findMany({
+      where: { ...(ownerUserId ? { sender: { userId: ownerUserId } } : {}), ...notDeleted },
       orderBy: { reportDate: 'desc' },
       take: 15,
       include: { sender: true },
@@ -1092,6 +1127,7 @@ async function resolveCustomersBatch(
   }[],
   senderId: string,
   fileName: string,
+  ownerUserId: string | null,
 ): Promise<Map<string, string>> {
   const nameToNormalized = new Map<string, string>();
   const nameToDetails = new Map<string, { phone: string | null; company: string | null }>();
@@ -1127,16 +1163,16 @@ async function resolveCustomersBatch(
 
   const [byNormalizedRows, byRawNameRows] = await Promise.all([
     prisma.customer.findMany({
-      where: { nameNormalized: { in: allNormalized } },
-      select: { id: true, name: true, nameNormalized: true },
+      where: { nameNormalized: { in: allNormalized }, userId: ownerUserId },
+      select: { id: true, name: true, nameNormalized: true, deletedAt: true },
     }),
     prisma.customer.findMany({
-      where: { name: { in: allRawNames } },
-      select: { id: true, name: true, nameNormalized: true },
+      where: { name: { in: allRawNames }, userId: ownerUserId },
+      select: { id: true, name: true, nameNormalized: true, deletedAt: true },
     }),
   ]);
 
-  const idByNormalized = new Map<string, { id: string; name: string; nameNormalized: string | null }>();
+  const idByNormalized = new Map<string, { id: string; name: string; nameNormalized: string | null; deletedAt?: Date | null }>();
   for (const c of byNormalizedRows) {
     if (c.nameNormalized) idByNormalized.set(c.nameNormalized, c);
   }
@@ -1162,19 +1198,20 @@ async function resolveCustomersBatch(
       const created = await prisma.customer.create({
         data: {
           name: m.raw,
+          userId: ownerUserId,
           nameNormalized: m.normalized,
           phone: details?.phone || null,
           company: details?.company || null,
           createdAt: (details as any)?.createdAt || undefined,
         },
-        select: { id: true, name: true, nameNormalized: true },
+        select: { id: true, name: true, nameNormalized: true, deletedAt: true },
       });
       idByNormalized.set(m.normalized, created);
     } catch (err) {
       if (isPrismaUniqueConstraintError(err)) {
         const existing = await prisma.customer.findFirst({
-          where: { nameNormalized: m.normalized },
-          select: { id: true, name: true, nameNormalized: true },
+          where: { nameNormalized: m.normalized, userId: ownerUserId },
+          select: { id: true, name: true, nameNormalized: true, deletedAt: true },
         });
         if (existing) idByNormalized.set(m.normalized, existing);
       } else {
@@ -1188,7 +1225,18 @@ async function resolveCustomersBatch(
     Array.from(idByNormalized.values()).map(async (c) => {
       const details = nameToDetails.get(c.name);
       if (!details) return;
-      const updateData: { phone?: string; company?: string; nameNormalized?: string; updatedAt?: Date } = {};
+      const updateData: {
+        phone?: string;
+        company?: string;
+        nameNormalized?: string;
+        updatedAt?: Date;
+        status?: string;
+        deletedAt?: null;
+        deletedByUserId?: null;
+        deletedReason?: null;
+        restoredAt?: Date;
+        restoredByUserId?: string | null;
+      } = {};
       if (details.phone) {
         updateData.phone = details.phone;
       }
@@ -1198,6 +1246,9 @@ async function resolveCustomersBatch(
       const targetNormalized = nameToNormalized.get(c.name);
       if (targetNormalized && !c.nameNormalized) {
         updateData.nameNormalized = targetNormalized;
+      }
+      if (c.deletedAt && ownerUserId) {
+        Object.assign(updateData, restoreData(ownerUserId), { status: "active" });
       }
 
       if (Object.keys(updateData).length > 0) {
@@ -1371,6 +1422,7 @@ async function createDemandRecordsFromParsedDemands({
   fileName,
   sourceType = 'telegram',
   importBatchId,
+  ownerUserId,
 }: {
   parsedDemands: ParsedDemandRecord[];
   senderId: string;
@@ -1378,11 +1430,13 @@ async function createDemandRecordsFromParsedDemands({
   fileName?: string | null;
   sourceType?: string;
   importBatchId?: string | null;
+  ownerUserId: string | null;
 }) {
   const customerIdByName = await resolveCustomersBatch(
     parsedDemands,
     senderId,
     fileName || 'Telegram demand import',
+    ownerUserId,
   );
 
   const demandRecordCreates: Prisma.DemandRecordUncheckedCreateInput[] = [];
@@ -1444,7 +1498,7 @@ async function processFileInBackground({
   downloadedBuffer: Buffer;
   fileInfo: { fileName: string; mimeType: string; fileSize: number };
   caption?: string;
-  settings: { botToken: string | null; geminiApiKey: string | null; geminiModel: string | null };
+  settings: { userId: string | null; botToken: string | null; geminiApiKey: string | null; geminiModel: string | null };
   chatId: bigint;
   senderId: string;
   telegramMessageId: string;
@@ -1501,6 +1555,7 @@ async function processFileInBackground({
 
     if (isExpiryFile) {
       const creates = parsedExpiryRecords.map(rec => ({
+        uploadedByUserId: settings.userId,
         projectName: rec.projectName,
         url: rec.url,
         packageName: rec.packageName,
@@ -1537,6 +1592,7 @@ async function processFileInBackground({
 
     if (isWebsiteUpdateFile) {
       const creates = parsedWebsiteUpdateRecords.map(rec => ({
+        uploadedByUserId: settings.userId,
         name: rec.name,
         url: rec.url,
         businessType: rec.businessType,
@@ -1570,6 +1626,7 @@ async function processFileInBackground({
 
     if (isBusinessReportFile) {
       const creates = parsedBusinessReportRecords.map((rec: any) => ({
+        uploadedByUserId: settings.userId,
         reportDate: rec.reportDate || receivedAtMyanmar,
         reporterName: rec.reporterName || null,
         senderId: senderId,
@@ -1612,6 +1669,7 @@ async function processFileInBackground({
         const isIncome = rec.type.toLowerCase() === 'income';
         const recordDate = rec.date || receivedAtMyanmar;
         return {
+          uploadedByUserId: settings.userId,
           reportDate: recordDate,
           senderId: senderId,
           messageId: telegramMessageId,
@@ -1796,19 +1854,16 @@ function isBusinessReportText(text: string): boolean {
 
 export async function POST(req: NextRequest) {
   try {
-    const secret = req.headers.get('x-telegram-bot-api-secret-token');
-    const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-    if (expectedSecret && secret !== expectedSecret) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await req.json();
-    const settings = await getActiveBotSettings();
+    const settings = await getActiveBotSettings(req);
+    if (!settings?.botToken) {
+      return NextResponse.json({ error: "Unauthorized bot webhook" }, { status: 401 });
+    }
     const callbackQuery = body.callback_query;
 
     // ─── Handle Callback Queries (Button presses) ─────────────────────
     if (callbackQuery?.data && callbackQuery.from) {
-      const sender = await upsertSender(callbackQuery.from);
+      const sender = await upsertSender(callbackQuery.from, settings.userId);
       const chatId = callbackQuery.message?.chat?.id;
       const messageId = callbackQuery.message?.message_id;
       const data = callbackQuery.data;
@@ -1881,11 +1936,13 @@ export async function POST(req: NextRequest) {
             columnMapping: Prisma.JsonNull,
             rowCount: rows.length,
             importedCount: 0,
+            uploadedByUserId: settings.userId,
           },
         });
 
         await prisma.qADocument.create({
           data: {
+            userId: settings.userId,
             title: `📎 ${pending.fileName}`,
             content: pending.extractedText.slice(0, 10000),
             source: 'telegram_file',
@@ -1902,6 +1959,7 @@ export async function POST(req: NextRequest) {
           fileName: pending.fileName,
           sourceType: 'telegram_file',
           importBatchId: importBatch.id,
+          ownerUserId: settings.userId,
         });
 
         await Promise.all([
@@ -2186,7 +2244,7 @@ export async function POST(req: NextRequest) {
     const from = message.from;
     if (!from) return NextResponse.json({ ok: true });
 
-    const sender = await upsertSender(from);
+    const sender = await upsertSender(from, settings.userId);
     const chatId = BigInt(message.chat.id);
 
     // ─── Handle Auth & OTP Command States (Bypasses general authorization) ──
@@ -2279,6 +2337,7 @@ export async function POST(req: NextRequest) {
         // 2. email matches and telegramUserId matches the sender's telegramUserId
         const preRegisteredSender = await prisma.telegramSender.findFirst({
           where: {
+            userId: settings.userId,
             email: normalizedEmail,
             OR: [
               { telegramUserId: null },
@@ -2414,6 +2473,7 @@ export async function POST(req: NextRequest) {
         // Verification Success
         const preRegistered = await prisma.telegramSender.findFirst({
           where: {
+            userId: settings.userId,
             email: sender.email,
             OR: [
               { telegramUserId: null },
@@ -2439,6 +2499,7 @@ export async function POST(req: NextRequest) {
                 lastName: from.last_name || null,
                 username: from.username || null,
                 displayName: displayName || "Unknown",
+                userId: settings.userId,
                 isVerified: true,
                 isAuthorized: true, // Pre-authorized by business owner!
                 activeReportType: 'none',
@@ -2769,7 +2830,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      const context = await buildQAContext();
+      const context = await buildQAContext(settings.userId);
       const answer = await answerQuestionWithGemini({
         question: message.text,
         context,
@@ -2808,6 +2869,7 @@ export async function POST(req: NextRequest) {
 
       await prisma.projectExpiration.create({
         data: {
+          uploadedByUserId: settings.userId,
           projectName: parsedExpiry.projectName,
           url: parsedExpiry.url,
           packageName: parsedExpiry.packageName,
@@ -2866,6 +2928,7 @@ export async function POST(req: NextRequest) {
 
       await prisma.websiteUpdate.create({
         data: {
+          uploadedByUserId: settings.userId,
           name: parsedUpdate.name,
           url: parsedUpdate.url,
           businessType: parsedUpdate.businessType,
@@ -2922,6 +2985,7 @@ export async function POST(req: NextRequest) {
 
       await prisma.businessReport.create({
         data: {
+          uploadedByUserId: settings.userId,
           reportDate: parsed.reportDate,
           reporterName: parsed.reporterName || sender.displayName,
           senderId: sender.id,
@@ -2983,6 +3047,7 @@ export async function POST(req: NextRequest) {
 
       await prisma.businessReport.create({
         data: {
+          uploadedByUserId: settings.userId,
           reportDate: parsed.reportDate,
           reporterName: parsed.reporterName || sender.displayName,
           senderId: sender.id,
@@ -3021,26 +3086,29 @@ export async function POST(req: NextRequest) {
       if (parsedDemand.customerName) {
         const normalizedName = normalizeCustomerName(parsedDemand.customerName);
         let customer = await prisma.customer.findFirst({
-          where: { nameNormalized: normalizedName },
+          where: { nameNormalized: normalizedName, userId: settings.userId },
         });
         if (!customer) {
-          customer = await prisma.customer.findUnique({
-            where: { name: parsedDemand.customerName },
+          customer = await prisma.customer.findFirst({
+            where: { name: parsedDemand.customerName, userId: settings.userId },
           });
         }
         if (customer) {
           await prisma.customer.update({
             where: { id: customer.id },
             data: {
+              ...(customer.deletedAt && settings.userId ? restoreData(settings.userId) : {}),
               updatedAt: new Date(),
               nameNormalized: customer.nameNormalized || normalizedName,
               ...(parsedDemand.customerPhone ? { phone: formatPhoneNumber(parsedDemand.customerPhone) } : {}),
               ...(parsedDemand.customerCompany ? { company: parsedDemand.customerCompany } : {}),
+              status: "active",
             },
           });
         } else {
           customer = await prisma.customer.create({
             data: {
+              userId: settings.userId,
               name: parsedDemand.customerName,
               nameNormalized: normalizedName,
               phone: parsedDemand.customerPhone ? formatPhoneNumber(parsedDemand.customerPhone) : null,
@@ -3150,26 +3218,29 @@ export async function POST(req: NextRequest) {
     if (parsedDemand.customerName) {
       const normalizedName = normalizeCustomerName(parsedDemand.customerName);
       let customer = await prisma.customer.findFirst({
-        where: { nameNormalized: normalizedName },
+        where: { nameNormalized: normalizedName, userId: settings.userId },
       });
       if (!customer) {
-        customer = await prisma.customer.findUnique({
-          where: { name: parsedDemand.customerName },
+        customer = await prisma.customer.findFirst({
+          where: { name: parsedDemand.customerName, userId: settings.userId },
         });
       }
       if (customer) {
         await prisma.customer.update({
           where: { id: customer.id },
           data: {
+            ...(customer.deletedAt && settings.userId ? restoreData(settings.userId) : {}),
             updatedAt: new Date(),
             nameNormalized: customer.nameNormalized || normalizedName,
             ...(parsedDemand.customerPhone ? { phone: formatPhoneNumber(parsedDemand.customerPhone) } : {}),
             ...(parsedDemand.customerCompany ? { company: parsedDemand.customerCompany } : {}),
+            status: "active",
           },
         });
       } else {
         customer = await prisma.customer.create({
           data: {
+            userId: settings.userId,
             name: parsedDemand.customerName,
             nameNormalized: normalizedName,
             phone: parsedDemand.customerPhone ? formatPhoneNumber(parsedDemand.customerPhone) : null,

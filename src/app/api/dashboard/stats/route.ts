@@ -1,5 +1,12 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted } from "@/lib/soft-delete";
+import {
+  customerOwnedByUserOrAdmin,
+  ownedByUserOrAdmin,
+  senderOwnedByUserOrAdmin,
+  uploadedByUserOrAdmin,
+} from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/dashboard/stats — dashboard overview stats
@@ -22,6 +29,13 @@ export async function GET(req: NextRequest) {
   const startOfToday = new Date(Date.UTC(nowMyanmar.getUTCFullYear(), nowMyanmar.getUTCMonth(), nowMyanmar.getUTCDate()));
   const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const senderScope = senderOwnedByUserOrAdmin(session);
+  const ownerScope = ownedByUserOrAdmin(session);
+  const customerScope = customerOwnedByUserOrAdmin(session);
+  const uploadedScope = uploadedByUserOrAdmin(session);
+  const demandScope = { ...senderScope, ...notDeleted };
+  const activeCustomerScope = { ...customerScope, ...notDeleted };
+  const activeUploadedScope = { ...uploadedScope, ...notDeleted };
 
   const [
     totalMessages,
@@ -34,19 +48,20 @@ export async function GET(req: NextRequest) {
     todayDemandRecords,
     pendingDemandRecords,
   ] = await Promise.all([
-    prisma.telegramMessage.count(),
-    prisma.telegramMessage.count({ where: { receivedAt: { gte: startOfToday } } }),
-    prisma.telegramSender.count(),
-    prisma.telegramMessage.count({ where: { receivedAt: { gte: sevenDaysAgo } } }),
-    prisma.customer.count(),
-    prisma.customer.count({ where: { createdAt: { gte: periodStart, lt: periodEnd } } }),
-    prisma.botSettings.findFirst({ where: { isActive: true } }),
-    prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday } } }),
-    prisma.demandRecord.count({ where: { status: { notIn: ['closed', 'completed'] } } }),
+    prisma.telegramMessage.count({ where: senderScope }),
+    prisma.telegramMessage.count({ where: { receivedAt: { gte: startOfToday }, ...senderScope } }),
+    prisma.telegramSender.count({ where: ownerScope }),
+    prisma.telegramMessage.count({ where: { receivedAt: { gte: sevenDaysAgo }, ...senderScope } }),
+    prisma.customer.count({ where: activeCustomerScope }),
+    prisma.customer.count({ where: { createdAt: { gte: periodStart, lt: periodEnd }, ...activeCustomerScope } }),
+    prisma.botSettings.findFirst({ where: { isActive: true, ...ownerScope } }),
+    prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday }, ...demandScope } }),
+    prisma.demandRecord.count({ where: { status: { notIn: ['closed', 'completed'] }, ...demandScope } }),
   ]);
 
   // Messages List
   const messages = await prisma.telegramMessage.findMany({
+    where: senderScope,
     orderBy: { receivedAt: 'desc' },
     take: 5,
     include: { sender: true },
@@ -74,7 +89,7 @@ export async function GET(req: NextRequest) {
   const pipelineCounts = await prisma.demandRecord.groupBy({
     by: ['status'],
     _count: { _all: true },
-    where: { createdAt: { gte: periodStart, lt: periodEnd } },
+    where: { createdAt: { gte: periodStart, lt: periodEnd }, ...demandScope },
   });
   const pipeline = {
     new: 0,
@@ -96,6 +111,7 @@ export async function GET(req: NextRequest) {
       _sum: { serviceQty: true },
       where: { 
         createdAt: { gte: periodStart, lt: periodEnd },
+        ...demandScope,
         status: { in: ['closed', 'completed'] }
       },
     }),
@@ -103,6 +119,7 @@ export async function GET(req: NextRequest) {
       _sum: { serviceAmount: true },
       where: { 
         createdAt: { gte: periodStart, lt: periodEnd },
+        ...demandScope,
         status: { in: ['closed', 'completed'] }
       },
     }),
@@ -117,12 +134,14 @@ export async function GET(req: NextRequest) {
       },
       where: { 
         reportDate: { gte: periodStart, lt: periodEnd },
+        ...activeUploadedScope,
         reporterName: { not: "Daily Bot Ingestion" }
       },
     }),
     prisma.demandRecord.count({
       where: {
         priority: "high",
+        ...demandScope,
         status: { notIn: ["closed", "completed"] },
         createdAt: { gte: periodStart, lt: periodEnd },
       },
@@ -130,6 +149,7 @@ export async function GET(req: NextRequest) {
     prisma.demandRecord.count({
       where: {
         missingFields: { has: "phone" },
+        ...demandScope,
         status: { notIn: ["closed", "completed"] },
         createdAt: { gte: periodStart, lt: periodEnd },
       },
@@ -137,12 +157,13 @@ export async function GET(req: NextRequest) {
     prisma.demandRecord.count({
       where: {
         followUpStatus: "overdue",
+        ...demandScope,
         status: { notIn: ["closed", "completed"] },
         createdAt: { gte: periodStart, lt: periodEnd },
       },
     }),
     prisma.demandRecord.count({
-      where: { createdAt: { gte: periodStart, lt: periodEnd } },
+      where: { createdAt: { gte: periodStart, lt: periodEnd }, ...demandScope },
     }),
   ]);
   const totalQuantitySold = qtyAgg._sum.serviceQty || 0;
@@ -154,13 +175,12 @@ export async function GET(req: NextRequest) {
   const roi = totalCost > 0 ? (profitLoss / totalCost) * 100 : null;
 
   // Retrieve targets set for this period
-  const periodTarget = await prisma.periodTarget.findUnique({
+  const periodTarget = await prisma.periodTarget.findFirst({
     where: {
-      period_year_month: {
-        period,
-        year,
-        month: period === "year" ? 0 : month,
-      },
+      period,
+      year,
+      month: period === "year" ? 0 : month,
+      ...ownerScope,
     },
   });
 
@@ -271,7 +291,7 @@ export async function GET(req: NextRequest) {
 
   const demandActivityRows = await prisma.demandRecord.groupBy({
     by: ['createdAt'],
-    where: { createdAt: { gte: periodStart, lt: periodEnd } },
+    where: { createdAt: { gte: periodStart, lt: periodEnd }, ...demandScope },
     _count: { _all: true },
   });
 
@@ -329,11 +349,11 @@ export async function GET(req: NextRequest) {
 
   const [trendDemandRows, trendBusinessRows] = await Promise.all([
     prisma.demandRecord.findMany({
-      where: { createdAt: { gte: periodStart, lt: periodEnd } },
+      where: { createdAt: { gte: periodStart, lt: periodEnd }, ...demandScope },
       select: { createdAt: true, serviceAmount: true },
     }),
     prisma.businessReport.findMany({
-      where: { reportDate: { gte: periodStart, lt: periodEnd } },
+      where: { reportDate: { gte: periodStart, lt: periodEnd }, ...activeUploadedScope },
       select: { reportDate: true, totalSalesAmount: true, marketingBudget: true },
     }),
   ]);
@@ -365,6 +385,7 @@ export async function GET(req: NextRequest) {
     where: {
       serviceName: { not: null },
       createdAt: { gte: periodStart, lt: periodEnd },
+      ...demandScope,
     },
     _count: { _all: true },
     _sum: { serviceQty: true, serviceAmount: true },
@@ -383,6 +404,7 @@ export async function GET(req: NextRequest) {
         gte: startOfToday,
         lt: startOfTomorrow,
       },
+      ...demandScope,
     },
     include: {
       sender: true,
@@ -408,6 +430,7 @@ export async function GET(req: NextRequest) {
       followUpDate: {
         gte: startOfToday,
       },
+      ...demandScope,
       status: { notIn: ['closed', 'completed'] },
     },
     include: {

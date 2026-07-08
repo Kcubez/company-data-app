@@ -5,6 +5,7 @@ import {
   BusinessReport,
   BusinessReportsParams,
 } from "@/lib/api";
+import { clearListQueryData, removeListItemQueryData } from "@/lib/query-cache";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -56,8 +57,10 @@ export function useDeleteBusinessReport() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => businessReportsApi.delete(id),
-    onSuccess: () => {
+    onSuccess: (_res, id) => {
+      removeListItemQueryData(queryClient, businessReportKeys.all, "records", id);
       queryClient.invalidateQueries({ queryKey: businessReportKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       toast.success("Record deleted");
     },
     onError: () => toast.error("Failed to delete record"),
@@ -69,7 +72,9 @@ export function useDeleteAllBusinessReports() {
   return useMutation({
     mutationFn: (params: { dateFrom?: string; dateTo?: string } = {}) => businessReportsApi.deleteAll(params),
     onSuccess: (data) => {
+      clearListQueryData(queryClient, businessReportKeys.all, "records");
       queryClient.invalidateQueries({ queryKey: businessReportKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       toast.success(`Deleted ${data.deleted} records`);
     },
     onError: () => toast.error("Failed to delete records"),

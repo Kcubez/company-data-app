@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectExpiriesApi, type ProjectExpiriesParams, type UpdateProjectExpiryPayload } from "@/lib/api";
+import { clearListQueryData } from "@/lib/query-cache";
 import { toast } from "sonner";
 
 export const projectExpiriesKeys = {
@@ -33,7 +34,9 @@ export function useDeleteAllProjectExpiries() {
   return useMutation({
     mutationFn: (params: { dateFrom?: string; dateTo?: string } = {}) => projectExpiriesApi.deleteAll(params),
     onSuccess: (res) => {
+      clearListQueryData(queryClient, projectExpiriesKeys.all, "records");
       queryClient.invalidateQueries({ queryKey: projectExpiriesKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       toast.success(`Deleted ${res.deleted} project record(s)`);
     },
     onError: (error: any) => {

@@ -1287,13 +1287,15 @@ function ProjectExpiriesPageContent() {
           title="Delete project expiries for selected period?"
           description={
             <>
-              This permanently removes{' '}
+              This moves{' '}
               <span className="font-semibold text-red-700 dark:text-red-300">
                 {stats.total} project record(s) from {dateFrom} to {dateTo}
               </span>
-              . This action cannot be undone. Use it only when clearing test data before re-uploading.
+              {' '}to Trash. Admins can restore them later or permanently delete them from Trash.
             </>
           }
+          confirmationText="confirm"
+          confirmationLabel="Type confirm to move these records to Trash"
           isPending={deleteAllMutation.isPending}
           onCancel={() => setShowDeleteConfirm(false)}
           onConfirm={handleDeleteAll}
@@ -1377,13 +1379,15 @@ function ProjectExpiriesPageContent() {
           title="Delete website records for selected period?"
           description={
             <>
-              This permanently removes{' '}
+              This moves{' '}
               <span className="font-semibold text-red-700 dark:text-red-300">
                 {websiteStats.total} website record(s) from {dateFrom} to {dateTo}
               </span>
-              . This action cannot be undone. Use it only when clearing test data before re-uploading.
+              {' '}to Trash. Admins can restore them later or permanently delete them from Trash.
             </>
           }
+          confirmationText="confirm"
+          confirmationLabel="Type confirm to move these records to Trash"
           isPending={deleteWebsiteAllMutation.isPending}
           onCancel={() => setShowWebsiteDeleteConfirm(false)}
           onConfirm={handleWebsiteDeleteAll}

@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { randomBytes } from "crypto";
 
 function maskSecret(value: string | null | undefined, visibleChars = 8) {
   return value
@@ -68,6 +69,13 @@ export async function PUT(req: NextRequest) {
     });
     const oldBotToken = existingSettings?.botToken ?? null;
 
+    const existingWebhookSecret =
+      (await prisma.botSettings.findUnique({
+        where: { userId: session.user.id },
+        select: { webhookSecret: true },
+      }))?.webhookSecret ?? null;
+    const webhookSecret = existingWebhookSecret || randomBytes(32).toString("hex");
+
     // If a NEW bot token is provided, register the webhook with Telegram.
     if (botToken && !botToken.includes("•")) {
       const telegramRes = await fetch(
@@ -78,6 +86,7 @@ export async function PUT(req: NextRequest) {
           body: JSON.stringify({
             url: webhookUrl,
             allowed_updates: ["message", "callback_query"],
+            secret_token: webhookSecret,
           }),
         }
       );
@@ -117,12 +126,14 @@ export async function PUT(req: NextRequest) {
       create: {
         userId: session.user.id,
         botToken: tokenToSave || null,
+        webhookSecret,
         geminiApiKey: geminiKeyToSave || null,
         geminiModel: "gemini-3.1-flash-lite-preview",
         isActive: !!tokenToSave,
       },
       update: {
         ...(tokenToSave !== undefined ? { botToken: tokenToSave || null } : {}),
+        webhookSecret,
         ...(geminiKeyToSave !== undefined ? { geminiApiKey: geminiKeyToSave || null } : {}),
         geminiModel: "gemini-3.1-flash-lite-preview",
         isActive: tokenToSave !== undefined ? !!tokenToSave : undefined,

@@ -20,13 +20,12 @@ export async function GET(req: NextRequest) {
 
   const month = period === "year" ? null : monthVal;
 
-  const target = await prisma.periodTarget.findUnique({
+  const target = await prisma.periodTarget.findFirst({
     where: {
-      period_year_month: {
-        period,
-        year,
-        month: month ?? 0, // In db we store 0 if month is null to avoid composite unique key issues with nullable fields
-      },
+      userId: session.user.id,
+      period,
+      year,
+      month: month ?? 0, // In db we store 0 if month is null to avoid composite unique key issues with nullable fields
     },
   });
 
@@ -62,13 +61,15 @@ export async function PUT(req: NextRequest) {
   try {
     const updated = await prisma.periodTarget.upsert({
       where: {
-        period_year_month: {
+        userId_period_year_month: {
+          userId: session.user.id,
           period: parsedPeriod,
           year: parsedYear,
           month: parsedMonth,
         },
       },
       create: {
+        userId: session.user.id,
         period: parsedPeriod,
         year: parsedYear,
         month: parsedMonth,

@@ -67,6 +67,18 @@ export type AdminUser = {
   banReason: string | null;
   createdAt: string;
   updatedAt: string;
+  businessOwner?: {
+    botConnected: boolean;
+    botUpdatedAt: string | null;
+    staffCount: number;
+    authorizedStaffCount: number;
+    customerCount: number;
+    demandRecordCount: number;
+    messageCount: number;
+    projectCount: number;
+    websiteCount: number;
+    businessReportCount: number;
+  };
 };
 
 export type CreateUserPayload = {
@@ -564,6 +576,69 @@ export const customersApi = {
     request<{ success: boolean }>(`/api/customers/${id}`, { method: "DELETE" }),
   deleteAll: (params: DateRangeParams = {}) =>
     request<{ success: boolean; count: number }>(`/api/customers${buildDateRangeQuery(params)}`, { method: "DELETE" }),
+};
+
+// ─── Trash API ───────────────────────────────────────────────────────────────
+
+export type TrashRecordType = "customers" | "sales" | "finance" | "projects" | "websites";
+
+export type TrashRecord = {
+  type: TrashRecordType;
+  id: string;
+  title: string;
+  subtitle: string;
+  recordDate: string | null;
+  deletedAt: string | null;
+  deletedByUserId: string | null;
+  deletedReason: string | null;
+  restoreRequested: boolean;
+  restoreRequestCount: number;
+};
+
+export type TrashParams = {
+  page?: number;
+  limit?: number;
+  type?: TrashRecordType | "all";
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type TrashResponse = {
+  records: TrashRecord[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  canRestore: boolean;
+  canPermanentDelete: boolean;
+};
+
+export const trashApi = {
+  list: (params: TrashParams = {}) => {
+    const sp = new URLSearchParams();
+    if (params.page) sp.set("page", String(params.page));
+    if (params.limit) sp.set("limit", String(params.limit));
+    if (params.type && params.type !== "all") sp.set("type", params.type);
+    if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
+    if (params.dateTo) sp.set("dateTo", params.dateTo);
+    const qs = sp.toString();
+    return request<TrashResponse>(`/api/trash${qs ? `?${qs}` : ""}`);
+  },
+  restore: (type: TrashRecordType, id: string) =>
+    request<{ success: boolean; restored: number }>("/api/trash", {
+      method: "POST",
+      body: { type, id, action: "restore" },
+    }),
+  requestRestore: (type: TrashRecordType, id: string) =>
+    request<{ success: boolean; message: string }>("/api/trash", {
+      method: "POST",
+      body: { type, id, action: "request_restore" },
+    }),
+  permanentDelete: (type: TrashRecordType, id: string, confirmation: "PERMANENT DELETE") =>
+    request<{ success: boolean; deleted: number }>("/api/trash", {
+      method: "DELETE",
+      body: { type, id, confirmation },
+    }),
 };
 
 // ─── Page-specific Stats API ─────────────────────────────────────────────────

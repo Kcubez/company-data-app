@@ -28,11 +28,77 @@ export async function GET(req: NextRequest) {
       banReason: true,
       createdAt: true,
       updatedAt: true,
+      botSettings: {
+        select: {
+          isActive: true,
+          botToken: true,
+          updatedAt: true,
+        },
+      },
+      _count: {
+        select: {
+          telegramSenders: true,
+          customers: true,
+          businessReports: true,
+          projectExpirations: true,
+          websiteUpdates: true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ users });
+  const userIds = users.map((user) => user.id);
+  const senderOwner = await prisma.telegramSender.findMany({
+    where: { userId: { in: userIds } },
+    select: {
+      userId: true,
+      isAuthorized: true,
+      _count: {
+        select: {
+          messages: true,
+          demandRecords: true,
+        },
+      },
+    },
+  });
+
+  const messageCountByUserId = new Map<string, number>();
+  const demandCountByUserId = new Map<string, number>();
+  const authorizedStaffByUserId = new Map<string, number>();
+  for (const sender of senderOwner) {
+    if (!sender.userId) continue;
+    messageCountByUserId.set(sender.userId, (messageCountByUserId.get(sender.userId) || 0) + sender._count.messages);
+    demandCountByUserId.set(sender.userId, (demandCountByUserId.get(sender.userId) || 0) + sender._count.demandRecords);
+    if (sender.isAuthorized) {
+      authorizedStaffByUserId.set(sender.userId, (authorizedStaffByUserId.get(sender.userId) || 0) + 1);
+    }
+  }
+
+  return NextResponse.json({
+    users: users.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      banned: user.banned,
+      banReason: user.banReason,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      businessOwner: {
+        botConnected: Boolean(user.botSettings?.isActive && user.botSettings.botToken),
+        botUpdatedAt: user.botSettings?.updatedAt ?? null,
+        staffCount: user._count.telegramSenders,
+        authorizedStaffCount: authorizedStaffByUserId.get(user.id) || 0,
+        customerCount: user._count.customers,
+        demandRecordCount: demandCountByUserId.get(user.id) || 0,
+        messageCount: messageCountByUserId.get(user.id) || 0,
+        projectCount: user._count.projectExpirations,
+        websiteCount: user._count.websiteUpdates,
+        businessReportCount: user._count.businessReports,
+      },
+    })),
+  });
 }
 
 // POST /api/admin/users — create user

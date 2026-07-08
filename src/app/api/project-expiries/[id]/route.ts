@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notDeleted } from "@/lib/soft-delete";
+import { uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 function serializeProjectExpiration(record: Record<string, unknown>) {
@@ -22,6 +24,13 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await req.json();
+  const existing = await prisma.projectExpiration.findFirst({
+    where: { id, ...uploadedByUserOrAdmin(session), ...notDeleted },
+    select: { id: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ message: "Record not found or access denied" }, { status: 404 });
+  }
 
   const allowedFields = [
     "projectName",

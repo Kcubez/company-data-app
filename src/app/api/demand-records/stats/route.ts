@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { buildBusinessInsights } from "@/lib/demand-analysis";
 import { prisma } from "@/lib/prisma";
+import { notDeleted } from "@/lib/soft-delete";
+import { senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -13,7 +15,7 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
 
-  const rangeWhere: Record<string, any> = {};
+  const rangeWhere: Record<string, any> = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
   if (dateFrom || dateTo) {
     rangeWhere.createdAt = {};
     if (dateFrom) rangeWhere.createdAt.gte = new Date(dateFrom);
@@ -49,7 +51,7 @@ export async function GET(req: NextRequest) {
     uniqueCustomerRows,
   ] = await Promise.all([
     prisma.demandRecord.count({ where: rangeWhere }),
-    prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday } } }),
+    prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday }, ...senderOwnedByUserOrAdmin(session), ...notDeleted } }),
     prisma.demandRecord.groupBy({
       by: ['serviceName'],
       where: {
