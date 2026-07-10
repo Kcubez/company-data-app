@@ -3,6 +3,10 @@ import { websiteUpdatesApi, type WebsiteUpdatesParams } from "@/lib/api";
 import { clearListQueryData } from "@/lib/query-cache";
 import { toast } from "sonner";
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export const websiteUpdatesKeys = {
   all: ["website-updates"] as const,
   lists: () => [...websiteUpdatesKeys.all, "list"] as const,
@@ -28,8 +32,8 @@ export function useUpdateWebsiteUpdate() {
       queryClient.invalidateQueries({ queryKey: websiteUpdatesKeys.all });
       toast.success("Website update status updated successfully");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to update record");
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to update record"));
     },
   });
 }
@@ -56,8 +60,8 @@ export function useDeleteAllWebsiteUpdates() {
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       toast.success(`Deleted ${res.deleted} website record(s)`);
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to delete records");
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to delete records"));
     },
   });
 }

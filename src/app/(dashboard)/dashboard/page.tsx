@@ -2,13 +2,10 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
 import { useDateFilter, type PeriodMode } from '@/hooks/use-date-filter';
-import { formatDistanceToNow } from 'date-fns';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ModalPortal } from '@/components/ui/modal-portal';
@@ -21,18 +18,12 @@ import {
 } from '@/components/ui/select';
 import {
   Users,
-  Activity,
   TrendingUp,
   Bot,
-  CheckCircle2,
   Banknote,
-  ArrowRight,
   Wallet,
-  Lightbulb,
   Megaphone,
-  UserCheck,
   CalendarCheck,
-  Zap,
   AlertTriangle,
   Award,
   DollarSign,
@@ -44,6 +35,9 @@ import {
   Target,
   Loader2,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+type ChartDatum = Record<string, unknown>;
 
 type WeeklyActivity = {
   date: string;
@@ -198,7 +192,7 @@ function useActionRecommendations(period: PeriodMode, month: number, year: numbe
 }
 
 
-function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = 'month' }: { data: any[], valueKey: string, labelKey: string, totalDays?: number, period?: string }) {
+function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = 'month' }: { data: ChartDatum[], valueKey: string, labelKey: string, totalDays?: number, period?: string }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const isYearly = period === 'year';
   const tickCount = isYearly ? 12 : totalDays;
@@ -243,10 +237,11 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
   const points = validData.map((d, idx) => {
     // In yearly mode, use index-based positioning (0..11 for 12 months)
     // In monthly mode, use day-based positioning
-    const posIndex = isYearly ? idx : getDay(d[labelKey]) - 1;
+    const label = String(d[labelKey] ?? '');
+    const posIndex = isYearly ? idx : getDay(label) - 1;
     const x = paddingLeft + (posIndex / (tickCount - 1 || 1)) * plotWidth;
     const y = paddingTop + plotHeight - ((Number(d[valueKey]) || 0) / roundedMax) * plotHeight;
-    return { x, y, value: d[valueKey], label: d[labelKey], day: isYearly ? d[labelKey] : getDay(d[labelKey]) };
+    return { x, y, value: d[valueKey], label, day: isYearly ? label : getDay(label) };
   });
 
   // Create smooth SVG path (cubic bezier for tension like Chart.js tension:0.3)
@@ -428,7 +423,7 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
   );
 }
 
-function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'month' }: { data: any[], valueKey: string, labelKey: string, totalDays?: number, period?: string }) {
+function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'month' }: { data: ChartDatum[], valueKey: string, labelKey: string, totalDays?: number, period?: string }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const isYearly = period === 'year';
   const tickCount = isYearly ? 12 : totalDays;
@@ -467,12 +462,13 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'm
   const points = data.map((d, idx) => {
     // In yearly mode, use index-based positioning (0..11)
     // In monthly mode, use day-based positioning
-    const posIndex = isYearly ? idx : getDay(d[labelKey]) - 1;
+    const label = String(d[labelKey] ?? '');
+    const posIndex = isYearly ? idx : getDay(label) - 1;
     const slotX = paddingLeft + posIndex * slotWidth;
     const x = slotX + (slotWidth - barWidth) / 2;
     const heightVal = ((Number(d[valueKey]) || 0) / roundedMax) * plotHeight;
     const y = paddingTop + plotHeight - heightVal;
-    return { x, y, heightVal, value: d[valueKey], label: d[labelKey], day: isYearly ? d[labelKey] : getDay(d[labelKey]), slotX };
+    return { x, y, heightVal, value: d[valueKey], label, day: isYearly ? label : getDay(label), slotX };
   });
 
   // Y axis ticks (6 ticks)
@@ -587,7 +583,7 @@ function ProgressCard({
   title: string; statusLabel: string; statusColor: string;
   value: number | string; maxValue?: number | string; valueSuffix?: string;
   expectedLabel: string; expectedValue: number | string;
-  actualPct: number; timePct: number; barColor: string; icon: any;
+  actualPct: number; timePct: number; barColor: string; icon: LucideIcon;
 }) {
   return (
     <div className="bg-card dark:bg-slate-900/40 border-2 border-slate-300 dark:border-slate-800 p-6 flex flex-col justify-between h-48 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-slate-400 dark:hover:border-slate-700 transition-all duration-200">
@@ -671,10 +667,6 @@ function DashboardPageContent() {
       router.replace('/admin/users');
     }
   }, [router, session?.user.role]);
-
-  if (session?.user.role === 'admin') {
-    return <div className="space-y-6"><Skeleton className="h-24 w-full" /><Skeleton className="h-48 w-full" /></div>;
-  }
 
   const getActionLink = (rec: ActionRecommendation) => {
     // 1. Prioritize actionType if present
@@ -795,8 +787,8 @@ function DashboardPageContent() {
       toast.success('Targets updated successfully');
       setIsTargetModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats', period, month, year] });
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save targets');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save targets');
     } finally {
       setIsSavingTarget(false);
     }
@@ -822,8 +814,6 @@ function DashboardPageContent() {
   const hasProfitTarget = hasRevenueTarget && hasExpenseTarget;
   const profitTarget = revenueTarget - expenseTarget;
   const profitValue = stats?.profitLoss || 0;
-  const profitActualPct = profitTarget > 0 ? (profitValue / profitTarget) * 100 : 0;
-  const profitExpected = revenueExpected - expenseExpected;
   const profitMarginPercent = revenueValue > 0 ? (profitValue / revenueValue) * 100 : 0;
   const targetMarginPct = revenueTarget > 0 ? (profitTarget / revenueTarget) * 100 : 0;
   const profitPacing = hasProfitTarget ? getPacingStatus(profitMarginPercent, targetMarginPct) : { label: 'Not Set', color: '#64748b', barColor: '#94a3b8' };
@@ -850,6 +840,10 @@ function DashboardPageContent() {
   const customerPacing = hasCustomerTarget ? getPacingStatus(customerValue, customerExpected) : { label: 'Not Set', color: '#64748b', barColor: '#94a3b8' };
 
   const elapsedDaysText = stats?.elapsedDays ? ` (Day ${stats.elapsedDays})` : '';
+
+  if (session?.user.role === 'admin') {
+    return <div className="space-y-6"><Skeleton className="h-24 w-full" /><Skeleton className="h-48 w-full" /></div>;
+  }
 
   return (
     <div className="space-y-8">

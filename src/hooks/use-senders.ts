@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { sendersApi, settingsSendersApi, type TelegramSender } from "@/lib/api";
+import { sendersApi, settingsSendersApi } from "@/lib/api";
 import { toast } from "sonner";
 
 export const settingsSenderKeys = {

@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notDeleted } from "@/lib/soft-delete";
 import { customerOwnedByUserOrAdmin, senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
 
-  const rangeWhere: Record<string, any> = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
+  const rangeWhere: Prisma.DemandRecordWhereInput = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
   if (dateFrom || dateTo) {
     rangeWhere.createdAt = {};
     if (dateFrom) rangeWhere.createdAt.gte = new Date(dateFrom);
@@ -25,6 +26,12 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
+  const customerDateScope: Prisma.CustomerWhereInput = {};
+  if (dateFrom || dateTo) {
+    customerDateScope.createdAt = {};
+    if (dateFrom) customerDateScope.createdAt.gte = new Date(dateFrom);
+    if (dateTo) customerDateScope.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+  }
 
   const [totalFollowUps, todayFollowUps, pendingFollowUps, dueToday, totalCustomers] = await Promise.all([
     prisma.demandRecord.count({
@@ -59,7 +66,7 @@ export async function GET(req: NextRequest) {
       where: {
         ...customerOwnedByUserOrAdmin(session),
         ...notDeleted,
-        ...(rangeWhere.createdAt ? { createdAt: rangeWhere.createdAt } : {}),
+        ...customerDateScope,
       },
     }),
   ]);

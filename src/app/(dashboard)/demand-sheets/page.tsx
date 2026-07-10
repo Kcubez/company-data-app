@@ -249,6 +249,9 @@ function DemandSheetsPageContent() {
   const [priorityFilter, setPriorityFilter] = useState<string>(initialPriority);
   const [missingField, setMissingField] = useState<string>(initialMissingField);
   const [page, setPage] = useState(1);
+  const [lastUrlFilters, setLastUrlFilters] = useState(
+    () => `${initialPriority}:${initialStatus}:${initialCategory}:${initialSearch}:${initialMissingField}`,
+  );
   const [insightPage, setInsightPage] = useState(1);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingRecord, setEditingRecord] = useState<DemandRecord | null>(null);
@@ -257,21 +260,22 @@ function DemandSheetsPageContent() {
   const limit = 10;
   const insightPageSize = 5;
 
-  useEffect(() => {
-    const priority = searchParams.get('priority') || 'all';
-    const status = searchParams.get('status') || 'all';
-    const category = searchParams.get('category') || 'all';
-    const searchVal = searchParams.get('search') || '';
-    const missing = searchParams.get('missingField') || '';
-
-    setPriorityFilter(priority);
-    setStatusFilter(status);
-    setCategoryFilter(category);
-    setSearch(searchVal);
-    setDebouncedSearch(searchVal);
-    setMissingField(missing);
+  const urlPriority = searchParams.get('priority') || 'all';
+  const urlStatus = searchParams.get('status') || 'all';
+  const urlCategory = searchParams.get('category') || 'all';
+  const urlSearch = searchParams.get('search') || '';
+  const urlMissingField = searchParams.get('missingField') || '';
+  const urlFilters = `${urlPriority}:${urlStatus}:${urlCategory}:${urlSearch}:${urlMissingField}`;
+  if (lastUrlFilters !== urlFilters) {
+    setLastUrlFilters(urlFilters);
+    setPriorityFilter(urlPriority);
+    setStatusFilter(urlStatus);
+    setCategoryFilter(urlCategory);
+    setSearch(urlSearch);
+    setDebouncedSearch(urlSearch);
+    setMissingField(urlMissingField);
     setPage(1);
-  }, [searchParams]);
+  }
 
   useEffect(() => {
     const priority = searchParams.get('priority');
@@ -296,9 +300,12 @@ function DemandSheetsPageContent() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => {
+  const [lastDateFilter, setLastDateFilter] = useState(() => `${period}:${month}:${year}`);
+  const dateFilter = `${period}:${month}:${year}`;
+  if (lastDateFilter !== dateFilter) {
+    setLastDateFilter(dateFilter);
     setPage(1);
-  }, [period, month, year]);
+  }
 
   const { data: stats, isLoading: statsLoading } = useDashboardStats(period, month, year);
   const { data: demandStats, isLoading: demandStatsLoading } = useDemandRecordStats({ dateFrom, dateTo });

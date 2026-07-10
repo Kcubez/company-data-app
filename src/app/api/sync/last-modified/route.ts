@@ -1,5 +1,9 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  senderOwnedByUserOrAdmin,
+  uploadedByUserOrAdmin,
+} from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -11,25 +15,33 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const senderScope = senderOwnedByUserOrAdmin(session);
+    const uploadedScope = uploadedByUserOrAdmin(session);
+
     // Query the latest createdAt/updatedAt timestamp across key tables in parallel
     const [msg, demand, expiry, web, report] = await Promise.all([
       prisma.telegramMessage.findFirst({
+        where: senderScope,
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       }),
       prisma.demandRecord.findFirst({
+        where: senderScope,
         orderBy: { updatedAt: "desc" },
         select: { updatedAt: true },
       }),
       prisma.projectExpiration.findFirst({
+        where: uploadedScope,
         orderBy: { updatedAt: "desc" },
         select: { updatedAt: true },
       }),
       prisma.websiteUpdate.findFirst({
+        where: uploadedScope,
         orderBy: { updatedAt: "desc" },
         select: { updatedAt: true },
       }),
       prisma.businessReport.findFirst({
+        where: uploadedScope,
         orderBy: { updatedAt: "desc" },
         select: { updatedAt: true },
       }),

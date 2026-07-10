@@ -11,8 +11,8 @@ import {
   SelectItem,
   SelectTrigger,
 } from '@/components/ui/select';
-import { format, formatDistanceToNow } from 'date-fns';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { format } from 'date-fns';
+import { Card, CardContent, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,10 +30,8 @@ import {
 import {
   Search,
   Phone,
-  Building,
   MessageSquare,
   ChevronRight,
-  Calendar,
   Trash2,
   ChevronLeft,
   Users,
@@ -42,11 +40,9 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle2,
-  Clock,
-  ExternalLink,
   DollarSign,
 } from 'lucide-react';
-import { customersApi, type Customer } from '@/lib/api';
+import { customersApi, type Customer, type DemandRecord } from '@/lib/api';
 import { clearListQueryData, removeListItemQueryData } from '@/lib/query-cache';
 import { toast } from 'sonner';
 import { formatPhoneNumber } from '@/lib/utils';
@@ -125,20 +121,24 @@ function CustomersPageContent() {
   const [debouncedDemandSearch, setDebouncedDemandSearch] = useState(initialDemandSearch);
   const [followUpFilter, setFollowUpFilter] = useState<string>(initialFollowUpStatus);
   const [demandPage, setDemandPage] = useState(1);
+  const [lastUrlFilters, setLastUrlFilters] = useState(
+    () => `${initialCustomerSearch}:${initialDemandSearch}:${initialFollowUpStatus}`,
+  );
 
-  useEffect(() => {
-    const custSearch = searchParams.get('customerSearch') || '';
-    const demSearch = searchParams.get('search') || searchParams.get('demandSearch') || '';
-    const followUp = searchParams.get('followUpStatus') || 'all';
-
-    setCustomerSearch(custSearch);
-    setDebouncedCustomerSearch(custSearch);
-    setDemandSearch(demSearch);
-    setDebouncedDemandSearch(demSearch);
-    setFollowUpFilter(followUp);
+  const urlCustomerSearch = searchParams.get('customerSearch') || '';
+  const urlDemandSearch = searchParams.get('search') || searchParams.get('demandSearch') || '';
+  const urlFollowUpStatus = searchParams.get('followUpStatus') || 'all';
+  const urlFilters = `${urlCustomerSearch}:${urlDemandSearch}:${urlFollowUpStatus}`;
+  if (lastUrlFilters !== urlFilters) {
+    setLastUrlFilters(urlFilters);
+    setCustomerSearch(urlCustomerSearch);
+    setDebouncedCustomerSearch(urlCustomerSearch);
+    setDemandSearch(urlDemandSearch);
+    setDebouncedDemandSearch(urlDemandSearch);
+    setFollowUpFilter(urlFollowUpStatus);
     setCustomerPage(1);
     setDemandPage(1);
-  }, [searchParams]);
+  }
 
   useEffect(() => {
     const followUp = searchParams.get('followUpStatus');
@@ -165,7 +165,7 @@ function CustomersPageContent() {
     notes: "",
   });
 
-  const [editingLead, setEditingLead] = useState<any | null>(null);
+  const [editingLead, setEditingLead] = useState<DemandRecord | null>(null);
   const [isCreatingLead, setIsCreatingLead] = useState(false);
   const [leadForm, setLeadForm] = useState({
     customerName: "",
@@ -182,7 +182,7 @@ function CustomersPageContent() {
 
   // Delete Dialog States
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
-  const [leadToDelete, setLeadToDelete] = useState<any | null>(null);
+  const [leadToDelete, setLeadToDelete] = useState<DemandRecord | null>(null);
   const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
   const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
   const [customerDeleteConfirmText, setCustomerDeleteConfirmText] = useState('');
@@ -205,10 +205,13 @@ function CustomersPageContent() {
     return () => clearTimeout(timer);
   }, [demandSearch]);
 
-  useEffect(() => {
+  const [lastDateFilter, setLastDateFilter] = useState(() => `${period}:${month}:${year}`);
+  const dateFilter = `${period}:${month}:${year}`;
+  if (lastDateFilter !== dateFilter) {
+    setLastDateFilter(dateFilter);
     setCustomerPage(1);
     setDemandPage(1);
-  }, [period, month, year]);
+  }
 
   // Queries
   const { data: customerData, isLoading: customerLoading } = useCustomers({
@@ -248,8 +251,8 @@ function CustomersPageContent() {
       toast.success('Customer created successfully');
       setIsCreatingCustomer(false);
     },
-    onError: (err: any) => {
-      toast.error(err.message || 'Failed to create customer');
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : 'Failed to create customer');
     }
   });
 
@@ -260,8 +263,8 @@ function CustomersPageContent() {
       toast.success('Customer updated successfully');
       setEditingCustomer(null);
     },
-    onError: (err: any) => {
-      toast.error(err.message || 'Failed to update customer');
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : 'Failed to update customer');
     }
   });
 
@@ -383,7 +386,7 @@ function CustomersPageContent() {
     });
   };
 
-  const openEditLead = (lead: any) => {
+  const openEditLead = (lead: DemandRecord) => {
     setEditingLead(lead);
     setLeadForm({
       customerName: lead.customerName || "",
@@ -725,7 +728,7 @@ function CustomersPageContent() {
                   customerData.customers.map((customer) => {
                     const latestRecord = customer.demandRecords?.[0];
                     const recordCount = customer.demandRecords?.length || 0;
-                    const amountPaid = customer.demandRecords?.reduce((sum: number, r: any) => sum + (r.serviceAmount || 0), 0) || 0;
+                    const amountPaid = customer.demandRecords?.reduce((sum, record) => sum + (record.serviceAmount || 0), 0) || 0;
 
                     return (
                       <tr key={customer.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-900/40 align-middle">

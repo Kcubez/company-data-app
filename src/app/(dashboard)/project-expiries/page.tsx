@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState, Suspense } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { format, differenceInDays, formatDistanceToNow } from 'date-fns';
 import { useDateFilter } from '@/hooks/use-date-filter';
@@ -33,9 +32,7 @@ import {
   ExternalLink,
   CalendarDays,
   CheckCircle,
-  CheckCircle2,
   AlertCircle,
-  MessageSquare,
   RefreshCw,
   FileSpreadsheet,
   Bot,
@@ -71,13 +68,15 @@ function ProjectExpiriesPageContent() {
   const [filter, setFilter] = useState<'all' | 'expired' | 'expiring_soon' | 'active'>('all');
   const [page, setPage] = useState(1);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [lastUrlSearch, setLastUrlSearch] = useState(initialSearch);
 
-  useEffect(() => {
-    const searchVal = searchParams.get('search') || '';
-    setSearch(searchVal);
-    setDebouncedSearch(searchVal);
+  const urlSearch = searchParams.get('search') || '';
+  if (lastUrlSearch !== urlSearch) {
+    setLastUrlSearch(urlSearch);
+    setSearch(urlSearch);
+    setDebouncedSearch(urlSearch);
     setPage(1);
-  }, [searchParams]);
+  }
   // Edit state
   const [editingRecord, setEditingRecord] = useState<ProjectExpiration | null>(null);
   const [editDomainExpiry, setEditDomainExpiry] = useState('');
@@ -100,6 +99,7 @@ function ProjectExpiriesPageContent() {
   const [editWebsiteStatus, setEditWebsiteStatus] = useState<string>('up_to_date');
   const [editWebsiteRemark, setEditWebsiteRemark] = useState<string>('');
   const [showWebsiteDeleteConfirm, setShowWebsiteDeleteConfirm] = useState(false);
+  const [lastDateFilter, setLastDateFilter] = useState(() => `${period}:${month}:${year}`);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -117,10 +117,12 @@ function ProjectExpiriesPageContent() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => {
+  const dateFilter = `${period}:${month}:${year}`;
+  if (lastDateFilter !== dateFilter) {
+    setLastDateFilter(dateFilter);
     setPage(1);
     setWebsitePage(1);
-  }, [period, month, year]);
+  }
 
   const { data, isLoading } = useProjectExpiries({
     page,
@@ -140,22 +142,23 @@ function ProjectExpiriesPageContent() {
     dateTo,
   });
 
-  const { data: recsData, isLoading: recsLoading, refetch: recsRefetch, isFetching: recsFetching } = useProjectExpiryRecommendations();
-  const insightTotal = recsData?.recommendations.length || 0;
+  const { refetch: recsRefetch } = useProjectExpiryRecommendations();
 
   // Website Update Hooks & Mutations
   const updateWebsiteMutation = useUpdateWebsiteUpdate();
   const { data: websiteRecsData, isLoading: websiteRecsLoading, refetch: websiteRecsRefetch, isFetching: websiteRecsFetching } = useWebsiteUpdateRecommendations();
   const websiteInsightTotal = websiteRecsData?.recommendations.length || 0;
+  const [lastWebsiteInsightTotal, setLastWebsiteInsightTotal] = useState(websiteInsightTotal);
   const websiteInsightTotalPages = Math.max(1, Math.ceil(websiteInsightTotal / websiteInsightPageSize));
   const visibleWebsiteInsights = websiteRecsData?.recommendations.slice(
     (websiteInsightPage - 1) * websiteInsightPageSize,
     websiteInsightPage * websiteInsightPageSize,
   ) || [];
 
-  useEffect(() => {
+  if (lastWebsiteInsightTotal !== websiteInsightTotal) {
+    setLastWebsiteInsightTotal(websiteInsightTotal);
     setWebsiteInsightPage(1);
-  }, [websiteInsightTotal]);
+  }
 
   const deleteWebsiteAllMutation = useDeleteAllWebsiteUpdates();
 
@@ -1053,7 +1056,9 @@ function ProjectExpiriesPageContent() {
                   <Select
                     value={websiteStatusFilter}
                     onValueChange={(val) => {
-                      setWebsiteStatusFilter((val as any) || 'all');
+                      setWebsiteStatusFilter(
+                        (val as 'all' | 'up_to_date' | 'pending_update' | 'in_progress') || 'all',
+                      );
                       setWebsitePage(1);
                     }}
                   >

@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notDeleted, softDeleteData } from "@/lib/soft-delete";
 import { uploadedByUserOrAdmin } from "@/lib/tenant-scope";
@@ -16,8 +17,7 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom") || undefined;
   const dateTo = searchParams.get("dateTo") || undefined;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = {
+  const where: Prisma.BusinessReportWhereInput = {
     ...uploadedByUserOrAdmin(session),
     ...notDeleted,
     reporterName: { not: "Daily Bot Ingestion" }
@@ -51,7 +51,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const dateFrom = searchParams.get("dateFrom") || undefined;
   const dateTo = searchParams.get("dateTo") || undefined;
-  const where: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
+  const where: Prisma.BusinessReportWhereInput = { ...uploadedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     where.reportDate = {};

@@ -21,7 +21,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { userKeys } from '@/hooks/use-users';
 import {
   Shield,
-  ShieldAlert,
   MoreVertical,
   Plus,
   Search,

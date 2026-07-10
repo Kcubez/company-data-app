@@ -17,12 +17,27 @@ import {
   parseBusinessReportWithGemini,
   parseExcelDate,
   type ParsedDemandRecord,
+  type ParsedProjectExpiration,
+  type ParsedWebsiteUpdate,
+  type ParsedBusinessReport,
 } from "@/lib/demand-parser";
 import { analyzeDemandRecord } from "@/lib/demand-analysis";
 import { NextRequest, NextResponse, after } from "next/server";
 import { sendOTPEmail } from "@/lib/email";
 import { notDeleted, restoreData } from "@/lib/soft-delete";
 import { formatPhoneNumber } from "@/lib/utils";
+import type { TelegramSender } from "@/generated/prisma/client";
+
+type FinanceRecord = {
+  date: Date;
+  description: string;
+  category: string;
+  type: string;
+  amount: number;
+  paymentMethod: string;
+  reference: string;
+  notes: string;
+};
 
 function displayNameFromTelegramUser(from: { first_name?: string; last_name?: string }) {
   return [from.first_name, from.last_name].filter(Boolean).join(" ");
@@ -73,29 +88,13 @@ async function createTelegramMessageIfNew({
 
 async function getActiveBotSettings(req: NextRequest) {
   const secret = req.headers.get('x-telegram-bot-api-secret-token');
-  const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (!secret) return null;
 
-  if (secret) {
-    const secretWhere =
-      expectedSecret && secret === expectedSecret
-        ? { isActive: true }
-        : { isActive: true, webhookSecret: secret };
-    const settings = await prisma.botSettings.findFirst({
-      where: secretWhere,
-      select: {
-        userId: true,
-        botToken: true,
-        geminiApiKey: true,
-        geminiModel: true,
-      },
-    });
-    if (settings) return settings;
-  }
-
-  if (expectedSecret && secret !== expectedSecret) return null;
-
+  // Each configured bot has a distinct Telegram webhook secret. Never fall
+  // back to an arbitrary active bot: a request without a valid secret is not
+  // a Telegram webhook request.
   return prisma.botSettings.findFirst({
-    where: { isActive: true },
+    where: { isActive: true, webhookSecret: secret },
     select: {
       userId: true,
       botToken: true,
@@ -506,7 +505,7 @@ async function sendNoPermissionPrompt(
 }
 
 async function checkAuthorization(
-  sender: any,
+  sender: Pick<TelegramSender, "isVerified" | "isAuthorized" | "id" | "email" | "otpExpiresAt">,
   botToken: string | null | undefined,
   chatId: bigint | number
 ): Promise<boolean> {
@@ -833,12 +832,12 @@ function isFinanceRecordsHeaders(headers: string[]): boolean {
 }
 
 
-function parseFinanceRecordsSpreadsheet(fileBuffer: Buffer): any[] {
+function parseFinanceRecordsSpreadsheet(fileBuffer: Buffer): FinanceRecord[] {
   const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
-  const allRecords: any[] = [];
+  const allRecords: FinanceRecord[] = [];
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { raw: true });
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { raw: true });
     for (const row of rows) {
       const getVal = (keys: string[]) => {
         const normalize = (s: string) => s.toLowerCase().trim().replace(/[_-]+/g, ' ');
@@ -1124,13 +1123,14 @@ async function resolveCustomersBatch(
     customerName: string | null;
     customerPhone?: string | null;
     customerCompany?: string | null;
+    createdAt?: Date | null;
   }[],
   senderId: string,
   fileName: string,
   ownerUserId: string | null,
 ): Promise<Map<string, string>> {
   const nameToNormalized = new Map<string, string>();
-  const nameToDetails = new Map<string, { phone: string | null; company: string | null }>();
+  const nameToDetails = new Map<string, { phone: string | null; company: string | null; createdAt: Date | null }>();
 
   for (const d of parsedDemands) {
     if (d.customerName) {
@@ -1140,8 +1140,8 @@ async function resolveCustomersBatch(
       }
 
       const existing = nameToDetails.get(d.customerName);
-      const existingDate = existing ? (existing as any).createdAt : null;
-      const newDate = (d as any).createdAt || null;
+      const existingDate = existing?.createdAt ?? null;
+      const newDate = d.createdAt ?? null;
       let earliestDate = existingDate;
       if (newDate) {
         if (!earliestDate || newDate < earliestDate) {
@@ -1153,7 +1153,7 @@ async function resolveCustomersBatch(
         phone: d.customerPhone ? formatPhoneNumber(d.customerPhone) : (existing ? existing.phone : null),
         company: d.customerCompany || (existing ? existing.company : null),
         createdAt: earliestDate,
-      } as any);
+      });
     }
   }
   if (nameToNormalized.size === 0) return new Map();
@@ -1202,7 +1202,7 @@ async function resolveCustomersBatch(
           nameNormalized: m.normalized,
           phone: details?.phone || null,
           company: details?.company || null,
-          createdAt: (details as any)?.createdAt || undefined,
+          createdAt: details?.createdAt ?? undefined,
         },
         select: { id: true, name: true, nameNormalized: true, deletedAt: true },
       });
@@ -1274,7 +1274,7 @@ async function resolveCustomersBatch(
       senderId,
       action: 'demand_report',
       description: `File: ${fileName}`,
-      createdAt: (details as any)?.createdAt || undefined,
+      createdAt: details?.createdAt ?? undefined,
     };
   });
   if (activityCreates.length > 0) {
@@ -1517,13 +1517,13 @@ async function processFileInBackground({
       fileInfo.fileName.endsWith(".csv");
 
     let isExpiryFile = false;
-    let parsedExpiryRecords: any[] = [];
+    let parsedExpiryRecords: ParsedProjectExpiration[] = [];
     let isWebsiteUpdateFile = false;
-    let parsedWebsiteUpdateRecords: any[] = [];
+    let parsedWebsiteUpdateRecords: ParsedWebsiteUpdate[] = [];
     let isBusinessReportFile = false;
-    let parsedBusinessReportRecords: any[] = [];
+    let parsedBusinessReportRecords: ParsedBusinessReport[] = [];
     let isFinanceFile = false;
-    let parsedFinanceRecords: any[] = [];
+    let parsedFinanceRecords: FinanceRecord[] = [];
 
     if (isSpreadsheet) {
       try {
@@ -1625,7 +1625,7 @@ async function processFileInBackground({
     }
 
     if (isBusinessReportFile) {
-      const creates = parsedBusinessReportRecords.map((rec: any) => ({
+      const creates = parsedBusinessReportRecords.map((rec) => ({
         uploadedByUserId: settings.userId,
         reportDate: rec.reportDate || receivedAtMyanmar,
         reporterName: rec.reporterName || null,
@@ -1665,7 +1665,7 @@ async function processFileInBackground({
     }
 
     if (isFinanceFile) {
-      const creates = parsedFinanceRecords.map((rec: any) => {
+      const creates = parsedFinanceRecords.map((rec) => {
         const isIncome = rec.type.toLowerCase() === 'income';
         const recordDate = rec.date || receivedAtMyanmar;
         return {

@@ -1,11 +1,12 @@
 import { auth } from "@/lib/auth";
+import type { Prisma, ProjectExpiration } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notDeleted, softDeleteData } from "@/lib/soft-delete";
 import { uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
-function serializeProjectExpiration(record: any) {
-  const result = { ...record };
+function serializeProjectExpiration(record: ProjectExpiration) {
+  const result: Record<string, unknown> = { ...record };
   if (result.domainExpireDate instanceof Date) result.domainExpireDate = result.domainExpireDate.toISOString();
   if (result.hostingExpireDate instanceof Date) result.hostingExpireDate = result.hostingExpireDate.toISOString();
   if (result.createdAt instanceof Date) result.createdAt = result.createdAt.toISOString();
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
 
-  const where: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
+  const where: Prisma.ProjectExpirationWhereInput = { ...uploadedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     where.createdAt = {};
@@ -35,14 +36,16 @@ export async function GET(req: NextRequest) {
     if (dateTo) where.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
   }
 
+  const filters: Prisma.ProjectExpirationWhereInput[] = [];
+
   if (search) {
-    where.OR = [
+    filters.push({ OR: [
       { projectName: { contains: search, mode: "insensitive" } },
       { url: { contains: search, mode: "insensitive" } },
       { domainProvider: { contains: search, mode: "insensitive" } },
       { hostingProvider: { contains: search, mode: "insensitive" } },
       { remark: { contains: search, mode: "insensitive" } },
-    ];
+    ] });
   }
 
   const now = new Date();
@@ -50,12 +53,12 @@ export async function GET(req: NextRequest) {
   next30Days.setDate(now.getDate() + 30);
 
   if (filter === "expired") {
-    where.OR = [
+    filters.push({ OR: [
       { domainExpireDate: { lt: now } },
       { hostingExpireDate: { lt: now } },
-    ];
+    ] });
   } else if (filter === "expiring_soon") {
-    where.OR = [
+    filters.push({ OR: [
       {
         domainExpireDate: {
           gte: now,
@@ -68,9 +71,9 @@ export async function GET(req: NextRequest) {
           lte: next30Days,
         },
       },
-    ];
+    ] });
   } else if (filter === "active") {
-    where.AND = [
+    filters.push({ AND: [
       {
         OR: [
           { domainExpireDate: { gt: next30Days } },
@@ -83,7 +86,11 @@ export async function GET(req: NextRequest) {
           { hostingExpireDate: null },
         ],
       },
-    ];
+    ] });
+  }
+
+  if (filters.length > 0) {
+    where.AND = filters;
   }
 
   const [records, total, stats] = await Promise.all([
@@ -98,7 +105,7 @@ export async function GET(req: NextRequest) {
     }),
     prisma.projectExpiration.count({ where }),
     prisma.$transaction(async (tx) => {
-      const statsWhere: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
+      const statsWhere: Prisma.ProjectExpirationWhereInput = { ...uploadedByUserOrAdmin(session), ...notDeleted };
       if (dateFrom || dateTo) {
         statsWhere.createdAt = {};
         if (dateFrom) statsWhere.createdAt.gte = new Date(dateFrom);
@@ -166,7 +173,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
-  const where: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
+  const where: Prisma.ProjectExpirationWhereInput = { ...uploadedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     where.createdAt = {};

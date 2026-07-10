@@ -34,8 +34,8 @@ export function useRestoreTrashRecord() {
       invalidateBusinessData(queryClient);
       toast.success(res.restored ? "Record restored" : "Record was already restored");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to restore record");
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Failed to restore record");
     },
   });
 }

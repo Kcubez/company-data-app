@@ -295,7 +295,7 @@ export async function GET(req: NextRequest) {
     _count: { _all: true },
   });
 
-  let weeklyActivity: { date: string; count: number }[] = [];
+  const weeklyActivity: { date: string; count: number }[] = [];
 
   if (period === 'year') {
     // 12 monthly buckets

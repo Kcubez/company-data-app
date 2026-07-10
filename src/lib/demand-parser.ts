@@ -215,7 +215,7 @@ function parseDemandSheet(text: string): Partial<ParsedDemandRecord> {
   };
 }
 
-export function parseDemandMessage(text: string, _reportType?: ReportType): ParsedDemandRecord {
+export function parseDemandMessage(text: string): ParsedDemandRecord {
   const baseRecord: ParsedDemandRecord = {
     customerName: null,
     customerPhone: null,
@@ -858,7 +858,7 @@ export type ParsedProjectExpiration = {
   createdAt?: Date | null;
 };
 
-export function parseExcelDate(val: any): Date | null {
+export function parseExcelDate(val: unknown): Date | null {
   if (val === null || val === undefined || val === '') return null;
   if (val instanceof Date) return val;
   const num = Number(val);
@@ -895,7 +895,7 @@ export function parseProjectExpirySpreadsheet(fileBuffer: Buffer): ParsedProject
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { raw: true });
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { raw: true });
 
     for (const row of rows) {
       const getVal = (keys: string[]) => {
@@ -966,7 +966,7 @@ export function parseWebsiteUpdateSpreadsheet(fileBuffer: Buffer): ParsedWebsite
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { raw: true });
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { raw: true });
 
     for (const row of rows) {
       const getVal = (keys: string[]) => {

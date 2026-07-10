@@ -8,6 +8,31 @@ const trashTypes = ["customers", "sales", "finance", "projects", "websites"] as 
 
 type TrashType = (typeof trashTypes)[number];
 
+type TrashRecord = {
+  id: string;
+  name?: string | null;
+  customerName?: string | null;
+  reporterName?: string | null;
+  projectName?: string | null;
+  phone?: string | null;
+  company?: string | null;
+  serviceName?: string | null;
+  status?: string | null;
+  marketingChannel?: string | null;
+  totalSalesAmount?: number | null;
+  url?: string | null;
+  packageName?: string | null;
+  createdAt?: Date | null;
+  reportDate?: Date | null;
+  deletedAt?: Date | null;
+  deletedByUserId?: string | null;
+  deletedReason?: string | null;
+  restoreRequested?: boolean;
+  restoreRequestCount?: number;
+};
+
+type SerializedTrashRecord = ReturnType<typeof serialize>;
+
 function isTrashType(value: string | null): value is TrashType {
   return !!value && trashTypes.includes(value as TrashType);
 }
@@ -59,7 +84,7 @@ function displayDate(value: Date | null | undefined) {
   return value ? value.toISOString().slice(0, 10) : null;
 }
 
-function serialize(type: TrashType, record: any) {
+function serialize(type: TrashType, record: TrashRecord) {
   const restoreRequestMeta = {
     restoreRequested: Boolean(record.restoreRequested),
     restoreRequestCount: record.restoreRequestCount ?? 0,
@@ -132,7 +157,7 @@ function serialize(type: TrashType, record: any) {
 }
 
 async function attachRestoreRequestMeta(
-  records: any[],
+  records: SerializedTrashRecord[],
   session: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>,
 ) {
   if (records.length === 0) return records;
@@ -433,6 +458,31 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "request_restore") {
+    const where = { id, ...trashWhere(type, session, null, null) };
+    let exists = false;
+
+    switch (type) {
+      case "customers":
+        exists = Boolean(await prisma.customer.findFirst({ where, select: { id: true } }));
+        break;
+      case "sales":
+        exists = Boolean(await prisma.demandRecord.findFirst({ where, select: { id: true } }));
+        break;
+      case "finance":
+        exists = Boolean(await prisma.businessReport.findFirst({ where, select: { id: true } }));
+        break;
+      case "projects":
+        exists = Boolean(await prisma.projectExpiration.findFirst({ where, select: { id: true } }));
+        break;
+      case "websites":
+        exists = Boolean(await prisma.websiteUpdate.findFirst({ where, select: { id: true } }));
+        break;
+    }
+
+    if (!exists) {
+      return NextResponse.json({ message: "Trash record not found or access denied" }, { status: 404 });
+    }
+
     await prisma.restoreRequest.upsert({
       where: {
         recordType_recordId_requestedByUserId_status: {

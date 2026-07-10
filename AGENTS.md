@@ -28,7 +28,7 @@ Required in `.env`:
 
 - `DATABASE_URL` — pooled Postgres (Supabase); used by the app via the `pg` Pool + Prisma adapter.
 - `DIRECT_URL` — direct Postgres connection; used by `prisma.config.ts` for schema operations.
-- `TELEGRAM_WEBHOOK_SECRET` — optional; if set, the webhook validates the `x-telegram-bot-api-secret-token` header.
+- Telegram webhook authentication uses the per-bot `webhookSecret` stored in `BotSettings`; Telegram must send it in the `x-telegram-bot-api-secret-token` header.
 - `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_APP_NAME` — client-side config (auth client base URL, branding).
 
 ## Architecture

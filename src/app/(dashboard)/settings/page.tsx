@@ -20,7 +20,6 @@ import {
   Edit2,
   Mail,
   Check,
-  X,
   Trash2,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,6 +44,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import type { TelegramSender } from '@/lib/api';
 
 type BotSettingsData = {
   botToken: string;
@@ -351,7 +351,7 @@ function TelegramSendersList() {
   const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false);
   const [createEmail, setCreateEmail] = useState<string>('');
   const [createAllowedDeps, setCreateAllowedDeps] = useState<string[]>([]);
-  const [deletingSender, setDeletingSender] = useState<any | null>(null);
+  const [deletingSender, setDeletingSender] = useState<TelegramSender | null>(null);
 
   const handleCreateSender = () => {
     if (!createEmail) {
@@ -373,7 +373,7 @@ function TelegramSendersList() {
       }
     );
   };
-  const [editingSender, setEditingSender] = useState<any | null>(null);
+  const [editingSender, setEditingSender] = useState<TelegramSender | null>(null);
   const [isAuthorizedDraft, setIsAuthorizedDraft] = useState<boolean>(false);
   const [allowedDepsDraft, setAllowedDepsDraft] = useState<string[]>([]);
 
@@ -394,7 +394,7 @@ function TelegramSendersList() {
     );
   }
 
-  const openEditModal = (sender: any) => {
+  const openEditModal = (sender: TelegramSender) => {
     setEditingSender(sender);
     setIsAuthorizedDraft(sender.isAuthorized ?? false);
     setAllowedDepsDraft(sender.allowedDepartments ?? []);

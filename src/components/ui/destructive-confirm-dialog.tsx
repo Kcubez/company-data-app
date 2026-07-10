@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,14 +30,14 @@ export function DestructiveConfirmDialog({
   onCancel,
   onConfirm,
 }: DestructiveConfirmDialogProps) {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const [typedConfirmation, setTypedConfirmation] = useState('');
   const requiresConfirmation = Boolean(confirmationText);
   const canConfirm = !requiresConfirmation || typedConfirmation.toLowerCase() === (confirmationText ?? '').toLowerCase();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   if (!mounted) return null;
 

@@ -76,10 +76,15 @@ export async function PUT(req: NextRequest) {
       }))?.webhookSecret ?? null;
     const webhookSecret = existingWebhookSecret || randomBytes(32).toString("hex");
 
-    // If a NEW bot token is provided, register the webhook with Telegram.
-    if (botToken && !botToken.includes("•")) {
+    const tokenToSave =
+      botToken && !botToken.includes("•") ? botToken : undefined;
+    const botTokenForWebhook = tokenToSave ?? oldBotToken;
+
+    // Register a webhook for a new token, and repair legacy settings that
+    // predate per-bot secrets before accepting webhook traffic from them.
+    if (botTokenForWebhook && (tokenToSave || !existingWebhookSecret)) {
       const telegramRes = await fetch(
-        `https://api.telegram.org/bot${botToken}/setWebhook`,
+        `https://api.telegram.org/bot${botTokenForWebhook}/setWebhook`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -106,7 +111,7 @@ export async function PUT(req: NextRequest) {
 
       // Drop the webhook on the previous token (if any) so it stops receiving
       // updates. Best-effort — failures here are non-fatal.
-      if (oldBotToken && oldBotToken !== botToken) {
+      if (oldBotToken && tokenToSave && oldBotToken !== tokenToSave) {
         await fetch(
           `https://api.telegram.org/bot${oldBotToken}/deleteWebhook`,
           { method: "POST" },
@@ -114,10 +119,7 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    // Determine the token to save
-    // If it contains "•", the user didn't change it — keep the old one
-    const tokenToSave =
-      botToken && !botToken.includes("•") ? botToken : undefined;
+    // If it contains "•", the user didn't change it — keep the old one.
     const geminiKeyToSave =
       geminiApiKey && !geminiApiKey.includes("•") ? geminiApiKey : undefined;
 

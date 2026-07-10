@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notDeleted, restoreData, softDeleteData } from "@/lib/soft-delete";
 import { senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
   const followUpStatus = searchParams.get("followUpStatus") || "";
   const missingField = searchParams.get("missingField") || "";
 
-  const where: Record<string, any> = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
+  const where: Prisma.DemandRecordWhereInput = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
 
   if (status) {
     where.status = status;
@@ -115,7 +116,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
-  const where: Record<string, any> = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
+  const where: Prisma.DemandRecordWhereInput = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     where.createdAt = {};
@@ -266,5 +267,5 @@ export async function POST(req: NextRequest) {
     }
   });
 
-  return NextResponse.json(serializeDemandRecord(record as any));
+  return NextResponse.json(serializeDemandRecord(record as unknown as Record<string, unknown>));
 }

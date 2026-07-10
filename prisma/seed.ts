@@ -42,16 +42,16 @@ const prisma = new PrismaClient({
 });
 
 // Helper: Custom CSV Parser to avoid external dependencies
-function parseCSV(content: string): any[] {
+function parseCSV(content: string): Record<string, string>[] {
   const lines = content.split(/\r?\n/);
-  const result: any[] = [];
+  const result: Record<string, string>[] = [];
   if (lines.length === 0 || !lines[0].trim()) return result;
   
   const headers = parseCSVLine(lines[0]);
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
     const values = parseCSVLine(lines[i]);
-    const row: any = {};
+    const row: Record<string, string> = {};
     headers.forEach((h, index) => {
       row[h] = values[index] !== undefined ? values[index] : "";
     });

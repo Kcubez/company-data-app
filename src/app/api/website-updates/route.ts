@@ -1,11 +1,12 @@
 import { auth } from "@/lib/auth";
+import type { Prisma, WebsiteUpdate } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notDeleted, softDeleteData } from "@/lib/soft-delete";
 import { uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
-function serializeWebsiteUpdate(record: any) {
-  const result = { ...record };
+function serializeWebsiteUpdate(record: WebsiteUpdate) {
+  const result: Record<string, unknown> = { ...record };
   if (result.createdAt instanceof Date) result.createdAt = result.createdAt.toISOString();
   if (result.updatedAt instanceof Date) result.updatedAt = result.updatedAt.toISOString();
   return result;
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
 
-  const where: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
+  const where: Prisma.WebsiteUpdateWhereInput = { ...uploadedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     where.createdAt = {};
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
     }),
     prisma.websiteUpdate.count({ where }),
     prisma.$transaction(async (tx) => {
-      const statsWhere: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
+      const statsWhere: Prisma.WebsiteUpdateWhereInput = { ...uploadedByUserOrAdmin(session), ...notDeleted };
       if (dateFrom || dateTo) {
         statsWhere.createdAt = {};
         if (dateFrom) statsWhere.createdAt.gte = new Date(dateFrom);
@@ -115,7 +116,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
-  const where: any = { ...uploadedByUserOrAdmin(session), ...notDeleted };
+  const where: Prisma.WebsiteUpdateWhereInput = { ...uploadedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     where.createdAt = {};

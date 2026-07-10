@@ -3,6 +3,10 @@ import { demandRecordsApi, type DemandRecordsParams, type UpdateDemandRecordPayl
 import { clearListQueryData, removeListItemQueryData } from "@/lib/query-cache";
 import { toast } from "sonner";
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function useDemandRecords(params: DemandRecordsParams = {}) {
   return useQuery({
     queryKey: ["demand-records", params],
@@ -44,8 +48,8 @@ export function useDeleteAllDemandRecords() {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success(`Deleted ${res.count} demand record(s)`);
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to delete records");
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to delete records"));
     },
   });
 }
@@ -61,8 +65,8 @@ export function useUpdateDemandRecord() {
       queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });
       toast.success("Record updated successfully");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to update record");
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to update record"));
     },
   });
 }
@@ -80,8 +84,8 @@ export function useImportDemandFile() {
         `Imported ${res.importedCount} row(s). ${res.highPriority} high priority, ${res.missingPhone} missing phone.`,
       );
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to import file");
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to import file"));
     },
   });
 }
@@ -90,15 +94,15 @@ export function useCreateDemandRecord() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: any) => demandRecordsApi.create(data),
+    mutationFn: (data: Parameters<typeof demandRecordsApi.create>[0]) => demandRecordsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["demand-records"] });
       queryClient.invalidateQueries({ queryKey: ["demand-record-stats"] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success("Lead created successfully");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to create lead");
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to create lead"));
     },
   });
 }
@@ -117,8 +121,8 @@ export function useDeleteDemandRecord() {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success("Lead deleted successfully");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to delete lead");
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to delete lead"));
     },
   });
 }

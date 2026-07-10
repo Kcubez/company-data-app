@@ -31,13 +31,18 @@ export function useDateFilter(storageKey: string) {
   const [localPeriod, setLocalPeriod] = useState<PeriodMode>(period);
   const [localMonth, setLocalMonth] = useState(String(month));
   const [localYear, setLocalYear] = useState(String(year));
+  const [lastUrlFilter, setLastUrlFilter] = useState(() => `${period}:${month}:${year}`);
 
-  // Sync local state when URL params change
-  useEffect(() => {
+  // Keep inputs in sync with browser navigation and direct URL changes. This
+  // is intentionally derived during render so a URL change needs no extra
+  // committed render followed by an effect-driven state update.
+  const urlFilter = `${period}:${month}:${year}`;
+  if (lastUrlFilter !== urlFilter) {
+    setLastUrlFilter(urlFilter);
     setLocalPeriod(period);
     setLocalMonth(String(month));
     setLocalYear(String(year));
-  }, [period, month, year]);
+  }
 
   // ── URL updater ───────────────────────────────────────────────────────
   const updatePeriod = useCallback(
@@ -92,7 +97,6 @@ export function useDateFilter(storageKey: string) {
       sessionStorage.setItem(`${storageKey}_month`, String(month));
       sessionStorage.setItem(`${storageKey}_year`, String(year));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, pathname, router, period, month, year, storageKey]);
 
   // ── Compute dateFrom / dateTo ─────────────────────────────────────────

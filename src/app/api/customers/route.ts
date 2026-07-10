@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notDeleted, restoreData, softDeleteData } from "@/lib/soft-delete";
 import { customerOwnedByUserOrAdmin } from "@/lib/tenant-scope";
@@ -18,8 +19,8 @@ export async function GET(req: NextRequest) {
   const dateTo = searchParams.get("dateTo") || "";
   const status = searchParams.get("status") || "";
 
-  const where: Record<string, any> = { ...customerOwnedByUserOrAdmin(session), ...notDeleted };
-  const conditions: any[] = [];
+  const where: Prisma.CustomerWhereInput = { ...customerOwnedByUserOrAdmin(session), ...notDeleted };
+  const conditions: Prisma.CustomerWhereInput[] = [];
 
   if (status) where.status = status;
   if (dateFrom || dateTo) {
@@ -194,7 +195,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
-  const where: Record<string, any> = { ...customerOwnedByUserOrAdmin(session), ...notDeleted };
+  const where: Prisma.CustomerWhereInput = { ...customerOwnedByUserOrAdmin(session), ...notDeleted };
 
   if (dateFrom || dateTo) {
     const rangeCondition: Record<string, Date> = {};

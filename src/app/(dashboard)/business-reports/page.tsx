@@ -1,8 +1,8 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { format } from 'date-fns';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useDateFilter, type PeriodMode } from '@/hooks/use-date-filter';
 import {
   useBusinessReports,
@@ -285,12 +285,6 @@ function BusinessReportsPageContent() {
     year,
     dateFrom,
     dateTo,
-    localPeriod,
-    localMonth,
-    localYear,
-    setLocalPeriod,
-    setLocalMonth,
-    setLocalYear,
     updatePeriod,
     years,
   } = useDateFilter('finance_filter');
@@ -302,11 +296,14 @@ function BusinessReportsPageContent() {
   const [editingRecord, setEditingRecord] = useState<BusinessReport | null>(null);
   const [editForm, setEditForm] = useState<Partial<BusinessReport>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [lastDateFilter, setLastDateFilter] = useState(() => `${period}:${month}:${year}`);
   const limit = 10;
 
-  useEffect(() => {
+  const dateFilter = `${period}:${month}:${year}`;
+  if (lastDateFilter !== dateFilter) {
+    setLastDateFilter(dateFilter);
     setPage(1);
-  }, [period, month, year]);
+  }
 
   const listParams = {
     page,

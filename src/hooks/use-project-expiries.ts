@@ -3,6 +3,10 @@ import { projectExpiriesApi, type ProjectExpiriesParams, type UpdateProjectExpir
 import { clearListQueryData } from "@/lib/query-cache";
 import { toast } from "sonner";
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export const projectExpiriesKeys = {
   all: ["project-expiries"] as const,
   lists: () => [...projectExpiriesKeys.all, "list"] as const,
@@ -40,8 +44,8 @@ export function useDeleteAllProjectExpiries() {
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       toast.success(`Deleted ${res.deleted} project record(s)`);
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to delete records");
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to delete records"));
     },
   });
 }
@@ -56,8 +60,8 @@ export function useUpdateProjectExpiry() {
       queryClient.invalidateQueries({ queryKey: projectExpiriesKeys.all });
       toast.success("Project expiry updated successfully");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to update record");
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to update record"));
     },
   });
 }

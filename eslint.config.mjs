@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  // Standalone data-generation scripts run under CommonJS and are not part of
+  // the Next.js application bundle.
+  {
+    files: ["scripts/**/*.js", "update_dashboard.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import type { Prisma } from "@/generated/prisma/client";
 import { buildBusinessInsights } from "@/lib/demand-analysis";
 import { prisma } from "@/lib/prisma";
 import { notDeleted } from "@/lib/soft-delete";
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
 
-  const rangeWhere: Record<string, any> = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
+  const rangeWhere: Prisma.DemandRecordWhereInput = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
   if (dateFrom || dateTo) {
     rangeWhere.createdAt = {};
     if (dateFrom) rangeWhere.createdAt.gte = new Date(dateFrom);
