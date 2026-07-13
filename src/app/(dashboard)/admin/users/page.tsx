@@ -70,6 +70,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -101,6 +102,7 @@ export default function AdminUsersPage() {
 
   const createForm = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserSchema),
+    mode: 'onChange',
     defaultValues: { name: '', email: '', password: '', role: 'user' },
   });
 
@@ -238,12 +240,14 @@ export default function AdminUsersPage() {
                           <button
                             type="button"
                             onClick={() => setShowCreatePassword((p) => !p)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-foreground"
+                            aria-label={showCreatePassword ? 'Hide password' : 'Show password'}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 rounded text-slate-500 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 cursor-pointer"
                           >
                             {showCreatePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                         </div>
                       </FormControl>
+                      <FormDescription>Use at least 8 characters.</FormDescription>
                       <FormMessage className="text-red-600 dark:text-red-400" />
                     </FormItem>
                   )}

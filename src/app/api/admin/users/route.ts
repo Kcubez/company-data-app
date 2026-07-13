@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { createUserSchema } from "@/lib/validations";
 
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -107,15 +108,20 @@ export async function POST(req: NextRequest) {
   if (guard.error) return guard.error;
 
   const body = await req.json();
-  const { name, email, password, role } = body;
+  const parsed = createUserSchema.safeParse({ ...body, role: body.role ?? "user" });
 
-  if (!name || !email || !password) {
-    return NextResponse.json({ message: "Missing required fields" }, { status: 400 });
+  if (!parsed.success) {
+    return NextResponse.json(
+      { message: parsed.error.issues[0]?.message ?? "Invalid account details" },
+      { status: 400 }
+    );
   }
+
+  const { name, email, password, role } = parsed.data;
 
   try {
     const result = await auth.api.createUser({
-      body: { name, email, password, role: role ?? "user" },
+      body: { name, email, password, role },
     });
 
     return NextResponse.json(result.user, { status: 201 });

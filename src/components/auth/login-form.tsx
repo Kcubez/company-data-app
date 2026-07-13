@@ -25,6 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { toast } from 'sonner';
 
 export function LoginForm({ requiredRole }: { requiredRole?: 'admin' | 'user' }) {
   const isAdmin = requiredRole === 'admin';
@@ -47,7 +48,9 @@ export function LoginForm({ requiredRole }: { requiredRole?: 'admin' | 'user' })
     });
 
     if (error) {
-      setServerError(error.message ?? 'Invalid credentials. Please try again.');
+      const message = error.message ?? 'Invalid credentials. Please try again.';
+      setServerError(message);
+      toast.error(message);
       return;
     }
 
@@ -55,10 +58,13 @@ export function LoginForm({ requiredRole }: { requiredRole?: 'admin' | 'user' })
     if (requiredRole && data?.user?.role && data.user.role !== requiredRole) {
       const { signOut } = await import('@/lib/auth-client');
       await signOut();
-      setServerError(`Access denied. This portal is strictly for ${requiredRole}s.`);
+      const message = `Access denied. This portal is strictly for ${requiredRole}s.`;
+      setServerError(message);
+      toast.error(message);
       return;
     }
 
+    toast.success(isAdmin ? 'Admin signed in successfully' : 'Signed in successfully');
     router.push(callbackUrl);
     router.refresh();
   };

@@ -33,6 +33,7 @@ import { Separator } from '@/components/ui/separator';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useState } from 'react';
 import { useSyncPolling } from '@/hooks/use-sync-polling';
+import { toast } from 'sonner';
 
 type NavItem = {
   title: string;
@@ -57,9 +58,19 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
 
   const handleSignOut = async () => {
     const isAdmin = session?.user?.role === 'admin';
-    await signOut();
-    router.push(isAdmin ? '/admin/login' : '/login');
-    router.refresh();
+    try {
+      const { error } = await signOut();
+      if (error) {
+        toast.error(error.message ?? 'Unable to sign out. Please try again.');
+        return;
+      }
+
+      toast.success(isAdmin ? 'Admin signed out successfully' : 'Signed out successfully');
+      router.push(isAdmin ? '/admin/login' : '/login');
+      router.refresh();
+    } catch {
+      toast.error('Unable to sign out. Please try again.');
+    }
   };
 
   const navGroups: NavGroup[] = [
