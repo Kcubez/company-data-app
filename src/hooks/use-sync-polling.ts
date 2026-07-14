@@ -2,13 +2,15 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-export function useSyncPolling() {
+export function useSyncPolling(enabled = true) {
   const queryClient = useQueryClient();
   const lastModifiedRef = useRef<number | null>(null);
   const telegramLastModifiedRef = useRef<number | null>(null);
   const isPollingRef = useRef<boolean>(false);
 
   useEffect(() => {
+    if (!enabled) return;
+
     let intervalId: NodeJS.Timeout | null = null;
 
     async function checkSync() {
@@ -88,5 +90,5 @@ export function useSyncPolling() {
       }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [queryClient]);
+  }, [enabled, queryClient]);
 }

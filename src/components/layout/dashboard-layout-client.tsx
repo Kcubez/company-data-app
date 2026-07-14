@@ -31,7 +31,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSyncPolling } from '@/hooks/use-sync-polling';
 import { toast } from 'sonner';
 
@@ -47,21 +47,75 @@ type NavGroup = {
   items: NavItem[];
 };
 
+const ADMIN_ALLOWED_PATHS = ['/admin/users', '/trash'];
+const ADMIN_ONLY_PATHS = ['/admin/users'];
+
+function isAdminAllowedPath(pathname: string) {
+  return ADMIN_ALLOWED_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+}
+
+function isAdminOnlyPath(pathname: string) {
+  return ADMIN_ONLY_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+}
+
+function WorkspaceLoadingShell({ message }: { message: string }) {
+  return (
+    <div
+      className="min-h-screen bg-background text-foreground flex flex-col md:flex-row"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <aside className="hidden md:flex w-64 shrink-0 flex-col gap-6 bg-[#020617] p-5">
+        <div className="h-10 w-44 animate-pulse rounded-lg bg-slate-800" />
+        <div className="space-y-3">
+          <div className="h-3 w-24 animate-pulse rounded bg-slate-800" />
+          <div className="h-10 animate-pulse rounded-lg bg-slate-800/70" />
+          <div className="h-10 animate-pulse rounded-lg bg-slate-800/70" />
+        </div>
+      </aside>
+      <main className="flex flex-1 items-center justify-center p-6">
+        <p className="text-sm text-muted-foreground">{message}</p>
+      </main>
+    </div>
+  );
+}
+
 export function DashboardLayoutClient({ children }: { children: React.ReactNode }) {
-  const { data: session } = useSession();
+  const { data: session, isPending: isSessionPending } = useSession();
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const isAdmin = session?.user?.role === 'admin';
+  const isAdminOnRestrictedRoute = isAdmin && !isAdminAllowedPath(pathname);
+  const isBusinessOwnerOnAdminRoute =
+    !isSessionPending && Boolean(session) && !isAdmin && isAdminOnlyPath(pathname);
+  const isRoleRestrictedRoute = isAdminOnRestrictedRoute || isBusinessOwnerOnAdminRoute;
 
   // Poll for background Telegram updates and auto-refresh TanStack Query client
-  useSyncPolling();
+  useSyncPolling(!isSessionPending && !isAdmin && !isBusinessOwnerOnAdminRoute);
+
+  useEffect(() => {
+    if (isAdminOnRestrictedRoute) {
+      router.replace('/admin/users');
+    } else if (isBusinessOwnerOnAdminRoute) {
+      router.replace('/dashboard');
+    }
+  }, [isAdminOnRestrictedRoute, isBusinessOwnerOnAdminRoute, router]);
 
   const handleSignOut = async () => {
     const isAdmin = session?.user?.role === 'admin';
+    setIsSigningOut(true);
+
     try {
       const { error } = await signOut();
       if (error) {
         toast.error(error.message ?? 'Unable to sign out. Please try again.');
+        setIsSigningOut(false);
         return;
       }
 
@@ -70,6 +124,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       router.refresh();
     } catch {
       toast.error('Unable to sign out. Please try again.');
+      setIsSigningOut(false);
     }
   };
 
@@ -101,7 +156,6 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
     },
   ];
 
-  const isAdmin = session?.user?.role === 'admin';
   const filteredNavGroups = navGroups
     .map(group => ({
       ...group,
@@ -110,6 +164,24 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
       ),
     }))
     .filter(group => group.items.length > 0);
+
+  // Do not render a role's workspace before the session role has loaded or
+  // while a role-based redirect is in progress.
+  if (isSigningOut || isSessionPending || isRoleRestrictedRoute) {
+    return (
+      <WorkspaceLoadingShell
+        message={
+          isSigningOut
+            ? 'Signing out…'
+            : isAdminOnRestrictedRoute
+              ? 'Opening User Management…'
+              : isBusinessOwnerOnAdminRoute
+                ? 'Opening your workspace…'
+                : 'Loading workspace…'
+        }
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">

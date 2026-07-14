@@ -85,6 +85,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { AdminUser } from '@/lib/api';
+import { DestructiveConfirmDialog } from '@/components/ui/destructive-confirm-dialog';
 
 export default function AdminUsersPage() {
   const { data: users, isLoading } = useUsers();
@@ -99,6 +100,7 @@ export default function AdminUsersPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [userPendingDeletion, setUserPendingDeletion] = useState<AdminUser | null>(null);
 
   const createForm = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserSchema),
@@ -152,6 +154,17 @@ export default function AdminUsersPage() {
       );
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!userPendingDeletion) return;
+
+    try {
+      await deleteUser.mutateAsync(userPendingDeletion.id);
+      setUserPendingDeletion(null);
+    } catch {
+      // The mutation hook shows a toast; keep the dialog open so the admin can retry.
     }
   };
 
@@ -622,15 +635,7 @@ export default function AdminUsersPage() {
                           <DropdownMenuSeparator className="bg-muted" />
                           <DropdownMenuItem
                             className="text-red-600 dark:text-red-400 focus:text-red-700 dark:text-red-300 hover:bg-red-500/10 cursor-pointer"
-                            onClick={() => {
-                              if (
-                                confirm(
-                                  `Are you sure you want to permanently delete ${user.email}?`
-                                )
-                              ) {
-                                deleteUser.mutate(user.id);
-                              }
-                            }}
+                            onClick={() => setUserPendingDeletion(user)}
                           >
                             <Trash2 className="w-4 h-4 mr-2" /> Delete Account
                           </DropdownMenuItem>
@@ -644,6 +649,25 @@ export default function AdminUsersPage() {
           </Table>
         </div>
       </div>
+
+      {userPendingDeletion && (
+        <DestructiveConfirmDialog
+          title="Permanently delete account?"
+          description={
+            <>
+              This permanently deletes <strong className="font-semibold text-foreground">{userPendingDeletion.email}</strong>
+              {' '}and its associated account data. This action cannot be undone.
+            </>
+          }
+          notice="This permanently deletes the account and its associated data"
+          confirmLabel="Delete account"
+          confirmationText="DELETE"
+          confirmationLabel="Type DELETE to permanently delete this account"
+          isPending={deleteUser.isPending}
+          onCancel={() => setUserPendingDeletion(null)}
+          onConfirm={handleDeleteConfirm}
+        />
+      )}
     </div>
   );
 }

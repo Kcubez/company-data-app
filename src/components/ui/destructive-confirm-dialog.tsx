@@ -13,6 +13,7 @@ type DestructiveConfirmDialogProps = {
   confirmLabel?: string;
   confirmationText?: string;
   confirmationLabel?: string;
+  notice?: ReactNode;
   cancelLabel?: string;
   isPending?: boolean;
   onCancel: () => void;
@@ -25,6 +26,7 @@ export function DestructiveConfirmDialog({
   confirmLabel = 'Delete All',
   confirmationText,
   confirmationLabel,
+  notice = 'Deleted records move to Trash unless this is a permanent delete',
   cancelLabel = 'Cancel',
   isPending = false,
   onCancel,
@@ -52,7 +54,7 @@ export function DestructiveConfirmDialog({
             <div className="min-w-0">
               <h3 className="text-lg font-semibold tracking-normal text-foreground">{title}</h3>
               <p className="mt-1 text-xs font-medium uppercase text-red-600 dark:text-red-400">
-                Deleted records move to Trash unless this is a permanent delete
+                {notice}
               </p>
             </div>
           </div>
