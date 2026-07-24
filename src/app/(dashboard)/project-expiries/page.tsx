@@ -995,7 +995,7 @@ function ProjectExpiriesPageContent() {
                 <Bot className="w-8 h-8 text-slate-400 mx-auto mb-2 animate-pulse" />
                 <p className="text-sm font-semibold text-muted-foreground">No website updates recorded for this period</p>
               </div>
-            ) : websiteRecsData?.recommendations && websiteRecsData?.recommendations.length > 0 ? (
+            ) : (websiteRecsData?.recommendations?.length ?? 0) > 0 ? (
               <div className="space-y-3">
                 {visibleWebsiteInsights.map((rec, idx) => (
                   <div
