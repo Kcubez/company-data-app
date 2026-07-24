@@ -8,6 +8,7 @@ function serializeProjectExpiration(record: Record<string, unknown>) {
   const result = { ...record };
   if (result.domainExpireDate instanceof Date) result.domainExpireDate = result.domainExpireDate.toISOString();
   if (result.hostingExpireDate instanceof Date) result.hostingExpireDate = result.hostingExpireDate.toISOString();
+  if (result.offerExpireDate instanceof Date) result.offerExpireDate = result.offerExpireDate.toISOString();
   if (result.createdAt instanceof Date) result.createdAt = result.createdAt.toISOString();
   if (result.updatedAt instanceof Date) result.updatedAt = result.updatedAt.toISOString();
   return result;
@@ -41,13 +42,15 @@ export async function PATCH(
     "hostingRemark",
     "domainExpireDate",
     "hostingExpireDate",
+    "offerExpireDate",
+    "projectStatus",
     "remark",
   ] as const;
 
   const data: Record<string, unknown> = {};
   for (const field of allowedFields) {
     if (field in body) {
-      if (field === "domainExpireDate" || field === "hostingExpireDate") {
+      if (field === "domainExpireDate" || field === "hostingExpireDate" || field === "offerExpireDate") {
         data[field] = body[field] ? new Date(body[field]) : null;
       } else {
         data[field] = body[field] === "" ? null : body[field];

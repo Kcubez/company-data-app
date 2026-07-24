@@ -47,6 +47,7 @@ function ProjectExpiriesPageContent() {
   const {
     period,
     month,
+    day,
     year,
     dateFrom,
     dateTo,
@@ -65,7 +66,7 @@ function ProjectExpiriesPageContent() {
 
   const [search, setSearch] = useState(initialSearch);
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
-  const [filter, setFilter] = useState<'all' | 'expired' | 'expiring_soon' | 'active'>('all');
+  const [filter, setFilter] = useState<'all' | 'expired' | 'expiring_soon' | 'active' | 'maintenance' | 'finished'>('all');
   const [page, setPage] = useState(1);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [lastUrlSearch, setLastUrlSearch] = useState(initialSearch);
@@ -83,6 +84,8 @@ function ProjectExpiriesPageContent() {
   const [editHostingExpiry, setEditHostingExpiry] = useState('');
   const [editRemark, setEditRemark] = useState('');
   const [editPackageName, setEditPackageName] = useState('');
+  const [editOfferExpiry, setEditOfferExpiry] = useState('');
+  const [editProjectStatus, setEditProjectStatus] = useState<ProjectExpiration['projectStatus']>('active');
   const limit = 10;
 
   // Website Updates States
@@ -91,6 +94,9 @@ function ProjectExpiriesPageContent() {
   const [websiteStatusFilter, setWebsiteStatusFilter] = useState<'all' | 'up_to_date' | 'pending_update' | 'in_progress'>('all');
   const [websitePage, setWebsitePage] = useState(1);
   const [websiteInsightPage, setWebsiteInsightPage] = useState(1);
+  const [showWebsiteSuggestions, setShowWebsiteSuggestions] = useState(false);
+  const [showProjectSuggestions, setShowProjectSuggestions] = useState(false);
+  const [showWebsiteAlertSuggestions, setShowWebsiteAlertSuggestions] = useState(false);
   const websiteLimit = 10;
   const websiteInsightPageSize = 5;
 
@@ -146,7 +152,7 @@ function ProjectExpiriesPageContent() {
 
   // Website Update Hooks & Mutations
   const updateWebsiteMutation = useUpdateWebsiteUpdate();
-  const { data: websiteRecsData, isLoading: websiteRecsLoading, refetch: websiteRecsRefetch, isFetching: websiteRecsFetching } = useWebsiteUpdateRecommendations();
+  const { data: websiteRecsData, isLoading: websiteRecsLoading, refetch: websiteRecsRefetch, isFetching: websiteRecsFetching } = useWebsiteUpdateRecommendations({ enabled: showWebsiteSuggestions });
   const websiteInsightTotal = websiteRecsData?.recommendations.length || 0;
   const [lastWebsiteInsightTotal, setLastWebsiteInsightTotal] = useState(websiteInsightTotal);
   const websiteInsightTotalPages = Math.max(1, Math.ceil(websiteInsightTotal / websiteInsightPageSize));
@@ -197,6 +203,8 @@ function ProjectExpiriesPageContent() {
     setEditHostingExpiry(record.hostingExpireDate ? record.hostingExpireDate.slice(0, 10) : '');
     setEditRemark(record.remark || '');
     setEditPackageName(record.packageName || '');
+    setEditOfferExpiry(record.offerExpireDate ? record.offerExpireDate.slice(0, 10) : '');
+    setEditProjectStatus(record.projectStatus);
   };
 
   const handleSaveEdit = async () => {
@@ -207,6 +215,8 @@ function ProjectExpiriesPageContent() {
       hostingExpireDate: editHostingExpiry || null,
       remark: editRemark || null,
       packageName: editPackageName || null,
+      offerExpireDate: editOfferExpiry || null,
+      projectStatus: editProjectStatus,
     });
     setEditingRecord(null);
   };
@@ -227,11 +237,11 @@ function ProjectExpiriesPageContent() {
   useEffect(() => {
     const total = websiteData?.stats?.total;
     if (total === undefined) return;
-    if (prevWebsiteTotalRef.current !== null && total !== prevWebsiteTotalRef.current) {
+    if (showWebsiteSuggestions && prevWebsiteTotalRef.current !== null && total !== prevWebsiteTotalRef.current) {
       websiteRecsRefetch();
     }
     prevWebsiteTotalRef.current = total;
-  }, [websiteData?.stats?.total, websiteRecsRefetch]);
+  }, [websiteData?.stats?.total, websiteRecsRefetch, showWebsiteSuggestions]);
 
   const stats = data?.stats || { total: 0, expired: 0, expiringSoon: 0, active: 0 };
   const records = data?.records || [];
@@ -335,20 +345,33 @@ function ProjectExpiriesPageContent() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <Select value={localPeriod} onValueChange={(value) => {
-            if (value === 'month' || value === 'year') {
+            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year') {
               setLocalPeriod(value);
               updatePeriod({ period: value });
             }
           }}>
             <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
-              {localPeriod === 'year' ? 'Yearly' : 'Monthly'}
+              {localPeriod === 'overall' ? 'Overall' : localPeriod === 'year' ? 'Yearly' : localPeriod === 'day' ? 'Daily' : 'Monthly'}
             </SelectTrigger>
             <SelectContent className="bg-card border-border text-foreground rounded-lg">
+              <SelectItem value="overall">Overall</SelectItem>
+              <SelectItem value="day">Daily</SelectItem>
               <SelectItem value="month">Monthly</SelectItem>
               <SelectItem value="year">Yearly</SelectItem>
             </SelectContent>
           </Select>
-          {localPeriod === 'month' ? (
+          {localPeriod === 'day' ? (
+            <Input
+              type="date"
+              value={`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
+              onChange={(event) => {
+                const next = new Date(`${event.target.value}T00:00:00`);
+                if (!Number.isNaN(next.getTime())) updatePeriod({ year: next.getFullYear(), month: next.getMonth() + 1, day: next.getDate() });
+              }}
+              className="h-9 w-40 rounded-lg border-2 border-slate-300 bg-card text-xs font-bold dark:border-slate-800"
+              aria-label="Select day"
+            />
+          ) : localPeriod === 'month' ? (
             <Select value={localMonth} onValueChange={(value) => {
               if (value) {
                 setLocalMonth(value);
@@ -367,7 +390,7 @@ function ProjectExpiriesPageContent() {
               </SelectContent>
             </Select>
           ) : null}
-          <Select value={localYear} onValueChange={(value) => {
+          {localPeriod !== 'day' && localPeriod !== 'overall' && <Select value={localYear} onValueChange={(value) => {
             if (value) {
               setLocalYear(value);
               updatePeriod({ year: Number(value) });
@@ -383,7 +406,7 @@ function ProjectExpiriesPageContent() {
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select>}
 
           <Button
             variant="outline"
@@ -431,7 +454,19 @@ function ProjectExpiriesPageContent() {
         })}
       </div>
 
-      {!(isLoading || data?.total === 0) && (
+      <Card className="border-2 border-sky-200 bg-sky-50/30 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/15">
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />AI Project Expiry Suggestions</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">Suggestions are hidden until you choose to review them.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setShowProjectSuggestions((visible) => !visible)} className="shrink-0 border-border bg-card text-foreground hover:bg-muted/50">
+            {showProjectSuggestions ? 'Hide suggestions' : 'View suggestions'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {showProjectSuggestions && !(isLoading || data?.total === 0) && (
         <div className="grid gap-4 md:grid-cols-2">
           <Card className="bg-white dark:bg-card border-2 border-red-300 border-l-8 border-l-red-500 rounded-xl shadow-sm flex flex-col justify-between">
             <CardContent className="p-5 flex flex-col h-full justify-between">
@@ -579,7 +614,7 @@ function ProjectExpiriesPageContent() {
                 <Select
                   value={filter}
                   onValueChange={(val) => {
-                    setFilter(val as 'all' | 'expired' | 'expiring_soon' | 'active');
+                    setFilter(val as 'all' | 'expired' | 'expiring_soon' | 'active' | 'maintenance' | 'finished');
                     setPage(1);
                   }}
                 >
@@ -591,6 +626,8 @@ function ProjectExpiriesPageContent() {
                     <SelectItem value="expired">Expired Expiries</SelectItem>
                     <SelectItem value="expiring_soon">Expiring Soon</SelectItem>
                     <SelectItem value="active">Active & Safe</SelectItem>
+                    <SelectItem value="maintenance">Maintenance</SelectItem>
+                    <SelectItem value="finished">Finished</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -607,7 +644,7 @@ function ProjectExpiriesPageContent() {
                 <div className="col-span-2">Website URL</div>
                 <div className="col-span-3">Domain Expiry</div>
                 <div className="col-span-3">Hosting Expiry</div>
-                <div className="col-span-2">Package & Remarks</div>
+                <div className="col-span-2">Status, Offer & Remarks</div>
               </div>
 
               {/* Table Body */}
@@ -716,6 +753,10 @@ function ProjectExpiriesPageContent() {
                           ) : (
                             <span className="text-[10px] text-slate-600 block italic">No Package</span>
                           )}
+                          <Badge variant="outline" className="text-[10px] capitalize">{record.projectStatus}</Badge>
+                          {record.offerExpireDate && (
+                            <p className="text-[10px] text-amber-700 dark:text-amber-400">Offer ends: {format(new Date(record.offerExpireDate), 'yyyy-MM-dd')}</p>
+                          )}
                           {record.remark ? (
                             <p className="text-xs text-muted-foreground truncate w-full leading-normal" title={record.remark}>
                               {record.remark}
@@ -818,8 +859,20 @@ function ProjectExpiriesPageContent() {
           ))}
         </div>
       
+        <Card className="border-2 border-sky-200 bg-sky-50/30 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/15">
+          <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />AI Website Update Suggestions</CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">Suggestions are hidden until you choose to review them.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setShowWebsiteAlertSuggestions((visible) => !visible)} className="shrink-0 border-border bg-card text-foreground hover:bg-muted/50">
+              {showWebsiteAlertSuggestions ? 'Hide suggestions' : 'View suggestions'}
+            </Button>
+          </CardContent>
+        </Card>
+
         {/* Website Maintenance Alerts */}
-        {websiteStats.total > 0 && (
+        {showWebsiteAlertSuggestions && websiteStats.total > 0 && (
           <div className="grid gap-4 md:grid-cols-2">
           <Card
             className={`bg-white dark:bg-card border-2 rounded-xl shadow-sm flex flex-col justify-between ${
@@ -909,8 +962,8 @@ function ProjectExpiriesPageContent() {
         </div>
       )}
 
-        {/* Website updates AI Insights Card */}
-        <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm">
+        {/* Website updates AI Insights Card removed from the UI; project suggestions above now contain the actionable alerts. */}
+        {false && <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm">
           <CardHeader className="p-5 border-b border-slate-200">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -922,20 +975,16 @@ function ProjectExpiriesPageContent() {
                   AI recommendations for pending website updates and site maintenance.
                 </CardDescription>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => websiteRecsRefetch()}
-                disabled={websiteRecsFetching}
-                className="bg-card border-border text-foreground hover:bg-muted/50 shrink-0 cursor-pointer h-9 px-3 rounded-lg"
-              >
-                <RefreshCw className={`w-4 h-4 mr-1.5 ${websiteRecsFetching ? 'animate-spin' : ''}`} />
-                Refresh
+              <Button variant="outline" size="sm" onClick={() => showWebsiteSuggestions ? setShowWebsiteSuggestions(false) : setShowWebsiteSuggestions(true)} className="bg-card border-border text-foreground hover:bg-muted/50 shrink-0 cursor-pointer h-9 px-3 rounded-lg">
+                <Bot className="w-4 h-4 mr-1.5" />
+                {showWebsiteSuggestions ? 'Hide suggestions' : 'View suggestions'}
               </Button>
             </div>
           </CardHeader>
           <CardContent className="p-5">
-            {websiteRecsLoading || websiteRecsFetching ? (
+            {!showWebsiteSuggestions ? (
+              <div className="py-3 text-sm text-muted-foreground">Suggestions are hidden until you choose to review them.</div>
+            ) : websiteRecsLoading || websiteRecsFetching ? (
               <div className="space-y-3">
                 <Skeleton className="h-12 w-full bg-muted rounded-lg animate-pulse" />
                 <Skeleton className="h-12 w-full bg-muted rounded-lg animate-pulse" />
@@ -946,7 +995,7 @@ function ProjectExpiriesPageContent() {
                 <Bot className="w-8 h-8 text-slate-400 mx-auto mb-2 animate-pulse" />
                 <p className="text-sm font-semibold text-muted-foreground">No website updates recorded for this period</p>
               </div>
-            ) : websiteRecsData?.recommendations && websiteRecsData.recommendations.length > 0 ? (
+            ) : websiteRecsData?.recommendations && websiteRecsData?.recommendations.length > 0 ? (
               <div className="space-y-3">
                 {visibleWebsiteInsights.map((rec, idx) => (
                   <div
@@ -1024,7 +1073,7 @@ function ProjectExpiriesPageContent() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
         {/* Website updates list directory card */}
         <Card id="website-maintenance-table" className="bg-card border-2 border-slate-200 shadow-sm rounded-xl overflow-hidden">
@@ -1249,6 +1298,25 @@ function ProjectExpiriesPageContent() {
                   onChange={e => setEditHostingExpiry(e.target.value)}
                   className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono transition-all duration-200"
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-muted-foreground">Offer Expiry Date</label>
+                <input type="date" value={editOfferExpiry} onChange={e => setEditOfferExpiry(e.target.value)} className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-muted-foreground">Project Status</label>
+                <Select value={editProjectStatus} onValueChange={(value) => setEditProjectStatus(value as ProjectExpiration['projectStatus'])}>
+                  <SelectTrigger className="w-full bg-muted/50 border border-border rounded-lg text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="planning">Planning</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="maintenance">Maintenance</SelectItem>
+                    <SelectItem value="finished">Finished</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

@@ -3,7 +3,7 @@
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 
-export type PeriodMode = "month" | "year";
+export type PeriodMode = "overall" | "day" | "month" | "year";
 
 /**
  * Shared date-filter hook — URL search params as source of truth,
@@ -20,40 +20,61 @@ export function useDateFilter(storageKey: string) {
 
   // ── Derive from URL ───────────────────────────────────────────────────
   const period: PeriodMode =
-    searchParams.get("period") === "year" ? "year" : "month";
+    searchParams.get("period") === "overall"
+      ? "overall"
+      : searchParams.get("period") === "day"
+      ? "day"
+      : searchParams.get("period") === "year"
+        ? "year"
+        : "month";
   const month = Math.min(
     12,
     Math.max(1, Number(searchParams.get("month") || now.getMonth() + 1))
   );
   const year = Number(searchParams.get("year") || now.getFullYear());
+  const day = Math.min(
+    new Date(year, month, 0).getDate(),
+    Math.max(1, Number(searchParams.get("day") || now.getDate()))
+  );
 
   // ── Local mirrors for immediate UI feedback ───────────────────────────
   const [localPeriod, setLocalPeriod] = useState<PeriodMode>(period);
   const [localMonth, setLocalMonth] = useState(String(month));
   const [localYear, setLocalYear] = useState(String(year));
-  const [lastUrlFilter, setLastUrlFilter] = useState(() => `${period}:${month}:${year}`);
+  const [localDay, setLocalDay] = useState(String(day));
+  const [lastUrlFilter, setLastUrlFilter] = useState(() => `${period}:${month}:${day}:${year}`);
 
   // Keep inputs in sync with browser navigation and direct URL changes. This
   // is intentionally derived during render so a URL change needs no extra
   // committed render followed by an effect-driven state update.
-  const urlFilter = `${period}:${month}:${year}`;
+  const urlFilter = `${period}:${month}:${day}:${year}`;
   if (lastUrlFilter !== urlFilter) {
     setLastUrlFilter(urlFilter);
     setLocalPeriod(period);
     setLocalMonth(String(month));
+    setLocalDay(String(day));
     setLocalYear(String(year));
   }
 
   // ── URL updater ───────────────────────────────────────────────────────
   const updatePeriod = useCallback(
-    (next: { period?: PeriodMode; month?: number; year?: number }) => {
+    (next: { period?: PeriodMode; month?: number; day?: number; year?: number }) => {
       const params = new URLSearchParams(searchParams.toString());
-      params.set("period", next.period ?? period);
+      const nextPeriod = next.period ?? period;
+      params.set("period", nextPeriod);
+      if (nextPeriod === "overall") {
+        params.delete("month");
+        params.delete("day");
+        params.delete("year");
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        return;
+      }
       params.set("month", String(next.month ?? month));
+      params.set("day", String(next.day ?? day));
       params.set("year", String(next.year ?? year));
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [searchParams, period, month, year, router, pathname]
+    [searchParams, period, month, day, year, router, pathname]
   );
 
   // ── sessionStorage persistence ────────────────────────────────────────
@@ -62,6 +83,10 @@ export function useDateFilter(storageKey: string) {
 
     // Use window.location.search for immediate browser search params on mount
     const currentParams = new URLSearchParams(window.location.search);
+    if (currentParams.get("period") === "overall") {
+      sessionStorage.setItem(`${storageKey}_period`, "overall");
+      return;
+    }
     const hasPeriod = currentParams.has("period");
     const hasMonth = currentParams.has("month");
     const hasYear = currentParams.has("year");
@@ -73,9 +98,10 @@ export function useDateFilter(storageKey: string) {
       ) as PeriodMode | null;
       const storedMonth = sessionStorage.getItem(`${storageKey}_month`);
       const storedYear = sessionStorage.getItem(`${storageKey}_year`);
+      const storedDay = sessionStorage.getItem(`${storageKey}_day`);
 
       if (
-        (storedPeriod === "month" || storedPeriod === "year") &&
+        (storedPeriod === "overall" || storedPeriod === "day" || storedPeriod === "month" || storedPeriod === "year") &&
         storedMonth &&
         storedYear
       ) {
@@ -83,6 +109,7 @@ export function useDateFilter(storageKey: string) {
         params.set("period", storedPeriod);
         params.set("month", storedMonth);
         params.set("year", storedYear);
+        params.set("day", storedDay || String(day));
         const hash = window.location.hash || "";
         router.replace(`${pathname}?${params.toString()}${hash}`, { scroll: false });
       } else {
@@ -90,17 +117,19 @@ export function useDateFilter(storageKey: string) {
         sessionStorage.setItem(`${storageKey}_period`, period);
         sessionStorage.setItem(`${storageKey}_month`, String(month));
         sessionStorage.setItem(`${storageKey}_year`, String(year));
+        sessionStorage.setItem(`${storageKey}_day`, String(day));
       }
     } else {
       // URL has all params — persist them
       sessionStorage.setItem(`${storageKey}_period`, period);
       sessionStorage.setItem(`${storageKey}_month`, String(month));
       sessionStorage.setItem(`${storageKey}_year`, String(year));
+      sessionStorage.setItem(`${storageKey}_day`, String(day));
     }
-  }, [searchParams, pathname, router, period, month, year, storageKey]);
+  }, [searchParams, pathname, router, period, month, day, year, storageKey]);
 
   // ── Compute dateFrom / dateTo ─────────────────────────────────────────
-  const { dateFrom, dateTo } = getPeriodRange(period, month, year);
+  const { dateFrom, dateTo } = getPeriodRange(period, month, year, day);
 
   // ── Year range for Select dropdown ────────────────────────────────────
   const years = Array.from({ length: 5 }).map(
@@ -110,15 +139,18 @@ export function useDateFilter(storageKey: string) {
   return {
     period,
     month,
+    day,
     year,
     dateFrom,
     dateTo,
     localPeriod,
     localMonth,
     localYear,
+    localDay,
     setLocalPeriod,
     setLocalMonth,
     setLocalYear,
+    setLocalDay,
     updatePeriod,
     years,
   };
@@ -128,8 +160,16 @@ export function useDateFilter(storageKey: string) {
 export function getPeriodRange(
   period: PeriodMode,
   month: number,
-  year: number
+  year: number,
+  day = 1,
 ): { dateFrom: string; dateTo: string } {
+  if (period === "day") {
+    const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return { dateFrom: date, dateTo: date };
+  }
+  if (period === "overall") {
+    return { dateFrom: "", dateTo: "" };
+  }
   if (period === "year") {
     return {
       dateFrom: `${year}-01-01`,

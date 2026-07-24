@@ -41,6 +41,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   DollarSign,
+  Bot,
 } from 'lucide-react';
 import { customersApi, type Customer, type DemandRecord } from '@/lib/api';
 import { clearListQueryData, removeListItemQueryData } from '@/lib/query-cache';
@@ -93,6 +94,7 @@ function CustomersPageContent() {
   const {
     period,
     month,
+    day,
     year,
     dateFrom,
     dateTo,
@@ -124,6 +126,7 @@ function CustomersPageContent() {
   const [lastUrlFilters, setLastUrlFilters] = useState(
     () => `${initialCustomerSearch}:${initialDemandSearch}:${initialFollowUpStatus}`,
   );
+  const [showAiSuggestions, setShowAiSuggestions] = useState(false);
 
   const urlCustomerSearch = searchParams.get('customerSearch') || '';
   const urlDemandSearch = searchParams.get('search') || searchParams.get('demandSearch') || '';
@@ -438,20 +441,33 @@ function CustomersPageContent() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <Select value={localPeriod} onValueChange={(value) => {
-            if (value === 'month' || value === 'year') {
+            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year') {
               setLocalPeriod(value);
               updatePeriod({ period: value });
             }
           }}>
             <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
-              {localPeriod === 'year' ? 'Yearly' : 'Monthly'}
+              {localPeriod === 'overall' ? 'Overall' : localPeriod === 'year' ? 'Yearly' : localPeriod === 'day' ? 'Daily' : 'Monthly'}
             </SelectTrigger>
             <SelectContent className="bg-card border-border text-foreground rounded-lg">
+              <SelectItem value="overall">Overall</SelectItem>
+              <SelectItem value="day">Daily</SelectItem>
               <SelectItem value="month">Monthly</SelectItem>
               <SelectItem value="year">Yearly</SelectItem>
             </SelectContent>
           </Select>
-          {localPeriod === 'month' ? (
+          {localPeriod === 'day' ? (
+            <Input
+              type="date"
+              value={`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
+              onChange={(event) => {
+                const next = new Date(`${event.target.value}T00:00:00`);
+                if (!Number.isNaN(next.getTime())) updatePeriod({ year: next.getFullYear(), month: next.getMonth() + 1, day: next.getDate() });
+              }}
+              className="h-9 w-40 rounded-lg border-2 border-slate-300 bg-card text-xs font-bold dark:border-slate-800"
+              aria-label="Select day"
+            />
+          ) : localPeriod === 'month' ? (
             <Select value={localMonth} onValueChange={(value) => {
               if (value) {
                 setLocalMonth(value);
@@ -470,7 +486,7 @@ function CustomersPageContent() {
               </SelectContent>
             </Select>
           ) : null}
-          <Select value={localYear} onValueChange={(value) => {
+          {localPeriod !== 'day' && localPeriod !== 'overall' && <Select value={localYear} onValueChange={(value) => {
             if (value) {
               setLocalYear(value);
               updatePeriod({ year: Number(value) });
@@ -486,7 +502,7 @@ function CustomersPageContent() {
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select>}
 
           <AlertDialog open={isDeleteAllOpen} onOpenChange={(open) => {
             setIsDeleteAllOpen(open);
@@ -572,7 +588,19 @@ function CustomersPageContent() {
           );
         })}
       </div>      {/* Intelligence Cards */}
-      {totalDemandRecords > 0 && (
+
+      <Card className="border-2 border-sky-200 bg-sky-50/30 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/15">
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />AI Customer Suggestions</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">Suggestions are hidden until you choose to review them.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setShowAiSuggestions((visible) => !visible)} className="shrink-0 border-border bg-card text-foreground hover:bg-muted/50">
+            {showAiSuggestions ? 'Hide suggestions' : 'View suggestions'}
+          </Button>
+        </CardContent>
+        {showAiSuggestions && totalDemandRecords > 0 && (
+          <CardContent className="border-t border-sky-200 p-5 dark:border-sky-900/60">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {demandStatsLoading ? (
             <>
@@ -672,7 +700,9 @@ function CustomersPageContent() {
             })()
           )}
         </div>
-      )}
+          </CardContent>
+        )}
+      </Card>
 
       {/* 1. Purchased Customers Directory Card */}
       <Card className="bg-card border-2 border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">

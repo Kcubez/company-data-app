@@ -19,13 +19,15 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const nowMyanmar = new Date(Date.now() + 6.5 * 60 * 60 * 1000);
   const { searchParams } = req.nextUrl;
-  const period = searchParams.get("period") === "year" ? "year" : "month";
+  const period = searchParams.get("period") === "overall" ? "overall" : searchParams.get("period") === "day" ? "day" : searchParams.get("period") === "year" ? "year" : "month";
   const monthParam = Number(searchParams.get("month") || nowMyanmar.getUTCMonth() + 1);
   const yearParam = Number(searchParams.get("year") || nowMyanmar.getUTCFullYear());
   const month = Math.min(12, Math.max(1, Number.isFinite(monthParam) ? monthParam : nowMyanmar.getUTCMonth() + 1));
   const year = Number.isFinite(yearParam) ? yearParam : nowMyanmar.getUTCFullYear();
-  const periodStart = period === "year" ? new Date(Date.UTC(year, 0, 1)) : new Date(Date.UTC(year, month - 1, 1));
-  const periodEnd = period === "year" ? new Date(Date.UTC(year + 1, 0, 1)) : new Date(Date.UTC(year, month, 1));
+  const dayParam = Number(searchParams.get("day") || nowMyanmar.getUTCDate());
+  const day = Math.min(new Date(year, month, 0).getDate(), Math.max(1, Number.isFinite(dayParam) ? dayParam : nowMyanmar.getUTCDate()));
+  const periodStart = period === "overall" ? new Date(Date.UTC(1900, 0, 1)) : period === "year" ? new Date(Date.UTC(year, 0, 1)) : period === "day" ? new Date(Date.UTC(year, month - 1, day)) : new Date(Date.UTC(year, month - 1, 1));
+  const periodEnd = period === "overall" ? new Date(Date.UTC(9999, 11, 31)) : period === "year" ? new Date(Date.UTC(year + 1, 0, 1)) : period === "day" ? new Date(Date.UTC(year, month - 1, day + 1)) : new Date(Date.UTC(year, month, 1));
   const startOfToday = new Date(Date.UTC(nowMyanmar.getUTCFullYear(), nowMyanmar.getUTCMonth(), nowMyanmar.getUTCDate()));
   const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -297,6 +299,9 @@ export async function GET(req: NextRequest) {
 
   const weeklyActivity: { date: string; count: number }[] = [];
 
+  const overallStartYear = 2020;
+  const overallEndYear = nowMyanmar.getUTCFullYear();
+
   if (period === 'year') {
     // 12 monthly buckets
     const countsByMonth = new Map<string, number>();
@@ -310,6 +315,15 @@ export async function GET(req: NextRequest) {
       const label = d.toLocaleDateString('en', { month: 'short' });
       weeklyActivity.push({ date: label, count: countsByMonth.get(key) ?? 0 });
     }
+  } else if (period === 'overall') {
+    const countsByYear = new Map<string, number>();
+    for (const row of demandActivityRows) {
+      const key = String(row.createdAt.getFullYear());
+      countsByYear.set(key, (countsByYear.get(key) ?? 0) + row._count._all);
+    }
+    for (let currentYear = overallStartYear; currentYear <= overallEndYear; currentYear++) {
+      weeklyActivity.push({ date: String(currentYear), count: countsByYear.get(String(currentYear)) ?? 0 });
+    }
   } else {
     // Daily buckets for the selected month
     const countsByDay = new Map<string, number>();
@@ -317,33 +331,41 @@ export async function GET(req: NextRequest) {
       const key = formatLocalDate(row.createdAt);
       countsByDay.set(key, (countsByDay.get(key) ?? 0) + row._count._all);
     }
-    for (let i = 0; i < totalDaysInPeriod; i++) {
-      const d = new Date(year, month - 1, i + 1);
+    const bucketDays = period === 'day' ? 1 : totalDaysInPeriod;
+    for (let i = 0; i < bucketDays; i++) {
+      const d = new Date(year, month - 1, period === 'day' ? day : i + 1);
       const key = formatLocalDate(d);
       weeklyActivity.push({ date: key, count: countsByDay.get(key) ?? 0 });
     }
   }
 
   // Financial Trend
-  const trendBucketCount = period === "year" ? 12 : totalDaysInPeriod;
+  const trendBucketCount = period === "overall" ? overallEndYear - overallStartYear + 1 : period === "year" ? 12 : period === "day" ? 1 : totalDaysInPeriod;
   const trendBuckets = Array.from({ length: trendBucketCount }).map((_, index) => {
-    const date = period === "year" ? new Date(year, index, 1) : new Date(year, month - 1, index + 1);
-    const key = period === "year"
+    const date = period === "overall" ? new Date(overallStartYear + index, 0, 1) : period === "year" ? new Date(year, index, 1) : new Date(year, month - 1, period === "day" ? day : index + 1);
+    const key = period === "overall"
+      ? String(date.getFullYear())
+      : period === "year"
       ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
       : formatLocalDate(date);
-    const label = period === "year"
+    const label = period === "overall"
+      ? String(date.getFullYear())
+      : period === "year"
       ? date.toLocaleDateString("en", { month: "short" })
-      : String(index + 1);
+      : period === "day" ? date.toLocaleDateString("en", { month: "short", day: "numeric" }) : String(index + 1);
     return {
       key,
       label,
       revenueFromDemand: 0,
       revenueFromReports: 0,
       expense: 0,
+      demand: 0,
     };
   });
   const trendByKey = new Map(trendBuckets.map((bucket) => [bucket.key, bucket]));
-  const trendKey = (date: Date) => period === "year"
+  const trendKey = (date: Date) => period === "overall"
+    ? String(date.getFullYear())
+    : period === "year"
     ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
     : formatLocalDate(date);
 
@@ -354,19 +376,23 @@ export async function GET(req: NextRequest) {
     }),
     prisma.businessReport.findMany({
       where: { reportDate: { gte: periodStart, lt: periodEnd }, ...activeUploadedScope },
-      select: { reportDate: true, totalSalesAmount: true, marketingBudget: true },
+      select: { reportDate: true, totalSalesAmount: true, marketingBudget: true, totalDemandCount: true },
     }),
   ]);
 
   for (const row of trendDemandRows) {
     const bucket = trendByKey.get(trendKey(row.createdAt));
-    if (bucket) bucket.revenueFromDemand += row.serviceAmount || 0;
+    if (bucket) {
+      bucket.revenueFromDemand += row.serviceAmount || 0;
+      bucket.demand += 1;
+    }
   }
   for (const row of trendBusinessRows) {
     const bucket = trendByKey.get(trendKey(row.reportDate));
     if (bucket) {
       bucket.revenueFromReports += row.totalSalesAmount || 0;
       bucket.expense += row.marketingBudget || 0;
+      bucket.demand += row.totalDemandCount || 0;
     }
   }
   const financialTrend = trendBuckets.map((bucket) => {
@@ -375,6 +401,7 @@ export async function GET(req: NextRequest) {
       label: bucket.label,
       revenue,
       expense: bucket.expense,
+      demand: bucket.demand,
       profit: revenue - bucket.expense,
     };
   });

@@ -37,6 +37,8 @@ import {
   Megaphone,
   Wallet,
   CircleAlert,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 const CHANNELS = ['All', 'Facebook', 'Google', 'Referral', 'Walk-in', 'Telegram', 'Other'];
@@ -56,11 +58,27 @@ const CHANNEL_COLORS: Record<string, string> = {
   Admin: '#94a3b8',
   Payroll: '#0ea5e9',
   Service: '#22c55e',
+  TikTok: '#111827',
+  Email: '#0ea5e9',
 };
 
 function fmt(n: number | null | undefined, prefix = '') {
   if (n == null) return '—';
   return prefix + n.toLocaleString();
+}
+
+function financeLabel(value: string) {
+  const normalized = value.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    marketing: 'Marketing',
+    admin: 'Admin',
+    tiktok: 'TikTok',
+    infrastructure: 'Infrastructure',
+    software: 'Software',
+    email: 'Email',
+    payroll: 'Payroll',
+  };
+  return labels[normalized] ?? value;
 }
 
 function extractLabeledValue(text: string | null | undefined, labels: string[]) {
@@ -198,7 +216,6 @@ function RevenueExpenseTimeline({
               </g>
             );
           })}
-          <text x={paddingLeft} y={height - 2} className="fill-slate-400 text-[10px] font-bold">Month</text>
         </svg>
       </div>
     </div>
@@ -241,7 +258,7 @@ function ExpenseDonutChart({
 }) {
   const total = items.reduce((sum, item) => sum + item.budget, 0);
   const gradient = items.map((item, index) => {
-    const color = CHANNEL_COLORS[item.channel] ?? '#64748B';
+    const color = CHANNEL_COLORS[financeLabel(item.channel)] ?? '#64748B';
     const start = total > 0
       ? items.slice(0, index).reduce((sum, previous) => sum + (previous.budget / total) * 100, 0)
       : 0;
@@ -250,25 +267,30 @@ function ExpenseDonutChart({
   }).join(', ');
 
   return (
-    <div className="grid min-h-72 grid-cols-1 items-center gap-6 md:grid-cols-[1fr_170px]">
+    <div className="grid min-h-72 grid-cols-1 items-center gap-8 md:grid-cols-[220px_minmax(0,1fr)]">
       <div className="flex justify-center">
         <div
-          className="relative h-64 w-64 rounded-full shadow-sm"
+          className="relative h-56 w-56 rounded-full shadow-sm"
           style={{ background: `conic-gradient(${gradient})` }}
           aria-label="Expense breakdown donut chart"
         >
-          <div className="absolute inset-16 rounded-full bg-card shadow-inner" />
+          <div className="absolute inset-[3.5rem] rounded-full bg-card shadow-inner" />
         </div>
       </div>
-      <div className="space-y-3">
+      <div className="w-full divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50/50 dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950/30">
         {items.map((item) => {
-          const color = CHANNEL_COLORS[item.channel] ?? '#64748B';
+          const label = financeLabel(item.channel);
+          const color = CHANNEL_COLORS[label] ?? '#64748B';
           const pct = total > 0 ? Math.round((item.budget / total) * 100) : 0;
           return (
-            <div key={item.channel} className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
-              <span className="h-4 w-12" style={{ background: color }} />
-              <span className="min-w-0 flex-1 truncate">{item.channel}</span>
-              <span className="text-xs text-slate-500">{pct}%</span>
+            <div key={item.channel} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5">
+              <span className="flex min-w-0 items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <span className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white shadow-sm dark:ring-slate-950" style={{ background: color }} />
+                <span>{label}</span>
+              </span>
+              <span className="whitespace-nowrap text-right text-xs font-bold text-slate-600 dark:text-slate-300">
+                {fmt(item.budget)} MMK <span className="font-medium text-slate-500">({pct}%)</span>
+              </span>
             </div>
           );
         })}
@@ -282,6 +304,7 @@ function BusinessReportsPageContent() {
   const {
     period,
     month,
+    day,
     year,
     dateFrom,
     dateTo,
@@ -293,6 +316,7 @@ function BusinessReportsPageContent() {
   const [channelFilter, setChannelFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState<FinanceType>('All');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAiInsights, setShowAiInsights] = useState(false);
   const [editingRecord, setEditingRecord] = useState<BusinessReport | null>(null);
   const [editForm, setEditForm] = useState<Partial<BusinessReport>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -453,19 +477,32 @@ function BusinessReportsPageContent() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <Select value={period} onValueChange={(value) => {
-            if (value === 'month' || value === 'year') {
+            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year') {
               updatePeriod({ period: value });
             }
           }}>
             <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
-              {period === 'year' ? 'Yearly' : 'Monthly'}
+              {period === 'overall' ? 'Overall' : period === 'year' ? 'Yearly' : period === 'day' ? 'Daily' : 'Monthly'}
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="overall">Overall</SelectItem>
+              <SelectItem value="day">Daily</SelectItem>
               <SelectItem value="month">Monthly</SelectItem>
               <SelectItem value="year">Yearly</SelectItem>
             </SelectContent>
           </Select>
-          {period === 'month' ? (
+          {period === 'day' ? (
+            <Input
+              type="date"
+              value={`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
+              onChange={(event) => {
+                const next = new Date(`${event.target.value}T00:00:00`);
+                if (!Number.isNaN(next.getTime())) updatePeriod({ year: next.getFullYear(), month: next.getMonth() + 1, day: next.getDate() });
+              }}
+              className="h-9 w-40 rounded-lg border-2 border-slate-300 bg-card text-xs font-bold dark:border-slate-800"
+              aria-label="Select day"
+            />
+          ) : period === 'month' ? (
             <Select value={String(month)} onValueChange={(value) => {
               if (value) {
                 updatePeriod({ month: Number(value) });
@@ -483,7 +520,7 @@ function BusinessReportsPageContent() {
               </SelectContent>
             </Select>
           ) : null}
-          <Select value={String(year)} onValueChange={(value) => {
+          {period !== 'day' && period !== 'overall' && <Select value={String(year)} onValueChange={(value) => {
             if (value) {
               updatePeriod({ year: Number(value) });
             }
@@ -498,7 +535,7 @@ function BusinessReportsPageContent() {
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select>}
           <Button
             variant="outline"
             size="sm"
@@ -575,7 +612,20 @@ function BusinessReportsPageContent() {
 
       {/* ─── AI Insights ────────────────────────────────────────────── */}
       {!(totalRevenue === 0 && totalExpense === 0) && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card className="rounded-xl border-2 border-sky-200 bg-sky-50/40 shadow-sm dark:border-sky-900 dark:bg-sky-950/20">
+          <CardHeader className="py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-sm font-bold text-slate-900 dark:text-slate-100">AI Finance Suggestions</CardTitle>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Review recommendations based on the selected period.</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowAiInsights((show) => !show)} className="cursor-pointer">
+                {showAiInsights ? 'Hide suggestions' : 'View suggestions'}
+                {showAiInsights ? <ChevronUp className="ml-1.5 h-4 w-4" /> : <ChevronDown className="ml-1.5 h-4 w-4" />}
+              </Button>
+            </div>
+          </CardHeader>
+          {showAiInsights && <CardContent className="grid grid-cols-1 gap-4 pt-0 md:grid-cols-2">
           {recsLoading || recsFetching ? (
             <>
               <Skeleton className="h-32 rounded-xl" />
@@ -630,8 +680,37 @@ function BusinessReportsPageContent() {
               </Card>
             );
           })}
-        </div>
+          </CardContent>}
+        </Card>
       )}
+
+      {/* ─── Finance Charts ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
+          <CardHeader>
+            <CardTitle className="border-b-2 border-slate-100 pb-3 text-sm font-bold uppercase tracking-wide text-slate-900 dark:border-slate-800 dark:text-slate-100">
+              Revenue vs Expense Timeline
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {yearStatsLoading ? <Skeleton className="h-72 w-full" /> : monthlyTrend.every((item) => item.revenue === 0 && item.expense === 0) ? (
+              <p className="py-12 text-center text-sm text-slate-500">No timeline data yet.</p>
+            ) : <RevenueExpenseTimeline trendData={monthlyTrend} />}
+          </CardContent>
+        </Card>
+        <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
+          <CardHeader>
+            <CardTitle className="border-b-2 border-slate-100 pb-3 text-sm font-bold uppercase tracking-wide text-slate-900 dark:border-slate-800 dark:text-slate-100">
+              Expense Breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {statsLoading ? <Skeleton className="h-72 w-full" /> : expenseBreakdown.length === 0 ? (
+              <p className="py-12 text-center text-sm text-slate-500">No expense breakdown yet.</p>
+            ) : <ExpenseDonutChart items={expenseBreakdown.slice(0, 6)} />}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* ─── Finance Records ────────────────────────────────────────── */}
       <Card id="finance-records-table" className="overflow-hidden rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
@@ -710,7 +789,7 @@ function BusinessReportsPageContent() {
                       <td className="px-6 py-4 text-xs font-bold text-slate-900 dark:text-slate-100">
                         {row.description}
                       </td>
-                      <td className="px-6 py-4 text-xs font-semibold text-slate-500">{row.category}</td>
+                      <td className="px-6 py-4 text-xs font-semibold text-slate-500">{financeLabel(row.category)}</td>
                       <td className="px-6 py-4">
                         <Badge
                           variant="outline"
@@ -812,46 +891,6 @@ function BusinessReportsPageContent() {
           )}
         </CardContent>
       </Card>
-
-      {/* ─── Charts Row ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
-          <CardHeader>
-            <CardTitle className="border-b-2 border-slate-100 pb-3 text-sm font-bold uppercase tracking-wide text-slate-900 dark:border-slate-800 dark:text-slate-100">
-              Revenue vs Expense Timeline
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {yearStatsLoading ? (
-              <Skeleton className="h-72 w-full" />
-            ) : monthlyTrend.every((item) => item.revenue === 0 && item.expense === 0) ? (
-              <p className="py-12 text-center text-sm text-slate-500">No timeline data yet.</p>
-            ) : (
-              <RevenueExpenseTimeline trendData={monthlyTrend} />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
-          <CardHeader>
-            <CardTitle className="border-b-2 border-slate-100 pb-3 text-sm font-bold uppercase tracking-wide text-slate-900 dark:border-slate-800 dark:text-slate-100">
-              Expense Breakdown
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {statsLoading ? (
-              <Skeleton className="h-72 w-full" />
-            ) : expenseBreakdown.length === 0 ? (
-              <div className="py-12 text-center text-sm text-slate-500">
-                <p className="font-semibold">No expense breakdown yet.</p>
-                <p className="mt-1 text-xs">Add records with Marketing Budget and Channel to show this chart.</p>
-              </div>
-            ) : (
-              <ExpenseDonutChart items={expenseBreakdown.slice(0, 6)} />
-            )}
-          </CardContent>
-        </Card>
-      </div>
 
       {/* ─── Edit Dialog ────────────────────────────────────────────── */}
       {editingRecord && (

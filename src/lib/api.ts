@@ -364,6 +364,8 @@ export type ProjectExpiration = {
   hostingRemark: string | null;
   domainExpireDate: string | null;
   hostingExpireDate: string | null;
+  offerExpireDate: string | null;
+  projectStatus: "planning" | "active" | "maintenance" | "finished";
   remark: string | null;
   createdAt: string;
   updatedAt: string;
@@ -386,7 +388,7 @@ export type ProjectExpiriesParams = {
   page?: number;
   limit?: number;
   search?: string;
-  filter?: "all" | "expired" | "expiring_soon" | "active";
+  filter?: "all" | "expired" | "expiring_soon" | "active" | "maintenance" | "finished";
   dateFrom?: string;
   dateTo?: string;
 };
@@ -400,6 +402,8 @@ export type UpdateProjectExpiryPayload = {
   hostingRemark?: string | null;
   domainExpireDate?: string | null;
   hostingExpireDate?: string | null;
+  offerExpireDate?: string | null;
+  projectStatus?: "planning" | "active" | "maintenance" | "finished";
   remark?: string | null;
 };
 

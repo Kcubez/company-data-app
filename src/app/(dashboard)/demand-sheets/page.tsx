@@ -51,6 +51,8 @@ import {
   Megaphone,
   X,
   Filter,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -64,6 +66,10 @@ type UpcomingRecord = {
   senderName: string;
   followUpDate: string | null;
 };
+
+function productTypeFor(name: string | null | undefined) {
+  return /ebook|book|template|prompt pack|digital/i.test(name ?? '') ? 'Product' : 'Service';
+}
 
 type DashboardStats = {
   totalMessages: number;
@@ -222,6 +228,7 @@ function DemandSheetsPageContent() {
   const {
     period,
     month,
+    day,
     year,
     dateFrom,
     dateTo,
@@ -254,6 +261,8 @@ function DemandSheetsPageContent() {
   );
   const [insightPage, setInsightPage] = useState(1);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAiInsights, setShowAiInsights] = useState(false);
+  const [showAllTopServices, setShowAllTopServices] = useState(false);
   const [editingRecord, setEditingRecord] = useState<DemandRecord | null>(null);
   const [editStatus, setEditStatus] = useState<string>('new');
   const [editNote, setEditNote] = useState<string>('');
@@ -384,6 +393,9 @@ function DemandSheetsPageContent() {
     });
     return months;
   })();
+  const rankedServices = (demandStats?.services ?? []).filter((service) => service.salesCount > 0);
+  const visibleRankedServices = showAllTopServices ? rankedServices : rankedServices.slice(0, 5);
+  const maxServiceSales = Math.max(...rankedServices.map((service) => service.salesCount), 1);
 
   // Auto-refresh AI insights once whenever the record count changes
   // (e.g. new data arrives via Telegram). Bounded — fires only on change, not on a timer.
@@ -408,20 +420,33 @@ function DemandSheetsPageContent() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <Select value={localPeriod} onValueChange={(value) => {
-            if (value === 'month' || value === 'year') {
+            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year') {
               setLocalPeriod(value);
               updatePeriod({ period: value });
             }
           }}>
             <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
-              {localPeriod === 'year' ? 'Yearly' : 'Monthly'}
+              {localPeriod === 'overall' ? 'Overall' : localPeriod === 'year' ? 'Yearly' : localPeriod === 'day' ? 'Daily' : 'Monthly'}
             </SelectTrigger>
             <SelectContent className="bg-card border-border text-foreground rounded-lg">
+              <SelectItem value="overall">Overall</SelectItem>
+              <SelectItem value="day">Daily</SelectItem>
               <SelectItem value="month">Monthly</SelectItem>
               <SelectItem value="year">Yearly</SelectItem>
             </SelectContent>
           </Select>
-          {localPeriod === 'month' ? (
+          {localPeriod === 'day' ? (
+            <Input
+              type="date"
+              value={`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
+              onChange={(event) => {
+                const next = new Date(`${event.target.value}T00:00:00`);
+                if (!Number.isNaN(next.getTime())) updatePeriod({ year: next.getFullYear(), month: next.getMonth() + 1, day: next.getDate() });
+              }}
+              className="h-9 w-40 rounded-lg border-2 border-slate-300 bg-card text-xs font-bold dark:border-slate-800"
+              aria-label="Select day"
+            />
+          ) : localPeriod === 'month' ? (
             <Select value={localMonth} onValueChange={(value) => {
               if (value) {
                 setLocalMonth(value);
@@ -440,7 +465,7 @@ function DemandSheetsPageContent() {
               </SelectContent>
             </Select>
           ) : null}
-          <Select value={localYear} onValueChange={(value) => {
+          {localPeriod !== 'day' && localPeriod !== 'overall' && <Select value={localYear} onValueChange={(value) => {
             if (value) {
               setLocalYear(value);
               updatePeriod({ year: Number(value) });
@@ -456,7 +481,7 @@ function DemandSheetsPageContent() {
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select>}
 
           <Button
             variant="outline"
@@ -558,7 +583,20 @@ function DemandSheetsPageContent() {
           </div>
 
           {demandStats?.insights && demandStats.insights.length > 0 && demandStats.totalRecords > 0 && (
-            <div className="grid gap-4 md:grid-cols-2">
+            <Card className="border-2 border-sky-200 bg-sky-50/40 shadow-sm dark:border-sky-900 dark:bg-sky-950/20">
+              <CardHeader className="py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <CardTitle className="text-sm font-bold">AI Suggestions</CardTitle>
+                    <CardDescription>Suggestions are hidden until you choose to review them.</CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setShowAiInsights((show) => !show)} className="cursor-pointer">
+                    {showAiInsights ? 'Hide suggestions' : 'View suggestions'}
+                    {showAiInsights ? <ChevronUp className="ml-1.5 h-4 w-4" /> : <ChevronDown className="ml-1.5 h-4 w-4" />}
+                  </Button>
+                </div>
+              </CardHeader>
+              {showAiInsights && <CardContent className="grid gap-4 pt-0 md:grid-cols-2">
               {demandStats.insights.slice(0, 2).map((insight) => (
                 <Card
                   key={insight.title}
@@ -618,7 +656,8 @@ function DemandSheetsPageContent() {
                   </CardContent>
                 </Card>
               ))}
-            </div>
+              </CardContent>}
+            </Card>
           )}
 
           {/* Grid Layout */}
@@ -626,14 +665,28 @@ function DemandSheetsPageContent() {
             {/* Left: Top Services & Volume */}
             <div className="space-y-6">
               <Card className="glass-card border-border/70 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-foreground flex items-center gap-2 font-heading text-base">
-                    <Briefcase className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    Top Services
-                  </CardTitle>
-                  <CardDescription className="text-muted-foreground text-xs">
-                    Best performing services by sales volume
-                  </CardDescription>
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-foreground flex items-center gap-2 font-heading text-base">
+                        <Briefcase className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        Top Products & Services
+                      </CardTitle>
+                      <CardDescription className="mt-1 text-muted-foreground text-xs">
+                        Ranked by sales volume for the selected period
+                      </CardDescription>
+                    </div>
+                    {rankedServices.length > 5 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAllTopServices((show) => !show)}
+                        className="h-8 shrink-0 cursor-pointer rounded-lg text-xs"
+                      >
+                        {showAllTopServices ? 'Show top 5' : `View all (${rankedServices.length})`}
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {demandStatsLoading ? (
@@ -642,29 +695,31 @@ function DemandSheetsPageContent() {
                         <Skeleton key={i} className="h-8 w-full bg-muted rounded" />
                       ))}
                     </div>
-                  ) : demandStats?.services && demandStats.services.length > 0 ? (
-                    <div className="space-y-3.5">
-                      {demandStats.services.map((service, i) => {
-                          const maxCount = Math.max(
-                            ...demandStats.services.map(s => s.salesCount),
-                            1
-                          );
-                          const barWidth = service.salesCount > 0 ? Math.max((service.salesCount / maxCount) * 100, 4) : 0;
+                  ) : rankedServices.length > 0 ? (
+                    <div className="space-y-2">
+                      {visibleRankedServices.map((service, index) => {
+                          const barWidth = Math.max((service.salesCount / maxServiceSales) * 100, 8);
                           return (
-                            <div key={i} className="space-y-1.5 cursor-pointer group">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-foreground truncate pr-4">
-                                  {service.serviceName}
+                            <div key={service.serviceName} className="rounded-lg border border-border/70 bg-card/40 p-3 transition-colors hover:bg-muted/40">
+                              <div className="flex items-center gap-3">
+                                <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold ${index < 3 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+                                  {index + 1}
                                 </span>
-                                <span className="text-[11px] text-muted-foreground shrink-0 font-mono">
-                                  {service.salesCount} sales
-                                </span>
-                              </div>
-                              <div className="h-2 rounded-full bg-card/65 overflow-hidden border border-border/60">
-                                <div
-                                  className="h-full rounded-full bg-linear-to-r from-blue-600 to-blue-400 transition-all duration-500 "
-                                  style={{ width: `${barWidth}%` }}
-                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="truncate text-xs font-bold text-foreground">{service.serviceName}</span>
+                                    <Badge variant="outline" className={`shrink-0 text-[9px] font-semibold ${productTypeFor(service.serviceName) === 'Product' ? 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300' : 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-300'}`}>
+                                      {productTypeFor(service.serviceName)}
+                                    </Badge>
+                                  </div>
+                                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                    <div className="h-full rounded-full bg-linear-to-r from-blue-600 to-sky-400 transition-all duration-500" style={{ width: `${barWidth}%` }} />
+                                  </div>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="text-xs font-extrabold text-foreground">{service.salesCount}</p>
+                                  <p className="text-[10px] text-muted-foreground">sales</p>
+                                </div>
                               </div>
                             </div>
                           );
@@ -672,7 +727,7 @@ function DemandSheetsPageContent() {
                     </div>
                   ) : (
                     <div className="text-center py-8 text-slate-500 text-xs">
-                      No services tracked yet
+                      No product or service sales in this period
                     </div>
                   )}
                 </CardContent>
@@ -1069,6 +1124,9 @@ function DemandSheetsPageContent() {
                       )}
                     </span>
                     <div className="flex flex-wrap gap-1.5 mt-2">
+                      <Badge variant="outline" className="text-[10px] px-2 py-0 font-medium border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
+                        {productTypeFor(record.serviceName)}
+                      </Badge>
                       <Badge
                         variant="outline"
                         className={`${

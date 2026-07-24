@@ -345,6 +345,8 @@ model ProjectExpiration {
   hostingRemark         String?           @map("hosting_remark")
   domainExpireDate      DateTime?         @map("domain_expire_date")
   hostingExpireDate     DateTime?         @map("hosting_expire_date")
+  offerExpireDate       DateTime?         @map("offer_expire_date")
+  projectStatus         String            @default("active") @map("project_status") // "planning" | "active" | "maintenance" | "finished"
   remark                String?
   uploadedByUserId      String?           @map("uploaded_by_user_id")
   uploadedBy            User?             @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)

@@ -38,13 +38,14 @@ export function useUpdateWebsiteUpdate() {
   });
 }
 
-export function useWebsiteUpdateRecommendations() {
+export function useWebsiteUpdateRecommendations(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: websiteUpdatesKeys.recommendations(),
     queryFn: () => websiteUpdatesApi.recommendations(),
     // AI calls are costly — fetch once on mount, then only on manual refresh.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
+    enabled: options.enabled ?? true,
   });
 }
 

@@ -9,6 +9,7 @@ function serializeProjectExpiration(record: ProjectExpiration) {
   const result: Record<string, unknown> = { ...record };
   if (result.domainExpireDate instanceof Date) result.domainExpireDate = result.domainExpireDate.toISOString();
   if (result.hostingExpireDate instanceof Date) result.hostingExpireDate = result.hostingExpireDate.toISOString();
+  if (result.offerExpireDate instanceof Date) result.offerExpireDate = result.offerExpireDate.toISOString();
   if (result.createdAt instanceof Date) result.createdAt = result.createdAt.toISOString();
   if (result.updatedAt instanceof Date) result.updatedAt = result.updatedAt.toISOString();
   return result;
@@ -87,6 +88,8 @@ export async function GET(req: NextRequest) {
         ],
       },
     ] });
+  } else if (filter === "maintenance" || filter === "finished") {
+    filters.push({ projectStatus: filter });
   }
 
   if (filters.length > 0) {

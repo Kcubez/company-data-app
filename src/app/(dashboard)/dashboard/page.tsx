@@ -48,6 +48,7 @@ type FinancialTrend = {
   label: string;
   revenue: number;
   expense: number;
+  demand: number;
   profit: number;
 };
 
@@ -146,11 +147,11 @@ type DashboardStats = {
   }[];
 };
 
-function useDashboardStats(period: PeriodMode, month: number, year: number) {
+function useDashboardStats(period: PeriodMode, month: number, day: number, year: number) {
   return useQuery({
-    queryKey: ['dashboard-stats', period, month, year],
+    queryKey: ['dashboard-stats', period, month, day, year],
     queryFn: async (): Promise<DashboardStats> => {
-      const res = await fetch(`/api/dashboard/stats?period=${period}&month=${month}&year=${year}`);
+      const res = await fetch(`/api/dashboard/stats?period=${period}&month=${month}&day=${day}&year=${year}`);
       if (!res.ok) throw new Error('Failed to fetch');
       return res.json();
     },
@@ -176,11 +177,11 @@ type ActionRecommendation = {
     | 'general_dashboard';
 };
 
-function useActionRecommendations(period: PeriodMode, month: number, year: number) {
+function useActionRecommendations(period: PeriodMode, month: number, day: number, year: number) {
   return useQuery({
-    queryKey: ['action-recommendations', period, month, year],
+    queryKey: ['action-recommendations', period, month, day, year],
     queryFn: async (): Promise<{ recommendations: ActionRecommendation[] }> => {
-      const res = await fetch(`/api/dashboard/action-recommendations?period=${period}&month=${month}&year=${year}`);
+      const res = await fetch(`/api/dashboard/action-recommendations?period=${period}&month=${month}&day=${day}&year=${year}`);
       if (!res.ok) throw new Error('Failed to fetch');
       return res.json();
     },
@@ -192,10 +193,11 @@ function useActionRecommendations(period: PeriodMode, month: number, year: numbe
 }
 
 
-function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = 'month' }: { data: ChartDatum[], valueKey: string, labelKey: string, totalDays?: number, period?: string }) {
+function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, elapsedDays = totalDays, period = 'month', seriesLabel = 'Income (MMK)', color = '#0ea5e9' }: { data: ChartDatum[], valueKey: string, labelKey: string, totalDays?: number, elapsedDays?: number, period?: string, seriesLabel?: string, color?: string }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const isYearly = period === 'year';
-  const tickCount = isYearly ? 12 : totalDays;
+  const isAggregated = period === 'year' || period === 'overall';
+  const tickCount = period === 'overall' ? data.length : isYearly ? 12 : totalDays;
 
   if (!data || data.length === 0) {
     return <div className="text-sm text-muted-foreground py-10 text-center">No data available</div>;
@@ -210,21 +212,26 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
   const plotWidth = chartWidth - paddingLeft - paddingRight;
   const plotHeight = chartHeight - paddingTop - paddingBottom;
 
-  const values = data.map(d => Number(d[valueKey]) || 0);
+  const displayData = period === 'month' && elapsedDays > 0 && elapsedDays < totalDays ? data.slice(0, elapsedDays) : data;
+  const values = displayData.map(d => Number(d[valueKey]) || 0);
+  const hasData = values.some((value) => value !== 0);
+
+  if (!hasData) {
+    return (
+      <div className="flex h-[240px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/60 text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-400">
+        No {seriesLabel.toLowerCase()} data for this period
+      </div>
+    );
+  }
+
   const maxValue = Math.max(...values, 1);
   const initialMax = Math.ceil(maxValue * 1.15);
   const yStep = Math.max(1, Math.ceil(initialMax / 5));
   const roundedMax = yStep * 5;
 
-  // Include data up to current day (include today even if 0)
-  // Only trim trailing zeros if there are future-month padding entries
-  let lastActiveIndex = data.length - 1;
-  while (lastActiveIndex > 0 && Number(data[lastActiveIndex][valueKey]) === 0) {
-    lastActiveIndex--;
-  }
-  // Include one more after last non-zero to show today if it's zero
-  const cutoff = Math.min(lastActiveIndex + 1, data.length - 1);
-  const validData = data.slice(0, cutoff + 1);
+  // Once a period has data, zeroes are meaningful values and remain on the line.
+  // The empty-state guard above handles periods with no values at all.
+  const validData = displayData;
 
   const getDay = (label: string) => {
     if (!label) return 1;
@@ -234,14 +241,14 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
     return 1;
   };
 
-  const points = validData.map((d, idx) => {
+  const points = validData.map((d) => {
     // In yearly mode, use index-based positioning (0..11 for 12 months)
     // In monthly mode, use day-based positioning
     const label = String(d[labelKey] ?? '');
-    const posIndex = isYearly ? idx : getDay(label) - 1;
+    const posIndex = isAggregated ? data.indexOf(d) : getDay(label) - 1;
     const x = paddingLeft + (posIndex / (tickCount - 1 || 1)) * plotWidth;
     const y = paddingTop + plotHeight - ((Number(d[valueKey]) || 0) / roundedMax) * plotHeight;
-    return { x, y, value: d[valueKey], label, day: isYearly ? label : getDay(label) };
+    return { x, y, value: d[valueKey], label, day: isAggregated ? label : getDay(label) };
   });
 
   // Create smooth SVG path (cubic bezier for tension like Chart.js tension:0.3)
@@ -270,7 +277,7 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
   const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const xTicks = Array.from({ length: tickCount }).map((_, i) => {
     const x = paddingLeft + (i / (tickCount - 1 || 1)) * plotWidth;
-    const label = isYearly ? monthLabels[i] || '' : String(i + 1);
+    const label = period === 'overall' ? String(data[i]?.[labelKey] ?? '') : isYearly ? monthLabels[i] || '' : String(i + 1);
     return { x, label };
   });
 
@@ -279,8 +286,8 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
       <svg viewBox={`0 0 ${chartWidth} ${chartHeight + 20}`} className="w-full overflow-visible" style={{ display: 'block' }} preserveAspectRatio="xMidYMid meet">
         <defs>
           <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.12" />
-            <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.05" />
+            <stop offset="0%" stopColor={color} stopOpacity="0.12" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.05" />
           </linearGradient>
         </defs>
 
@@ -355,7 +362,7 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
           className="fill-slate-500 dark:fill-slate-400"
           style={{ fontSize: '10px', fontWeight: 700, fontFamily: "'Inter', sans-serif" }}
         >
-          {isYearly ? 'Month' : 'Day of Month'}
+          {period === 'overall' ? 'Year' : isYearly ? 'Month' : 'Day of Month'}
         </text>
 
         {/* Area fill */}
@@ -366,7 +373,7 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
           <path
             d={pathD}
             fill="none"
-            stroke="#0ea5e9"
+            stroke={color}
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -379,10 +386,10 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
             {hoveredIndex === idx && (
               <>
                 <line x1={p.x} y1={paddingTop} x2={p.x} y2={paddingTop + plotHeight} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
-                <circle cx={p.x} cy={p.y} r="5" fill="#0ea5e9" stroke="white" strokeWidth="2" />
+                <circle cx={p.x} cy={p.y} r="5" fill={color} stroke="white" strokeWidth="2" />
               </>
             )}
-            <circle cx={p.x} cy={p.y} r="3" fill="#0ea5e9" stroke="white" strokeWidth="1.5" />
+            <circle cx={p.x} cy={p.y} r="3" fill={color} stroke="white" strokeWidth="1.5" />
           </g>
         ))}
 
@@ -412,8 +419,8 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
           <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3 py-2 rounded-md shadow-lg backdrop-blur-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
             <div className="font-bold mb-1">{points[hoveredIndex].label}</div>
             <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-sky-400 inline-block" />
-              <span className="text-slate-300">{isYearly ? 'Monthly' : 'Daily'} Income (MMK):</span>
+              <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: color }} />
+              <span className="text-slate-300">{period === 'overall' ? 'Yearly' : isYearly ? 'Monthly' : 'Daily'} {seriesLabel}:</span>
               <span className="font-semibold">{Number(points[hoveredIndex].value).toLocaleString()}</span>
             </div>
           </div>
@@ -423,10 +430,11 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, period = '
   );
 }
 
-function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'month' }: { data: ChartDatum[], valueKey: string, labelKey: string, totalDays?: number, period?: string }) {
+function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, elapsedDays = totalDays, period = 'month' }: { data: ChartDatum[], valueKey: string, labelKey: string, totalDays?: number, elapsedDays?: number, period?: string }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const isYearly = period === 'year';
-  const tickCount = isYearly ? 12 : totalDays;
+  const isAggregated = period === 'year' || period === 'overall';
+  const tickCount = period === 'overall' ? data.length : isYearly ? 12 : totalDays;
 
   if (!data || data.length === 0) {
     return <div className="text-sm text-muted-foreground py-10 text-center">No data available</div>;
@@ -441,7 +449,18 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'm
   const plotWidth = chartWidth - paddingLeft - paddingRight;
   const plotHeight = chartHeight - paddingTop - paddingBottom;
 
-  const values = data.map(d => Number(d[valueKey]) || 0);
+  const displayData = period === 'month' && elapsedDays > 0 && elapsedDays < totalDays ? data.slice(0, elapsedDays) : data;
+  const values = displayData.map(d => Number(d[valueKey]) || 0);
+  const hasData = values.some((value) => value !== 0);
+
+  if (!hasData) {
+    return (
+      <div className="flex h-[240px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/60 text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-400">
+        No demand data for this period
+      </div>
+    );
+  }
+
   const maxValue = Math.max(...values, 1);
   const initialMax = Math.ceil(maxValue * 1.15);
   const yStep = Math.max(1, Math.ceil(initialMax / 5));
@@ -459,16 +478,16 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'm
   const slotWidth = plotWidth / tickCount;
   const barWidth = Math.max(6, slotWidth * 0.65);
 
-  const points = data.map((d, idx) => {
+  const points = displayData.map((d, idx) => {
     // In yearly mode, use index-based positioning (0..11)
     // In monthly mode, use day-based positioning
     const label = String(d[labelKey] ?? '');
-    const posIndex = isYearly ? idx : getDay(label) - 1;
+    const posIndex = isAggregated ? idx : getDay(label) - 1;
     const slotX = paddingLeft + posIndex * slotWidth;
     const x = slotX + (slotWidth - barWidth) / 2;
     const heightVal = ((Number(d[valueKey]) || 0) / roundedMax) * plotHeight;
     const y = paddingTop + plotHeight - heightVal;
-    return { x, y, heightVal, value: d[valueKey], label, day: isYearly ? label : getDay(label), slotX };
+    return { x, y, heightVal, value: d[valueKey], label, day: isAggregated ? label : getDay(label), slotX };
   });
 
   // Y axis ticks (6 ticks)
@@ -482,7 +501,7 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'm
   const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const xTicks = Array.from({ length: tickCount }).map((_, i) => {
     const cx = paddingLeft + i * slotWidth + slotWidth / 2;
-    const label = isYearly ? monthLabels[i] || '' : String(i + 1);
+    const label = period === 'overall' ? String(data[i]?.[labelKey] ?? '') : isYearly ? monthLabels[i] || '' : String(i + 1);
     return { x: cx, label };
   });
 
@@ -525,7 +544,7 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'm
         <text x={paddingLeft + plotWidth / 2} y={paddingTop + plotHeight + 30} textAnchor="middle"
           className="fill-slate-500 dark:fill-slate-400"
           style={{ fontSize: '10px', fontWeight: 700, fontFamily: "'Inter', sans-serif" }}>
-          {isYearly ? 'Month' : 'Day of Month'}
+          {period === 'overall' ? 'Year' : isYearly ? 'Month' : 'Day of Month'}
         </text>
 
         {/* Bars — top-only rounded corners */}
@@ -564,7 +583,7 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'm
             <div className="font-bold mb-1">{points[hoveredIndex].label}</div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block" />
-              <span className="text-slate-300">{isYearly ? 'Monthly' : 'Daily'} Demands:</span>
+              <span className="text-slate-300">{period === 'overall' ? 'Yearly' : isYearly ? 'Monthly' : 'Daily'} Demands:</span>
               <span className="font-semibold">{Number(points[hoveredIndex].value).toLocaleString()}</span>
             </div>
           </div>
@@ -577,11 +596,12 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, period = 'm
 function ProgressCard({
   title, statusLabel, statusColor,
   value, maxValue, valueSuffix,
+  actualDetail,
   expectedLabel, expectedValue,
   actualPct, timePct, barColor, icon: Icon
 }: {
   title: string; statusLabel: string; statusColor: string;
-  value: number | string; maxValue?: number | string; valueSuffix?: string;
+  value: number | string; maxValue?: number | string; valueSuffix?: string; actualDetail?: string;
   expectedLabel: string; expectedValue: number | string;
   actualPct: number; timePct: number; barColor: string; icon: LucideIcon;
 }) {
@@ -594,13 +614,16 @@ function ProgressCard({
         </div>
       </div>
       
-      <div className="flex items-baseline gap-2">
-        <h3 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight font-sans">{value}</h3>
-        {maxValue && (
-          <p className="text-sm text-slate-400 dark:text-slate-500 font-medium font-sans">
-            / {maxValue}{valueSuffix ? ` ${valueSuffix}` : ''}
-          </p>
-        )}
+      <div>
+        <div className="flex items-baseline gap-2">
+          <h3 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight font-sans">{value}</h3>
+          {maxValue && (
+            <p className="text-sm text-slate-400 dark:text-slate-500 font-medium font-sans">
+              / {maxValue}{valueSuffix ? ` ${valueSuffix}` : ''}
+            </p>
+          )}
+        </div>
+        {actualDetail && <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">Actual: {actualDetail}</p>}
       </div>
 
       <div className="relative w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700 shadow-inner overflow-visible">
@@ -642,11 +665,16 @@ function getPacingStatus(actual: number, expected: number, isInverse = false): {
   return { label: 'Below Target', color: '#dc2626', barColor: '#ef4444' };
 }
 
+function formatOverviewAmount(amount: number) {
+  return (Math.round(amount / 100_000) * 100_000).toLocaleString();
+}
+
 function DashboardPageContent() {
   const { data: session } = useSession();
   const {
     period,
     month,
+    day,
     year,
     localPeriod,
     localMonth,
@@ -658,8 +686,8 @@ function DashboardPageContent() {
     years,
   } = useDateFilter('dashboard_filter');
 
-  const { data: stats, isLoading } = useDashboardStats(period, month, year);
-  const { data: recsData, isLoading: recsLoading } = useActionRecommendations(period, month, year);
+  const { data: stats, isLoading } = useDashboardStats(period, month, day, year);
+  const { data: recsData, isLoading: recsLoading } = useActionRecommendations(period, month, day, year);
   const router = useRouter();
 
   useEffect(() => {
@@ -859,20 +887,33 @@ function DashboardPageContent() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <Select value={localPeriod} onValueChange={(value) => {
-            if (value === 'month' || value === 'year') {
+            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year') {
               setLocalPeriod(value);
               updatePeriod({ period: value });
             }
           }}>
             <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
-              {localPeriod === 'year' ? 'Yearly' : 'Monthly'}
+              {localPeriod === 'overall' ? 'Overall' : localPeriod === 'year' ? 'Yearly' : localPeriod === 'day' ? 'Daily' : 'Monthly'}
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="overall">Overall</SelectItem>
+              <SelectItem value="day">Daily</SelectItem>
               <SelectItem value="month">Monthly</SelectItem>
               <SelectItem value="year">Yearly</SelectItem>
             </SelectContent>
           </Select>
-          {localPeriod === 'month' ? (
+          {localPeriod === 'day' ? (
+            <Input
+              type="date"
+              value={`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
+              onChange={(event) => {
+                const next = new Date(`${event.target.value}T00:00:00`);
+                if (!Number.isNaN(next.getTime())) updatePeriod({ year: next.getFullYear(), month: next.getMonth() + 1, day: next.getDate() });
+              }}
+              className="h-9 w-40 rounded-lg border-2 border-slate-300 bg-card text-xs font-bold dark:border-slate-800"
+              aria-label="Select day"
+            />
+          ) : localPeriod === 'month' ? (
             <Select value={localMonth} onValueChange={(value) => {
               if (value) {
                 setLocalMonth(value);
@@ -891,7 +932,7 @@ function DashboardPageContent() {
               </SelectContent>
             </Select>
           ) : null}
-          <Select value={localYear} onValueChange={(value) => {
+          {localPeriod !== 'day' && localPeriod !== 'overall' && <Select value={localYear} onValueChange={(value) => {
             if (value) {
               setLocalYear(value);
               updatePeriod({ year: Number(value) });
@@ -907,7 +948,7 @@ function DashboardPageContent() {
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select>}
 
           <Button
             onClick={() => setIsTargetModalOpen(true)}
@@ -933,7 +974,7 @@ function DashboardPageContent() {
               title="Revenue"
               statusLabel={revenuePacing.label}
               statusColor={revenuePacing.color}
-              value={revenueValue.toLocaleString()}
+              value={formatOverviewAmount(revenueValue)}
               maxValue={revenueTarget.toLocaleString()}
               valueSuffix="MMK"
               expectedLabel={`Expected${elapsedDaysText}`}
@@ -947,7 +988,7 @@ function DashboardPageContent() {
               title="Expense Limit"
               statusLabel={expensePacing.label}
               statusColor={expensePacing.color}
-              value={expenseValue.toLocaleString()}
+              value={formatOverviewAmount(expenseValue)}
               maxValue={expenseTarget.toLocaleString()}
               valueSuffix="MMK"
               expectedLabel={`Expected${elapsedDaysText}`}
@@ -1134,14 +1175,28 @@ function DashboardPageContent() {
             <div className="flex justify-between items-center mb-6 border-b-2 border-border pb-4">
                 <h3 className="font-bold text-foreground text-sm tracking-wide uppercase flex items-center gap-2">
                   <LineChart className="w-4 h-4 text-sky-500" />
-                  Daily Income Trend (MMK)
+                  {period === 'overall' ? 'Yearly Income Trend (MMK)' : period === 'year' ? 'Monthly Income Trend (MMK)' : 'Daily Income Trend (MMK)'}
                 </h3>
                 <span className="text-xs font-bold text-muted-foreground border-2 border-border bg-muted px-3 py-1 rounded-full">
-                  {period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
+                  {period === 'overall' ? 'All years' : period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
                 </span>
             </div>
             {isLoading ? <Skeleton className="h-[280px] w-full bg-card/60 rounded-xl" /> : (
-              <PremiumLineChart data={stats?.financialTrend || []} valueKey="revenue" labelKey="label" totalDays={stats?.totalDaysInPeriod || 30} period={period} />
+              <PremiumLineChart data={stats?.financialTrend || []} valueKey="revenue" labelKey="label" totalDays={stats?.totalDaysInPeriod || 30} elapsedDays={stats?.elapsedDays} period={period} seriesLabel="Income (MMK)" />
+            )}
+        </div>
+        <div className="bg-card border-2 border-slate-300 dark:border-slate-800 p-6 rounded-xl shadow-sm">
+            <div className="flex justify-between items-center mb-6 border-b-2 border-border pb-4">
+                <h3 className="font-bold text-foreground text-sm tracking-wide uppercase flex items-center gap-2">
+                  <LineChart className="w-4 h-4 text-red-500" />
+                  {period === 'overall' ? 'Yearly Expense Trend (MMK)' : period === 'year' ? 'Monthly Expense Trend (MMK)' : 'Daily Expense Trend (MMK)'}
+                </h3>
+                <span className="text-xs font-bold text-muted-foreground border-2 border-border bg-muted px-3 py-1 rounded-full">
+                  {period === 'overall' ? 'All years' : period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
+                </span>
+            </div>
+            {isLoading ? <Skeleton className="h-[280px] w-full bg-card/60 rounded-xl" /> : (
+              <PremiumLineChart data={stats?.financialTrend || []} valueKey="expense" labelKey="label" totalDays={stats?.totalDaysInPeriod || 30} elapsedDays={stats?.elapsedDays} period={period} seriesLabel="Expense (MMK)" color="#ef4444" />
             )}
         </div>
         
@@ -1149,14 +1204,14 @@ function DashboardPageContent() {
             <div className="flex justify-between items-center mb-6 border-b-2 border-border pb-4">
                 <h3 className="font-bold text-foreground text-sm tracking-wide uppercase flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-sky-500" />
-                  {period === 'year' ? 'Monthly' : 'Daily'} Demands Received
+                  {period === 'overall' ? 'Yearly' : period === 'year' ? 'Monthly' : 'Daily'} Demands Received
                 </h3>
                 <span className="text-xs font-bold text-muted-foreground border-2 border-border bg-muted px-3 py-1 rounded-full">
-                  {period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
+                  {period === 'overall' ? 'All years' : period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
                 </span>
             </div>
             {isLoading ? <Skeleton className="h-[280px] w-full bg-card/60 rounded-xl" /> : (
-              <PremiumBarChart data={stats?.weeklyActivity || []} valueKey="count" labelKey="date" totalDays={stats?.totalDaysInPeriod || 30} period={period} />
+              <PremiumBarChart data={stats?.financialTrend || []} valueKey="demand" labelKey="label" totalDays={stats?.totalDaysInPeriod || 30} elapsedDays={stats?.elapsedDays} period={period} />
             )}
         </div>
       </div>
