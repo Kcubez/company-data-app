@@ -797,3 +797,59 @@ export const businessReportsApi = {
   deleteAll: (params: DateRangeParams = {}) =>
     request<{ success: boolean; deleted: number }>(`/api/business-reports${buildDateRangeQuery(params)}`, { method: "DELETE" }),
 };
+
+// ─── Finance Entries API ────────────────────────────────────────────────────
+
+export type FinanceEntryType = "salary" | "cogs" | "operating_expense" | "payment" | "receivable" | "debt" | "voucher";
+export type FinanceEntryStatus = "recorded" | "pending" | "paid" | "settled" | "overdue";
+
+export type FinanceEntry = {
+  id: string;
+  entryDate: string;
+  type: FinanceEntryType;
+  title: string;
+  amount: number;
+  status: FinanceEntryStatus;
+  counterparty: string | null;
+  dueDate: string | null;
+  voucherNumber: string | null;
+  notes: string | null;
+  uploadedByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FinanceEntriesParams = {
+  dateFrom?: string;
+  dateTo?: string;
+  type?: FinanceEntryType;
+  status?: FinanceEntryStatus;
+};
+
+export type FinanceEntrySummary = {
+  salary: number;
+  cogs: number;
+  operatingExpense: number;
+  payments: number;
+  receivables: number;
+  debts: number;
+  vouchers: number;
+};
+
+export const financeEntriesApi = {
+  list: (params: FinanceEntriesParams = {}) => {
+    const sp = new URLSearchParams();
+    if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
+    if (params.dateTo) sp.set("dateTo", params.dateTo);
+    if (params.type) sp.set("type", params.type);
+    if (params.status) sp.set("status", params.status);
+    const qs = sp.toString();
+    return request<{ entries: FinanceEntry[]; summary: FinanceEntrySummary }>(`/api/finance-entries${qs ? `?${qs}` : ""}`);
+  },
+  create: (data: Omit<FinanceEntry, "id" | "uploadedByUserId" | "createdAt" | "updatedAt">) =>
+    request<{ entry: FinanceEntry }>("/api/finance-entries", { method: "POST", body: data }),
+  update: (id: string, data: Partial<FinanceEntry>) =>
+    request<{ entry: FinanceEntry }>(`/api/finance-entries/${id}`, { method: "PATCH", body: data }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/api/finance-entries/${id}`, { method: "DELETE" }),
+};

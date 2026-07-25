@@ -37,6 +37,12 @@ type FinanceRecord = {
   paymentMethod: string;
   reference: string;
   notes: string;
+  financeRecordType?: string;
+  status?: string;
+  counterparty?: string;
+  dueDate?: Date | null;
+  voucherNumber?: string;
+  accountingSection?: string;
 };
 
 function displayNameFromTelegramUser(from: { first_name?: string; last_name?: string }) {
@@ -811,7 +817,7 @@ function getFormatHintFooter(mode: string): string {
   } else if (mode === 'website_update') {
     fields = "Date • Project Name • Website Link • Business Type • Package Name • Status • Remark";
   } else if (mode === 'finance_transactions') {
-    fields = "Date • Description • Category • Type • Amount (MMK) • Payment Method • Reference • Notes";
+    fields = "Date • Description • Category • Type • Amount (MMK) • Payment Method • Reference • Notes • Finance Record Type • Status • Counterparty • Due Date • Voucher Number";
   } else if (mode === 'business_report') {
     fields = "Date • Reporter • Marketing Budget • Marketing Channel • Calls • Appointments • Leads • Sales • Deals • Notes";
   }
@@ -875,6 +881,12 @@ function parseFinanceRecordsSpreadsheet(fileBuffer: Buffer): FinanceRecord[] {
       const payMethod = String(getVal(['Payment Method', 'payment_method']) || '').trim();
       const ref = String(getVal(['Reference', 'reference']) || '').trim();
       const notes = String(getVal(['Notes', 'notes', 'note']) || '').trim();
+      const financeRecordType = String(getVal(['Finance Record Type', 'finance_record_type', 'record type', 'accounting type']) || '').trim();
+      const status = String(getVal(['Status', 'status']) || '').trim();
+      const counterparty = String(getVal(['Counterparty', 'counterparty', 'party', 'customer', 'vendor']) || '').trim();
+      const dueDate = parseExcelDate(getVal(['Due Date', 'due_date', 'due'])) || null;
+      const voucherNumber = String(getVal(['Voucher Number', 'voucher_number', 'voucher no', 'invoice number', 'receipt number']) || '').trim();
+      const accountingSection = String(getVal(['Accounting Section', 'accounting_section', 'section']) || '').trim();
 
       if (!type) continue;
 
@@ -887,10 +899,43 @@ function parseFinanceRecordsSpreadsheet(fileBuffer: Buffer): FinanceRecord[] {
         paymentMethod: payMethod,
         reference: ref,
         notes,
+        financeRecordType,
+        status,
+        counterparty,
+        dueDate,
+        voucherNumber,
+        accountingSection,
       });
     }
   }
   return allRecords;
+}
+
+function normalizeFinanceEntryType(rec: FinanceRecord): string {
+  const explicitType = rec.financeRecordType?.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const validTypes = new Set(["salary", "cogs", "operating_expense", "payment", "receivable", "debt", "voucher"]);
+  if (explicitType && validTypes.has(explicitType)) return explicitType;
+
+  const category = rec.category.trim().toLowerCase();
+  const title = rec.description.trim().toLowerCase();
+  if (category.includes("salary") || title.includes("salary") || title.includes("payroll")) return "salary";
+  if (category.includes("cogs") || category.includes("cost of goods") || category.includes("cost of goods sold")) return "cogs";
+  if (category.includes("receivable") || title.includes("receivable")) return "receivable";
+  if (category.includes("debt") || category.includes("payable") || title.includes("debt") || title.includes("payable")) return "debt";
+  if (category.includes("voucher") || title.includes("voucher")) return "voucher";
+  if (rec.type.trim().toLowerCase() === "income") return "payment";
+  return "operating_expense";
+}
+
+function normalizeFinanceEntryStatus(rec: FinanceRecord): string {
+  const explicitStatus = rec.status?.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const validStatuses = new Set(["recorded", "pending", "paid", "settled", "overdue"]);
+  if (explicitStatus && validStatuses.has(explicitStatus)) return explicitStatus;
+
+  const entryType = normalizeFinanceEntryType(rec);
+  if (entryType === "receivable" || entryType === "debt") return "pending";
+  if (entryType === "payment" || entryType === "salary" || entryType === "cogs" || entryType === "operating_expense") return "paid";
+  return "recorded";
 }
 
 function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
@@ -1684,9 +1729,37 @@ async function processFileInBackground({
           createdAt: recordDate,
         };
       });
+      const accountingCreates = parsedFinanceRecords.map((rec) => {
+        const recordDate = rec.date || receivedAtMyanmar;
+        const entryType = normalizeFinanceEntryType(rec);
+        const status = normalizeFinanceEntryStatus(rec);
+        const noteParts = [
+          rec.notes,
+          rec.paymentMethod ? `Method: ${rec.paymentMethod}` : "",
+          rec.reference ? `Reference: ${rec.reference}` : "",
+          rec.accountingSection ? `Section: ${rec.accountingSection}` : "",
+        ].filter(Boolean);
+
+        return {
+          uploadedByUserId: settings.userId,
+          entryDate: recordDate,
+          type: entryType,
+          title: rec.description || rec.category || "Finance record",
+          amount: rec.amount,
+          status,
+          counterparty: rec.counterparty?.trim() || null,
+          dueDate: rec.dueDate || null,
+          voucherNumber: rec.voucherNumber?.trim() || rec.reference?.trim() || null,
+          notes: noteParts.join(". ") || null,
+          createdAt: recordDate,
+        };
+      });
 
       if (creates.length > 0) {
         await prisma.businessReport.createMany({ data: creates });
+      }
+      if (accountingCreates.length > 0) {
+        await prisma.financeEntry.createMany({ data: accountingCreates });
       }
 
       if (progressMsgId) {
@@ -1698,7 +1771,8 @@ async function processFileInBackground({
             "✅ <b>ဘဏ္ဍာရေး ငွေသွင်း/ငွေထုတ် မှတ်တမ်းများ တင်သွင်းပြီးပါပြီ</b>",
             "━━━━━━━━━━━━━━━━━━━━",
             `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
-            `📊 <b>အရေအတွက်:</b> <code>${creates.length}</code> စောင်ကို အောင်မြင်စွာ မှတ်တမ်းတင်ပြီးပါပြီ။`,
+            `📊 <b>Finance totals:</b> <code>${creates.length}</code> စောင်`,
+            `🧾 <b>Accounting records:</b> <code>${accountingCreates.length}</code> စောင်`,
           ].join("\n"),
         });
       }

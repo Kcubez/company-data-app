@@ -31,6 +31,7 @@ model User {
   projectExpirations ProjectExpiration[]
   websiteUpdates     WebsiteUpdate[]
   businessReports    BusinessReport[]
+  financeEntries     FinanceEntry[]
   demandImportBatches DemandImportBatch[]
   telegramSenders    TelegramSender[]
   customers          Customer[]
@@ -435,6 +436,37 @@ model BusinessReport {
   @@index([messageId])
   @@index([marketingChannel])
   @@map("business_report")
+}
+
+// ─── Finance Accounting Records ─────────────────────────────────────────────
+
+model FinanceEntry {
+  id               String    @id @default(cuid())
+  entryDate        DateTime  @map("entry_date")
+  type             String    // salary | cogs | operating_expense | payment | receivable | debt | voucher
+  title            String
+  amount           Float
+  status           String    @default("recorded") // recorded | pending | paid | settled | overdue
+  counterparty     String?
+  dueDate          DateTime? @map("due_date")
+  voucherNumber    String?   @map("voucher_number")
+  notes            String?
+  uploadedByUserId String?   @map("uploaded_by_user_id")
+  uploadedBy       User?     @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+  deletedByUserId  String?   @map("deleted_by_user_id")
+  deletedReason    String?   @map("deleted_reason")
+  restoredAt       DateTime? @map("restored_at")
+  restoredByUserId String?   @map("restored_by_user_id")
+
+  @@index([entryDate])
+  @@index([type])
+  @@index([status])
+  @@index([uploadedByUserId])
+  @@index([deletedAt])
+  @@map("finance_entry")
 }
 
 model RestoreRequest {

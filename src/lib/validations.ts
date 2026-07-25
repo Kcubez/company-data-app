@@ -38,9 +38,24 @@ export const updateUserSchema = z.object({
   role: z.enum(["user", "admin"]),
 });
 
+// ─── Finance ───────────────────────────────────────────────────────────────
+
+export const financeEntrySchema = z.object({
+  entryDate: z.coerce.date(),
+  type: z.enum(["salary", "cogs", "operating_expense", "payment", "receivable", "debt", "voucher"]),
+  title: z.string().trim().min(1, "Title is required").max(160),
+  amount: z.coerce.number().positive("Amount must be greater than zero"),
+  status: z.enum(["recorded", "pending", "paid", "settled", "overdue"]).default("recorded"),
+  counterparty: z.string().trim().max(160).optional().nullable(),
+  dueDate: z.coerce.date().optional().nullable(),
+  voucherNumber: z.string().trim().max(80).optional().nullable(),
+  notes: z.string().trim().max(2000).optional().nullable(),
+});
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type LoginFormValues = z.infer<typeof loginSchema>;
 export type RegisterFormValues = z.infer<typeof registerSchema>;
 export type CreateUserFormValues = z.infer<typeof createUserSchema>;
 export type UpdateUserFormValues = z.infer<typeof updateUserSchema>;
+export type FinanceEntryFormValues = z.infer<typeof financeEntrySchema>;

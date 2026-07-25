@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DestructiveConfirmDialog } from '@/components/ui/destructive-confirm-dialog';
 import { ModalPortal } from '@/components/ui/modal-portal';
+import { AccountingRecords } from '@/components/finance/accounting-records';
 import {
   Select,
   SelectContent,
@@ -683,6 +684,8 @@ function BusinessReportsPageContent() {
           </CardContent>}
         </Card>
       )}
+
+      <AccountingRecords dateFrom={dateFrom} dateTo={dateTo} />
 
       {/* ─── Finance Charts ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
