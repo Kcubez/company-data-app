@@ -5,21 +5,16 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useDateFilter, type PeriodMode } from '@/hooks/use-date-filter';
 import {
-  useBusinessReports,
   useBusinessReportStats,
   useBusinessReportRecommendations,
-  useUpdateBusinessReport,
-  useDeleteBusinessReport,
   useDeleteAllBusinessReports,
 } from '@/hooks/use-business-reports';
-import { BusinessReport } from '@/lib/api';
+import { useDeleteAllFinanceEntries } from '@/hooks/use-finance-entries';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DestructiveConfirmDialog } from '@/components/ui/destructive-confirm-dialog';
-import { ModalPortal } from '@/components/ui/modal-portal';
 import { AccountingRecords } from '@/components/finance/accounting-records';
 import {
   Select,
@@ -32,8 +27,6 @@ import {
   TrendingUp,
   DollarSign,
   Trash2,
-  Edit2,
-  Loader2,
   Percent,
   Megaphone,
   Wallet,
@@ -41,9 +34,6 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-
-const CHANNELS = ['All', 'Facebook', 'Google', 'Referral', 'Walk-in', 'Telegram', 'Other'];
-const FINANCE_TYPES = ['All', 'Income', 'Expense'];
 
 const CHANNEL_COLORS: Record<string, string> = {
   Facebook: '#1877F2',
@@ -81,39 +71,6 @@ function financeLabel(value: string) {
   };
   return labels[normalized] ?? value;
 }
-
-function extractLabeledValue(text: string | null | undefined, labels: string[]) {
-  if (!text) return null;
-  for (const label of labels) {
-    const pattern = new RegExp(`${label}\\s*[:=-]\\s*([^\\n,]+)`, 'i');
-    const match = text.match(pattern);
-    if (match?.[1]?.trim()) return match[1].trim();
-  }
-  return null;
-}
-
-function inferFinanceCategory(record: BusinessReport, type: 'Income' | 'Expense') {
-  const explicit = extractLabeledValue(record.notes, ['category', 'cat']);
-  if (explicit) return explicit;
-  if (type === 'Income') return 'Service';
-
-  const haystack = `${record.notes ?? ''} ${record.marketingChannel ?? ''}`.toLowerCase();
-  if (/payroll|salary|wage/.test(haystack)) return 'Payroll';
-  if (/software|saas|subscription|license/.test(haystack)) return 'Software';
-  if (/aws|hosting|server|infra|infrastructure|domain|cloud/.test(haystack)) return 'Infrastructure';
-  if (/office|admin|supplies|utility|rent/.test(haystack)) return 'Admin';
-  if (/facebook|google|ads|ad spend|marketing|campaign|ကြော်ငြာ/.test(haystack)) return 'Marketing';
-  return record.marketingChannel || 'Marketing';
-}
-
-function inferFinanceDescription(record: BusinessReport, type: 'Income' | 'Expense') {
-  const explicit = extractLabeledValue(record.notes, ['description', 'desc', 'item']);
-  if (explicit) return explicit;
-  const owner = record.reporterName ?? record.sender?.displayName ?? 'Business report';
-  return type === 'Income' ? `${owner} revenue` : `${inferFinanceCategory(record, 'Expense')} expense`;
-}
-
-type FinanceType = 'All' | 'Income' | 'Expense';
 
 function FinanceKpiCard({
   label,
@@ -313,32 +270,8 @@ function BusinessReportsPageContent() {
     years,
   } = useDateFilter('finance_filter');
 
-  const [page, setPage] = useState(1);
-  const [channelFilter, setChannelFilter] = useState('All');
-  const [typeFilter, setTypeFilter] = useState<FinanceType>('All');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAiInsights, setShowAiInsights] = useState(false);
-  const [editingRecord, setEditingRecord] = useState<BusinessReport | null>(null);
-  const [editForm, setEditForm] = useState<Partial<BusinessReport>>({});
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [lastDateFilter, setLastDateFilter] = useState(() => `${period}:${month}:${year}`);
-  const limit = 10;
-
-  const dateFilter = `${period}:${month}:${year}`;
-  if (lastDateFilter !== dateFilter) {
-    setLastDateFilter(dateFilter);
-    setPage(1);
-  }
-
-  const listParams = {
-    page,
-    limit,
-    channel: channelFilter !== 'All' ? channelFilter : undefined,
-    dateFrom,
-    dateTo,
-  };
-
-  const { data, isLoading } = useBusinessReports(listParams);
   const { data: statsData, isLoading: statsLoading } = useBusinessReportStats({
     dateFrom,
     dateTo,
@@ -353,59 +286,17 @@ function BusinessReportsPageContent() {
     isFetching: recsFetching,
   } = useBusinessReportRecommendations();
 
-  const updateMutation = useUpdateBusinessReport();
-  const deleteMutation = useDeleteBusinessReport();
   const deleteAllMutation = useDeleteAllBusinessReports();
+  const deleteAllFinanceEntriesMutation = useDeleteAllFinanceEntries();
   const visibleInsights = recsData?.recommendations.slice(0, 2) || [];
 
   const s = statsData;
-  const records = data?.records ?? [];
-  const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / limit);
   const totalRevenue = s?.totalSales ?? 0;
   const totalExpense = s?.totalBudget ?? 0;
   const profitLoss = totalRevenue - totalExpense;
   const profitMargin = totalRevenue > 0 ? Math.round((profitLoss / totalRevenue) * 100) : 0;
   const expenseBreakdown = s?.channelPerformance?.filter((ch) => ch.budget > 0) ?? [];
   const monthlyTrend = buildMonthlyTrend(yearStatsData?.dailyTrend ?? [], month, year, period);
-  const financeRows = records.flatMap((r) => {
-    const rows: {
-      id: string;
-      report: BusinessReport;
-      date: string;
-      description: string;
-      category: string;
-      type: 'Income' | 'Expense';
-      amount: number;
-    }[] = [];
-
-    if ((r.totalSalesAmount ?? 0) > 0) {
-      rows.push({
-        id: `${r.id}-income`,
-        report: r,
-        date: r.reportDate,
-        description: inferFinanceDescription(r, 'Income'),
-        category: inferFinanceCategory(r, 'Income'),
-        type: 'Income',
-        amount: r.totalSalesAmount ?? 0,
-      });
-    }
-
-    if ((r.marketingBudget ?? 0) > 0) {
-      rows.push({
-        id: `${r.id}-expense`,
-        report: r,
-        date: r.reportDate,
-        description: inferFinanceDescription(r, 'Expense'),
-        category: inferFinanceCategory(r, 'Expense'),
-        type: 'Expense',
-        amount: -(r.marketingBudget ?? 0),
-      });
-    }
-
-    return rows;
-  }).filter((row) => typeFilter === 'All' || row.type === typeFilter);
-
   const computedFinanceInsights = [
     {
       tone: profitLoss >= 0 ? 'success' : 'warning',
@@ -433,35 +324,6 @@ function BusinessReportsPageContent() {
         action: rec.tone === 'success' ? 'မှတ်တမ်းများကြည့်ရန်' : 'ဘတ်ဂျက်စစ်ဆေးရန်',
         actionType: 'view_finance_table' as const,
       })));
-
-  // Edit helpers
-  const openEdit = (r: BusinessReport) => {
-    setEditingRecord(r);
-    setEditForm({
-      reportDate: r.reportDate ? r.reportDate.slice(0, 10) : '',
-      reporterName: r.reporterName ?? '',
-      marketingBudget: r.marketingBudget,
-      marketingChannel: r.marketingChannel ?? '',
-      callsMade: r.callsMade,
-      appointmentsMade: r.appointmentsMade,
-      appointmentsKept: r.appointmentsKept,
-      newLeads: r.newLeads,
-      totalDemandCount: r.totalDemandCount,
-      totalSalesAmount: r.totalSalesAmount,
-      closedDeals: r.closedDeals,
-      pendingDeals: r.pendingDeals,
-      targetSalesAmount: r.targetSalesAmount,
-      targetDemandCount: r.targetDemandCount,
-      targetAppointments: r.targetAppointments,
-      notes: r.notes ?? '',
-    });
-  };
-
-  const saveEdit = async () => {
-    if (!editingRecord) return;
-    await updateMutation.mutateAsync({ id: editingRecord.id, data: editForm });
-    setEditingRecord(null);
-  };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -541,7 +403,7 @@ function BusinessReportsPageContent() {
             variant="outline"
             size="sm"
             onClick={() => setShowDeleteConfirm(true)}
-            disabled={deleteAllMutation.isPending}
+            disabled={deleteAllMutation.isPending || deleteAllFinanceEntriesMutation.isPending}
             className="h-9 border-2 border-red-200 bg-red-50 text-xs font-bold text-red-700 hover:bg-red-100 hover:text-red-800 dark:border-red-950 dark:bg-red-950/30 dark:text-red-300"
           >
             <Trash2 className="w-4 h-4 mr-1.5" />
@@ -553,22 +415,25 @@ function BusinessReportsPageContent() {
       {/* ─── Delete All Confirm ───────────────────────────────────────── */}
       {showDeleteConfirm && (
         <DestructiveConfirmDialog
-          title="Delete business report records for selected period?"
+          title="Delete finance records for selected period?"
           description={
             <>
-              This moves{' '}
-              <span className="font-semibold text-red-700 dark:text-red-300">
-                {total} business report record(s) from {dateFrom} to {dateTo}
-              </span>
+              This moves finance dashboard rows and accounting records from{' '}
+              <span className="font-semibold text-red-700 dark:text-red-300">{dateFrom}</span>
+              {' '}to{' '}
+              <span className="font-semibold text-red-700 dark:text-red-300">{dateTo}</span>
               {' '}to Trash. Admins can restore them later or permanently delete them from Trash.
             </>
           }
           confirmationText="confirm"
           confirmationLabel="Type confirm to move these records to Trash"
-          isPending={deleteAllMutation.isPending}
+          isPending={deleteAllMutation.isPending || deleteAllFinanceEntriesMutation.isPending}
           onCancel={() => setShowDeleteConfirm(false)}
           onConfirm={async () => {
-            await deleteAllMutation.mutateAsync({ dateFrom, dateTo });
+            await Promise.all([
+              deleteAllMutation.mutateAsync({ dateFrom, dateTo }),
+              deleteAllFinanceEntriesMutation.mutateAsync({ dateFrom, dateTo }),
+            ]);
             setShowDeleteConfirm(false);
           }}
         />
@@ -685,8 +550,6 @@ function BusinessReportsPageContent() {
         </Card>
       )}
 
-      <AccountingRecords dateFrom={dateFrom} dateTo={dateTo} />
-
       {/* ─── Finance Charts ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
@@ -715,273 +578,8 @@ function BusinessReportsPageContent() {
         </Card>
       </div>
 
-      {/* ─── Finance Records ────────────────────────────────────────── */}
-      <Card id="finance-records-table" className="overflow-hidden rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
-        <CardHeader className="border-b-2 border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-950/40">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle className="text-sm font-bold uppercase tracking-wide text-slate-900 dark:text-slate-100">
-                Finance Records
-              </CardTitle>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={typeFilter}
-                onValueChange={(value) => { setTypeFilter((value as FinanceType) ?? 'All'); setPage(1); }}
-              >
-                <SelectTrigger className="h-9 w-32 rounded border-2 border-slate-300 bg-card text-xs font-bold text-slate-800 dark:border-slate-800 dark:text-slate-200">
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {FINANCE_TYPES.map((type) => (
-                    <SelectItem key={type} value={type} className="text-xs">{type}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={channelFilter}
-                onValueChange={(value) => { setChannelFilter(value ?? 'All'); setPage(1); }}
-              >
-                <SelectTrigger className="h-9 w-36 rounded border-2 border-slate-300 bg-card text-xs font-bold text-slate-800 dark:border-slate-800 dark:text-slate-200">
-                  <SelectValue placeholder="Channel" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CHANNELS.map((channel) => (
-                    <SelectItem key={channel} value={channel} className="text-xs">{channel}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b-2 border-slate-200 bg-card text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:border-slate-800">
-                <tr>
-                  {['Date', 'Description', 'Category', 'Type', 'Amount (MMK)', 'Actions'].map((heading) => (
-                    <th key={heading} className={`px-6 py-4 ${heading === 'Amount (MMK)' ? 'text-right' : heading === 'Actions' ? 'text-center' : 'text-left'}`}>
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y-2 divide-slate-100 dark:divide-slate-900">
-                {isLoading ? (
-                  [...Array(5)].map((_, index) => (
-                    <tr key={index}>
-                      {[...Array(6)].map((__, cellIndex) => (
-                        <td key={cellIndex} className="px-6 py-4">
-                          <Skeleton className="h-4 w-20" />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                ) : financeRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-500">
-                      No finance records found for this period.
-                    </td>
-                  </tr>
-                ) : (
-                  financeRows.map((row) => (
-                    <tr key={row.id} className="transition hover:bg-slate-50 dark:hover:bg-slate-950/50">
-                      <td className="whitespace-nowrap px-6 py-4 text-xs font-bold text-slate-600 dark:text-slate-400">
-                        {format(new Date(row.date), 'yyyy-MM-dd')}
-                      </td>
-                      <td className="px-6 py-4 text-xs font-bold text-slate-900 dark:text-slate-100">
-                        {row.description}
-                      </td>
-                      <td className="px-6 py-4 text-xs font-semibold text-slate-500">{financeLabel(row.category)}</td>
-                      <td className="px-6 py-4">
-                        <Badge
-                          variant="outline"
-                          className={`rounded border-2 px-2.5 py-1 text-[10px] font-extrabold ${
-                            row.type === 'Income'
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-300'
-                              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-950 dark:bg-red-950/30 dark:text-red-300'
-                          }`}
-                        >
-                          {row.type.toUpperCase()}
-                        </Badge>
-                      </td>
-                      <td className={`whitespace-nowrap px-6 py-4 text-right text-sm font-black ${row.amount >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
-                        {row.amount >= 0 ? '+' : '-'}{Math.abs(row.amount).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-blue-600 hover:text-blue-700"
-                            onClick={() => openEdit(row.report)}
-                            aria-label="Edit finance source record"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </Button>
-                          {deleteConfirmId === row.report.id ? (
-                            <div className="flex gap-1">
-                              <Button
-                                size="icon"
-                                className="h-7 w-7 bg-red-600 text-white hover:bg-red-700"
-                                disabled={deleteMutation.isPending}
-                                onClick={async () => {
-                                  await deleteMutation.mutateAsync(row.report.id);
-                                  setDeleteConfirmId(null);
-                                }}
-                                aria-label="Confirm delete finance source record"
-                              >
-                                {deleteMutation.isPending ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  '✓'
-                                )}
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7 text-slate-500"
-                                onClick={() => setDeleteConfirmId(null)}
-                                aria-label="Cancel delete finance source record"
-                              >
-                                ✕
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-red-600 hover:text-red-700"
-                              onClick={() => setDeleteConfirmId(row.report.id)}
-                              aria-label="Delete finance source record"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+      <AccountingRecords dateFrom={dateFrom} dateTo={dateTo} />
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t-2 border-slate-200 bg-slate-50/60 px-6 py-5 dark:border-slate-800 dark:bg-slate-950/40">
-              <span className="text-xs font-bold text-slate-500">Page {page} of {totalPages}</span>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 border-2 border-slate-300 bg-card text-xs font-bold"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  Prev
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 border-2 border-slate-300 bg-card text-xs font-bold"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ─── Edit Dialog ────────────────────────────────────────────── */}
-      {editingRecord && (
-        <ModalPortal className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-lg space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-foreground">Edit Business Report</h3>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setEditingRecord(null)}>
-                ✕
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {[
-                { label: 'Date', key: 'reportDate', type: 'date' },
-                { label: 'Reporter', key: 'reporterName', type: 'text', colSpan: true },
-                { label: 'Marketing Budget (Ks)', key: 'marketingBudget', type: 'number' },
-                { label: 'Calls Made', key: 'callsMade', type: 'number' },
-                { label: 'Appointments Made', key: 'appointmentsMade', type: 'number' },
-                { label: 'Appointments Kept', key: 'appointmentsKept', type: 'number' },
-                { label: 'New Leads', key: 'newLeads', type: 'number' },
-                { label: 'Total Demand Count', key: 'totalDemandCount', type: 'number' },
-                { label: 'Total Sales (Ks)', key: 'totalSalesAmount', type: 'number' },
-                { label: 'Closed Deals', key: 'closedDeals', type: 'number' },
-                { label: 'Pending Deals', key: 'pendingDeals', type: 'number' },
-                { label: 'Target Sales (Ks)', key: 'targetSalesAmount', type: 'number' },
-                { label: 'Target Demand Count', key: 'targetDemandCount', type: 'number' },
-                { label: 'Target Appointments', key: 'targetAppointments', type: 'number' },
-              ].map(({ label, key, type, colSpan }) => (
-                <div key={key} className={colSpan ? 'col-span-2' : ''}>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
-                  <Input
-                    type={type}
-                    className="h-8 text-xs bg-muted border-border text-foreground"
-                    value={(editForm[key as keyof BusinessReport] as string | number | undefined) ?? ''}
-                    onChange={(e) => {
-                      const val = type === 'number'
-                        ? (e.target.value === '' ? null : Number(e.target.value))
-                        : e.target.value;
-                      setEditForm((f) => ({ ...f, [key]: val }));
-                    }}
-                  />
-                </div>
-              ))}
-
-              {/* Channel select */}
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Channel</label>
-                <Select
-                  value={editForm.marketingChannel ?? ''}
-                  onValueChange={(v) => setEditForm((f) => ({ ...f, marketingChannel: v }))}
-                >
-                  <SelectTrigger className="h-8 text-xs bg-muted border-border text-foreground">
-                    <SelectValue placeholder="Channel" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {['Facebook', 'Google', 'Referral', 'Walk-in', 'Telegram', 'Other'].map((c) => (
-                      <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Notes full width */}
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
-                <textarea
-                  className="w-full rounded-md border border-border bg-muted px-3 py-2 text-xs text-foreground min-h-17.5 resize-y focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={(editForm.notes as string | undefined) ?? ''}
-                  onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <Button variant="outline" size="sm" className="border-border text-foreground" onClick={() => setEditingRecord(null)}>
-                Cancel
-              </Button>
-              <Button size="sm" disabled={updateMutation.isPending} className="bg-blue-600 hover:bg-blue-700 text-white" onClick={saveEdit}>
-                {updateMutation.isPending ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : null}
-                Save Changes
-              </Button>
-            </div>
-          </div>
-        </ModalPortal>
-      )}
     </div>
   );
 }

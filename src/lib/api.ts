@@ -852,4 +852,6 @@ export const financeEntriesApi = {
     request<{ entry: FinanceEntry }>(`/api/finance-entries/${id}`, { method: "PATCH", body: data }),
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/finance-entries/${id}`, { method: "DELETE" }),
+  deleteAll: (params: DateRangeParams = {}) =>
+    request<{ success: boolean; deleted: number }>(`/api/finance-entries${buildDateRangeQuery(params)}`, { method: "DELETE" }),
 };

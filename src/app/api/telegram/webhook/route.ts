@@ -914,7 +914,20 @@ function parseFinanceRecordsSpreadsheet(fileBuffer: Buffer): FinanceRecord[] {
 function normalizeFinanceEntryType(rec: FinanceRecord): string {
   const explicitType = rec.financeRecordType?.trim().toLowerCase().replace(/[\s-]+/g, "_");
   const validTypes = new Set(["salary", "cogs", "operating_expense", "payment", "receivable", "debt", "voucher"]);
-  if (explicitType && validTypes.has(explicitType)) return explicitType;
+  const recordType = rec.type.trim().toLowerCase();
+  const isIncome = recordType === "income";
+  const status = rec.status?.trim().toLowerCase();
+  const section = rec.accountingSection?.trim().toLowerCase() ?? "";
+
+  if (explicitType && validTypes.has(explicitType)) {
+    if (isIncome && ["salary", "cogs", "operating_expense", "debt"].includes(explicitType)) {
+      return status === "pending" || section.includes("receivable") || Boolean(rec.dueDate) ? "receivable" : "payment";
+    }
+    if (!isIncome && ["payment", "receivable"].includes(explicitType)) {
+      return status === "pending" || Boolean(rec.dueDate) ? "debt" : "operating_expense";
+    }
+    return explicitType;
+  }
 
   const category = rec.category.trim().toLowerCase();
   const title = rec.description.trim().toLowerCase();
@@ -1771,8 +1784,7 @@ async function processFileInBackground({
             "✅ <b>ဘဏ္ဍာရေး ငွေသွင်း/ငွေထုတ် မှတ်တမ်းများ တင်သွင်းပြီးပါပြီ</b>",
             "━━━━━━━━━━━━━━━━━━━━",
             `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
-            `📊 <b>Finance totals:</b> <code>${creates.length}</code> စောင်`,
-            `🧾 <b>Accounting records:</b> <code>${accountingCreates.length}</code> စောင်`,
+            `📊 <b>အရေအတွက်:</b> <code>${creates.length}</code> စောင်ကို အောင်မြင်စွာ မှတ်တမ်းတင်ပြီးပါပြီ။`,
           ].join("\n"),
         });
       }

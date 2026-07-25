@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { notDeleted } from "@/lib/soft-delete";
+import { notDeleted, softDeleteData } from "@/lib/soft-delete";
 import { uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { financeEntrySchema } from "@/lib/validations";
 import type { Prisma } from "@/generated/prisma/client";
@@ -74,4 +74,30 @@ export async function POST(req: NextRequest) {
     },
   });
   return NextResponse.json({ entry }, { status: 201 });
+}
+
+// DELETE /api/finance-entries — soft-delete selected finance entries
+export async function DELETE(req: NextRequest) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const dateFrom = searchParams.get("dateFrom");
+  const dateTo = searchParams.get("dateTo");
+  const where: Prisma.FinanceEntryWhereInput = {
+    ...uploadedByUserOrAdmin(session),
+    ...notDeleted,
+  };
+
+  if (dateFrom || dateTo) {
+    where.entryDate = {};
+    if (dateFrom) where.entryDate.gte = new Date(dateFrom);
+    if (dateTo) where.entryDate.lte = new Date(`${dateTo}T23:59:59.999Z`);
+  }
+
+  const result = await prisma.financeEntry.updateMany({
+    where,
+    data: softDeleteData(session.user.id, searchParams.get("reason")),
+  });
+  return NextResponse.json({ success: true, deleted: result.count });
 }

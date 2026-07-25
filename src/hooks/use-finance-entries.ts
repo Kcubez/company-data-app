@@ -44,3 +44,12 @@ export function useDeleteFinanceEntry() {
     onError: () => toast.error("Could not delete finance record"),
   });
 }
+
+export function useDeleteAllFinanceEntries() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: (params: { dateFrom?: string; dateTo?: string } = {}) => financeEntriesApi.deleteAll(params),
+    onSuccess: (data) => { refresh(); toast.success(`Deleted ${data.deleted} finance records`); },
+    onError: () => toast.error("Could not delete finance records"),
+  });
+}
