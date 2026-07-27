@@ -165,19 +165,29 @@ async function editTelegramMessage({
   messageId: number;
   text: string;
   replyMarkup?: Record<string, unknown>;
-}) {
-  if (!botToken) return;
-  await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId.toString(),
-      message_id: messageId,
-      text,
-      parse_mode: "HTML",
-      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
-    }),
-  }).catch((err) => console.error("Error editing message:", err));
+}): Promise<boolean> {
+  if (!botToken) return false;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId.toString(),
+        message_id: messageId,
+        text,
+        parse_mode: "HTML",
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+      }),
+    });
+    if (!res.ok) {
+      console.error("Error editing Telegram message:", await res.text());
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Error editing Telegram message:", err);
+    return false;
+  }
 }
 
 async function downloadTelegramFile(
@@ -2320,13 +2330,32 @@ export async function POST(req: NextRequest) {
           data: { activeReportType: 'project_service_tracking' },
         });
         await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Project & Service Tracking selected');
+        const prompt = getProjectServiceTrackingFormatPrompt();
+        const replyMarkup = buildFormatInlineButtons('project_service_tracking');
         if (chatId && messageId) {
-          await editTelegramMessage({
+          const wasUpdated = await editTelegramMessage({
             botToken: settings?.botToken,
             chatId: BigInt(chatId),
             messageId,
-            text: getProjectServiceTrackingFormatPrompt(),
-            replyMarkup: buildFormatInlineButtons('project_service_tracking'),
+            text: prompt,
+            replyMarkup,
+          });
+          // If Telegram cannot edit the menu message (for example, because the
+          // original is too old), always show the selected mode as a new message.
+          if (!wasUpdated) {
+            await sendTelegramMessage({
+              botToken: settings?.botToken,
+              chatId: BigInt(chatId),
+              text: prompt,
+              replyMarkup,
+            });
+          }
+        } else if (chatId) {
+          await sendTelegramMessage({
+            botToken: settings?.botToken,
+            chatId: BigInt(chatId),
+            text: prompt,
+            replyMarkup,
           });
         }
         return NextResponse.json({ ok: true });
