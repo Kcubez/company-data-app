@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
     filters.push({ OR: [
       { domainExpireDate: { lt: now } },
       { hostingExpireDate: { lt: now } },
+      { offerExpireDate: { lt: now } },
     ] });
   } else if (filter === "expiring_soon") {
     filters.push({ OR: [
@@ -68,6 +69,12 @@ export async function GET(req: NextRequest) {
       },
       {
         hostingExpireDate: {
+          gte: now,
+          lte: next30Days,
+        },
+      },
+      {
+        offerExpireDate: {
           gte: now,
           lte: next30Days,
         },
@@ -85,6 +92,12 @@ export async function GET(req: NextRequest) {
         OR: [
           { hostingExpireDate: { gt: next30Days } },
           { hostingExpireDate: null },
+        ],
+      },
+      {
+        OR: [
+          { offerExpireDate: { gt: next30Days } },
+          { offerExpireDate: null },
         ],
       },
     ] });
@@ -120,6 +133,7 @@ export async function GET(req: NextRequest) {
         select: {
           domainExpireDate: true,
           hostingExpireDate: true,
+          offerExpireDate: true,
         },
       });
 
@@ -130,12 +144,14 @@ export async function GET(req: NextRequest) {
       for (const item of all) {
         const hasExpired =
           (item.domainExpireDate && item.domainExpireDate < now) ||
-          (item.hostingExpireDate && item.hostingExpireDate < now);
+          (item.hostingExpireDate && item.hostingExpireDate < now) ||
+          (item.offerExpireDate && item.offerExpireDate < now);
 
         const isExpiringSoon =
           !hasExpired &&
           ((item.domainExpireDate && item.domainExpireDate >= now && item.domainExpireDate <= next30Days) ||
-            (item.hostingExpireDate && item.hostingExpireDate >= now && item.hostingExpireDate <= next30Days));
+            (item.hostingExpireDate && item.hostingExpireDate >= now && item.hostingExpireDate <= next30Days) ||
+            (item.offerExpireDate && item.offerExpireDate >= now && item.offerExpireDate <= next30Days));
 
         if (hasExpired) {
           expiredCount++;

@@ -7,6 +7,7 @@ import {
   extractDataFromFile,
   isFileTooLarge,
   isProjectExpiryHeaders,
+  isProjectServiceTrackingHeaders,
   parseProjectExpirySpreadsheet,
   isWebsiteUpdateHeaders,
   parseWebsiteUpdateSpreadsheet,
@@ -317,7 +318,7 @@ const MAIN_MENU_BUTTONS = {
   inline_keyboard: [
     [{ text: "🤖 Q&A မေးမြန်း", callback_data: "mode:qa" }, { text: "📈 Sales & Marketing", callback_data: "mode:demand_report" }],
     [{ text: "🎧 Customer Service", callback_data: "mode:customer_service" }, { text: "💳 Finance Transactions", callback_data: "mode:finance_transactions" }],
-    [{ text: "⏰ Project Expiry", callback_data: "mode:project_expiry" }, { text: "🔧 Website Update", callback_data: "mode:website_update" }],
+    [{ text: "🧩 Project & Service Tracking", callback_data: "mode:project_service_tracking" }],
     [{ text: "📊 Business KPI Report", callback_data: "mode:business_report" }],
   ],
 };
@@ -378,6 +379,24 @@ function getPlainTemplateTextForMode(mode: string | null | undefined): string {
         "Package Name:",
         "Status:",
         "Remark:",
+      ].join("\n");
+    case 'project_service_tracking':
+      return [
+        "Record Date:",
+        "Project Name:",
+        "Website Link:",
+        "Business Type:",
+        "Package Name:",
+        "Domain Provider:",
+        "Hosting Provider:",
+        "Hosting Remark:",
+        "Domain Expiration Date:",
+        "Hosting Expiration Date:",
+        "Offer Expiry / Renewal Date:",
+        "Project Status:",
+        "Expiry / Service Remark:",
+        "Update Status:",
+        "Update Remark:",
       ].join("\n");
     case 'finance_transactions':
       return [
@@ -447,8 +466,7 @@ function buildMainMenuButtons(allowedDepartments: string[]) {
     row2.push({ text: "🎧 Customer Service", callback_data: "mode:customer_service" });
   }
   if (allowedDepartments.includes('IT')) {
-    row3.push({ text: "⏰ Project Expiry", callback_data: "mode:project_expiry" });
-    row3.push({ text: "🔧 Website Update", callback_data: "mode:website_update" });
+    row3.push({ text: "🧩 Project & Service Tracking", callback_data: "mode:project_service_tracking" });
   }
   if (allowedDepartments.includes('Finance')) {
     row2.push({ text: "💳 Finance Transactions", callback_data: "mode:finance_transactions" });
@@ -465,7 +483,7 @@ function buildMainMenuButtons(allowedDepartments: string[]) {
 
 function getDepartmentForMode(mode: string): string | null {
   if (mode === 'demand_report' || mode === 'customer_service') return 'Sales';
-  if (mode === 'project_expiry' || mode === 'website_update') return 'IT';
+  if (mode === 'project_expiry' || mode === 'website_update' || mode === 'project_service_tracking') return 'IT';
   if (mode === 'business_report' || mode === 'finance_transactions') return 'Finance';
   if (mode === 'qa') return 'QA';
   return null;
@@ -711,6 +729,38 @@ function getWebsiteUpdateFormatPrompt(): string {
   ].join("\n");
 }
 
+function getProjectServiceTrackingFormatPrompt(): string {
+  return [
+    "🧩 ━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "  <b>Project &amp; Service Tracking Mode</b>",
+    "  <i>Project expiry, sold-offer renewal, website update နှင့် maintenance</i>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    "📄 Excel ဖိုင်တစ်ခုတည်းဖြင့် တင်သွင်းနိုင်ပါသည်",
+    "    Project Expiry နှင့် Website Update ကို အတူတကွ မှတ်တမ်းတင်ပေးမည်",
+    "",
+    "📝 <b>စာသားပုံစံ:</b>",
+    "<pre>",
+    "• Record Date: [YYYY-MM-DD]",
+    "• Project Name: [Project/Website အမည်]",
+    "• Website Link: [Website URL]",
+    "• Business Type: [လုပ်ငန်းအမျိုးအစား]",
+    "• Package Name: [Sold package/service]",
+    "• Domain Expiration Date: [YYYY-MM-DD]",
+    "• Hosting Expiration Date: [YYYY-MM-DD]",
+    "• Offer Expiry / Renewal Date: [YYYY-MM-DD]",
+    "• Project Status: [planning / active / maintenance / finished]",
+    "• Update Status: [up_to_date / pending_update / in_progress]",
+    "• Expiry / Service Remark: [မှတ်ချက်]",
+    "• Update Remark: [မှတ်ချက်]",
+    "</pre>",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━",
+  ].join("\n");
+}
+
 function getFinanceTransactionsFormatPrompt(): string {
   return [
     "💳 ━━━━━━━━━━━━━━━━━━━━",
@@ -780,6 +830,8 @@ function getFormatPromptForMode(mode: string | null | undefined): string {
       return getProjectExpiryFormatPrompt();
     case 'website_update':
       return getWebsiteUpdateFormatPrompt();
+    case 'project_service_tracking':
+      return getProjectServiceTrackingFormatPrompt();
     case 'finance_transactions':
       return getFinanceTransactionsFormatPrompt();
     case 'business_report':
@@ -816,6 +868,8 @@ function getFormatHintFooter(mode: string): string {
     fields = "Date • Check List • URL • Package • Domain/Hosting • Remark";
   } else if (mode === 'website_update') {
     fields = "Date • Project Name • Website Link • Business Type • Package Name • Status • Remark";
+  } else if (mode === 'project_service_tracking') {
+    fields = "Record Date • Project • Website • Package • Domain/Hosting Expiry • Offer Renewal • Project Status • Update Status";
   } else if (mode === 'finance_transactions') {
     fields = "Date • Description • Category • Type • Amount (MMK) • Payment Method • Reference • Notes • Finance Record Type • Status • Counterparty • Due Date • Voucher Number";
   } else if (mode === 'business_report') {
@@ -1000,6 +1054,18 @@ function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
         "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
         "",
         "<code>• Date: \n• Project Name: \n• Website Link: \n• Business Type: \n• Package Name: \n• Status: \n• Remark: </code>",
+      ].join("\n");
+    case 'project_service_tracking':
+      return [
+        "🧩 ━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "  <b>Project &amp; Service Tracking Template</b>",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "စာသားကို ဖိနှိပ်၍ Copy ကူးယူပါ -",
+        "",
+        "<code>• Record Date: \n• Project Name: \n• Website Link: \n• Business Type: \n• Package Name: \n• Domain Provider: \n• Hosting Provider: \n• Hosting Remark: \n• Domain Expiration Date: \n• Hosting Expiration Date: \n• Offer Expiry / Renewal Date: \n• Project Status: \n• Expiry / Service Remark: \n• Update Status: \n• Update Remark: </code>",
       ].join("\n");
     case 'finance_transactions':
       return [
@@ -1578,6 +1644,7 @@ async function processFileInBackground({
     let parsedExpiryRecords: ParsedProjectExpiration[] = [];
     let isWebsiteUpdateFile = false;
     let parsedWebsiteUpdateRecords: ParsedWebsiteUpdate[] = [];
+    let isProjectServiceTrackingFile = false;
     let isBusinessReportFile = false;
     let parsedBusinessReportRecords: ParsedBusinessReport[] = [];
     let isFinanceFile = false;
@@ -1591,7 +1658,11 @@ async function processFileInBackground({
           const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1 });
           if (rows.length > 0 && Array.isArray(rows[0])) {
             const headers = rows[0].map(h => String(h || ''));
-            if (isProjectExpiryHeaders(headers)) {
+            if (isProjectServiceTrackingHeaders(headers)) {
+              isProjectServiceTrackingFile = true;
+              parsedExpiryRecords = parseProjectExpirySpreadsheet(downloadedBuffer);
+              parsedWebsiteUpdateRecords = parseWebsiteUpdateSpreadsheet(downloadedBuffer);
+            } else if (isProjectExpiryHeaders(headers)) {
               isExpiryFile = true;
               parsedExpiryRecords = parseProjectExpirySpreadsheet(downloadedBuffer);
             } else if (isWebsiteUpdateHeaders(headers)) {
@@ -1611,6 +1682,55 @@ async function processFileInBackground({
       }
     }
 
+    if (isProjectServiceTrackingFile) {
+      const expiryCreates = parsedExpiryRecords.map(rec => ({
+        uploadedByUserId: settings.userId,
+        projectName: rec.projectName,
+        url: rec.url,
+        packageName: rec.packageName,
+        domainProvider: rec.domainProvider,
+        hostingProvider: rec.hostingProvider,
+        hostingRemark: rec.hostingRemark,
+        domainExpireDate: rec.domainExpireDate,
+        hostingExpireDate: rec.hostingExpireDate,
+        offerExpireDate: rec.offerExpireDate || null,
+        projectStatus: rec.projectStatus || 'active',
+        remark: rec.remark,
+        createdAt: rec.createdAt || receivedAtMyanmar,
+      }));
+      const updateCreates = parsedWebsiteUpdateRecords.map(rec => ({
+        uploadedByUserId: settings.userId,
+        name: rec.name,
+        url: rec.url,
+        businessType: rec.businessType,
+        packageName: rec.packageName,
+        status: rec.status || 'pending_update',
+        remark: rec.remark,
+        createdAt: rec.createdAt || receivedAtMyanmar,
+      }));
+
+      await prisma.$transaction([
+        prisma.projectExpiration.createMany({ data: expiryCreates }),
+        prisma.websiteUpdate.createMany({ data: updateCreates }),
+      ]);
+
+      if (progressMsgId) {
+        await editTelegramMessage({
+          botToken: settings.botToken,
+          chatId,
+          messageId: progressMsgId,
+          text: [
+            '✅ <b>Project & Service Tracking စာရင်းသွင်းပြီးပါပြီ</b>',
+            '━━━━━━━━━━━━━━━━━━━━',
+            `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
+            `⏰ <b>Project expiries:</b> <code>${expiryCreates.length}</code> ခု`,
+            `🔧 <b>Website updates:</b> <code>${updateCreates.length}</code> ခု`,
+          ].join('\n'),
+        });
+      }
+      return;
+    }
+
     if (isExpiryFile) {
       const creates = parsedExpiryRecords.map(rec => ({
         uploadedByUserId: settings.userId,
@@ -1622,6 +1742,8 @@ async function processFileInBackground({
         hostingRemark: rec.hostingRemark,
         domainExpireDate: rec.domainExpireDate,
         hostingExpireDate: rec.hostingExpireDate,
+        offerExpireDate: rec.offerExpireDate || null,
+        projectStatus: rec.projectStatus || 'active',
         remark: rec.remark,
         createdAt: rec.createdAt || receivedAtMyanmar,
       }));
@@ -2192,6 +2314,24 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      if (data === 'mode:project_service_tracking') {
+        await prisma.telegramSender.update({
+          where: { id: sender.id },
+          data: { activeReportType: 'project_service_tracking' },
+        });
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, '✅ Project & Service Tracking selected');
+        if (chatId && messageId) {
+          await editTelegramMessage({
+            botToken: settings?.botToken,
+            chatId: BigInt(chatId),
+            messageId,
+            text: getProjectServiceTrackingFormatPrompt(),
+            replyMarkup: buildFormatInlineButtons('project_service_tracking'),
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
       if (data === 'mode:project_expiry') {
         await prisma.telegramSender.update({
           where: { id: sender.id },
@@ -2665,7 +2805,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (message.text === '/format') {
-      const showButtons = ['project_expiry', 'website_update', 'business_report', 'demand_report', 'customer_service', 'finance_transactions'].includes(sender.activeReportType);
+      const showButtons = ['project_expiry', 'website_update', 'project_service_tracking', 'business_report', 'demand_report', 'customer_service', 'finance_transactions'].includes(sender.activeReportType);
       await sendTelegramMessage({
         botToken: settings?.botToken,
         chatId,
@@ -2676,7 +2816,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (message.text === '/template') {
-      const showButtons = ['project_expiry', 'website_update', 'business_report', 'demand_report', 'customer_service', 'finance_transactions'].includes(sender.activeReportType);
+      const showButtons = ['project_expiry', 'website_update', 'project_service_tracking', 'business_report', 'demand_report', 'customer_service', 'finance_transactions'].includes(sender.activeReportType);
       await sendTelegramMessage({
         botToken: settings?.botToken,
         chatId,
@@ -2931,6 +3071,86 @@ export async function POST(req: NextRequest) {
         botToken: settings?.botToken,
         chatId,
         text: `🤖 ${answer}`,
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // ─── Project & Service Tracking Mode (text) ────────────────────────
+    if (activeMode === 'project_service_tracking') {
+      const telegramMessage = await createTelegramMessageIfNew({
+        telegramMsgId: message.message_id,
+        text: message.text,
+        senderId: sender.id,
+        chatId,
+        chatTitle: message.chat.title || null,
+        receivedAt,
+      });
+      if (!telegramMessage) {
+        return NextResponse.json({ ok: true });
+      }
+
+      const [parsedExpiry, parsedUpdate] = await Promise.all([
+        parseProjectExpiryMessageWithGemini({
+          text: message.text,
+          apiKey: settings?.geminiApiKey,
+          model: settings?.geminiModel,
+        }),
+        parseWebsiteUpdateMessageWithGemini({
+          text: message.text,
+          apiKey: settings?.geminiApiKey,
+          model: settings?.geminiModel,
+        }),
+      ]);
+
+      await prisma.$transaction([
+        prisma.projectExpiration.create({
+          data: {
+            uploadedByUserId: settings.userId,
+            projectName: parsedExpiry.projectName,
+            url: parsedExpiry.url,
+            packageName: parsedExpiry.packageName,
+            domainProvider: parsedExpiry.domainProvider,
+            hostingProvider: parsedExpiry.hostingProvider,
+            hostingRemark: parsedExpiry.hostingRemark,
+            domainExpireDate: parsedExpiry.domainExpireDate,
+            hostingExpireDate: parsedExpiry.hostingExpireDate,
+            offerExpireDate: parsedExpiry.offerExpireDate || null,
+            projectStatus: parsedExpiry.projectStatus || 'active',
+            remark: parsedExpiry.remark,
+            createdAt: parsedExpiry.createdAt || receivedAtMyanmar || undefined,
+          },
+        }),
+        prisma.websiteUpdate.create({
+          data: {
+            uploadedByUserId: settings.userId,
+            name: parsedUpdate.name,
+            url: parsedUpdate.url,
+            businessType: parsedUpdate.businessType,
+            packageName: parsedUpdate.packageName,
+            status: parsedUpdate.status || 'pending_update',
+            remark: parsedUpdate.remark,
+            createdAt: parsedUpdate.createdAt || receivedAtMyanmar || undefined,
+          },
+        }),
+      ]);
+
+      const recordDate = parsedExpiry.createdAt || parsedUpdate.createdAt || receivedAtMyanmar;
+      const confirmParts = [
+        '✅ <b>Project &amp; Service Tracking မှတ်တမ်း တင်သွင်းခြင်း အောင်မြင်ပါသည်</b>',
+        '━━━━━━━━━━━━━━━━━━━━',
+        `📅 <b>ရက်စွဲ:</b> <code>${recordDate.toISOString().slice(0, 10)}</code>`,
+        `📁 <b>ပရောဂျက်:</b> <code>${parsedExpiry.projectName}</code>`,
+      ];
+      if (parsedExpiry.packageName) confirmParts.push(`📦 <b>Package:</b> <code>${parsedExpiry.packageName}</code>`);
+      if (parsedExpiry.offerExpireDate) confirmParts.push(`🔁 <b>Offer Renewal:</b> <code>${parsedExpiry.offerExpireDate.toISOString().slice(0, 10)}</code>`);
+      if (parsedUpdate.status) confirmParts.push(`🔧 <b>Website Update:</b> <code>${parsedUpdate.status}</code>`);
+      confirmParts.push(getFormatHintFooter('project_service_tracking'));
+
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId,
+        text: confirmParts.join('\n'),
       });
 
       return NextResponse.json({ ok: true });

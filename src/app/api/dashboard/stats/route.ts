@@ -19,15 +19,19 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const nowMyanmar = new Date(Date.now() + 6.5 * 60 * 60 * 1000);
   const { searchParams } = req.nextUrl;
-  const period = searchParams.get("period") === "overall" ? "overall" : searchParams.get("period") === "day" ? "day" : searchParams.get("period") === "year" ? "year" : "month";
+  const period = searchParams.get("period") === "overall" ? "overall" : searchParams.get("period") === "day" ? "day" : searchParams.get("period") === "year" ? "year" : searchParams.get("period") === "custom" ? "custom" : "month";
   const monthParam = Number(searchParams.get("month") || nowMyanmar.getUTCMonth() + 1);
   const yearParam = Number(searchParams.get("year") || nowMyanmar.getUTCFullYear());
   const month = Math.min(12, Math.max(1, Number.isFinite(monthParam) ? monthParam : nowMyanmar.getUTCMonth() + 1));
   const year = Number.isFinite(yearParam) ? yearParam : nowMyanmar.getUTCFullYear();
   const dayParam = Number(searchParams.get("day") || nowMyanmar.getUTCDate());
   const day = Math.min(new Date(year, month, 0).getDate(), Math.max(1, Number.isFinite(dayParam) ? dayParam : nowMyanmar.getUTCDate()));
-  const periodStart = period === "overall" ? new Date(Date.UTC(1900, 0, 1)) : period === "year" ? new Date(Date.UTC(year, 0, 1)) : period === "day" ? new Date(Date.UTC(year, month - 1, day)) : new Date(Date.UTC(year, month - 1, 1));
-  const periodEnd = period === "overall" ? new Date(Date.UTC(9999, 11, 31)) : period === "year" ? new Date(Date.UTC(year + 1, 0, 1)) : period === "day" ? new Date(Date.UTC(year, month - 1, day + 1)) : new Date(Date.UTC(year, month, 1));
+  const customFrom = searchParams.get("from");
+  const customTo = searchParams.get("to");
+  const customStart = customFrom ? new Date(`${customFrom}T00:00:00.000Z`) : new Date(Date.UTC(year, month - 1, 1));
+  const customEndInclusive = customTo ? new Date(`${customTo}T00:00:00.000Z`) : new Date(Date.UTC(year, month, 0));
+  const periodStart = period === "overall" ? new Date(Date.UTC(1900, 0, 1)) : period === "year" ? new Date(Date.UTC(year, 0, 1)) : period === "custom" ? customStart : period === "day" ? new Date(Date.UTC(year, month - 1, day)) : new Date(Date.UTC(year, month - 1, 1));
+  const periodEnd = period === "overall" ? new Date(Date.UTC(9999, 11, 31)) : period === "year" ? new Date(Date.UTC(year + 1, 0, 1)) : period === "custom" ? new Date(customEndInclusive.getTime() + 24 * 60 * 60 * 1000) : period === "day" ? new Date(Date.UTC(year, month - 1, day + 1)) : new Date(Date.UTC(year, month, 1));
   const startOfToday = new Date(Date.UTC(nowMyanmar.getUTCFullYear(), nowMyanmar.getUTCMonth(), nowMyanmar.getUTCDate()));
   const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -176,14 +180,18 @@ export async function GET(req: NextRequest) {
   const profitLoss = totalAmountSold - totalCost;
   const roi = totalCost > 0 ? (profitLoss / totalCost) * 100 : null;
 
-  // Retrieve targets set for this period
+  // Daily and custom views use the full target of the selected calendar month.
+  // For a custom range, its start date determines the calendar month.
+  const targetReferenceDate = period === "day" || period === "custom" ? periodStart : null;
   const periodTarget = await prisma.periodTarget.findFirst({
-    where: {
-      period,
-      year,
-      month: period === "year" ? 0 : month,
-      ...ownerScope,
-    },
+    where: targetReferenceDate
+      ? {
+          period: "month",
+          year: targetReferenceDate.getUTCFullYear(),
+          month: targetReferenceDate.getUTCMonth() + 1,
+          ...ownerScope,
+        }
+      : { period, year, month: period === "year" ? 0 : month, ...ownerScope },
   });
 
   const targetSalesAmount = periodTarget?.targetSalesAmount ?? null;
@@ -194,14 +202,14 @@ export async function GET(req: NextRequest) {
 
   // Pacing calculations
   const msPerDay = 24 * 60 * 60 * 1000;
-  const totalDaysInPeriod = Math.round((periodEnd.getTime() - periodStart.getTime()) / msPerDay);
+  const totalDaysInPeriod = period === "overall" ? 0 : Math.round((periodEnd.getTime() - periodStart.getTime()) / msPerDay);
 
   let elapsedRatio = 1.0;
-  let elapsedDays = totalDaysInPeriod;
-  if (now >= periodStart && now < periodEnd) {
+  let elapsedDays = period === "overall" ? 0 : totalDaysInPeriod;
+  if (period !== "overall" && now >= periodStart && now < periodEnd) {
     elapsedDays = Math.floor((startOfToday.getTime() - periodStart.getTime()) / msPerDay) + 1;
     elapsedRatio = elapsedDays / totalDaysInPeriod;
-  } else if (periodStart > now) {
+  } else if (period !== "overall" && periodStart > now) {
     elapsedRatio = 0.0;
     elapsedDays = 0;
   }
@@ -212,11 +220,12 @@ export async function GET(req: NextRequest) {
   const appointmentConversionRate = actualDemandCount > 0 ? (actualAppointments / actualDemandCount) * 100 : null;
   const closeConversionRate = actualAppointments > 0 ? (closedDeals / actualAppointments) * 100 : null;
 
-  const expectedRevenue = targetSalesAmount !== null ? targetSalesAmount * elapsedRatio : null;
-  const expectedExpense = targetExpenseAmount !== null ? targetExpenseAmount * elapsedRatio : null;
-  const expectedDemandCount = targetDemandCount !== null ? targetDemandCount * elapsedRatio : null;
-  const expectedAppointments = targetAppointments !== null ? targetAppointments * elapsedRatio : null;
-  const expectedNewCustomers = targetNewCustomers !== null ? targetNewCustomers * elapsedRatio : null;
+  const targetPacingRatio = period === "day" || period === "custom" ? 1 : elapsedRatio;
+  const expectedRevenue = targetSalesAmount !== null ? targetSalesAmount * targetPacingRatio : null;
+  const expectedExpense = targetExpenseAmount !== null ? targetExpenseAmount * targetPacingRatio : null;
+  const expectedDemandCount = targetDemandCount !== null ? targetDemandCount * targetPacingRatio : null;
+  const expectedAppointments = targetAppointments !== null ? targetAppointments * targetPacingRatio : null;
+  const expectedNewCustomers = targetNewCustomers !== null ? targetNewCustomers * targetPacingRatio : null;
 
   const alerts: {
     type: 'revenue_target' | 'demand_target' | 'appointments_target' | 'expense_target' | 'customers_target';
@@ -325,7 +334,7 @@ export async function GET(req: NextRequest) {
       weeklyActivity.push({ date: String(currentYear), count: countsByYear.get(String(currentYear)) ?? 0 });
     }
   } else {
-    // Daily buckets for the selected month
+    // Daily buckets for a month, a single day, or an explicit custom range.
     const countsByDay = new Map<string, number>();
     for (const row of demandActivityRows) {
       const key = formatLocalDate(row.createdAt);
@@ -333,7 +342,7 @@ export async function GET(req: NextRequest) {
     }
     const bucketDays = period === 'day' ? 1 : totalDaysInPeriod;
     for (let i = 0; i < bucketDays; i++) {
-      const d = new Date(year, month - 1, period === 'day' ? day : i + 1);
+      const d = period === 'custom' ? new Date(periodStart.getTime() + i * 24 * 60 * 60 * 1000) : new Date(year, month - 1, period === 'day' ? day : i + 1);
       const key = formatLocalDate(d);
       weeklyActivity.push({ date: key, count: countsByDay.get(key) ?? 0 });
     }
@@ -342,7 +351,7 @@ export async function GET(req: NextRequest) {
   // Financial Trend
   const trendBucketCount = period === "overall" ? overallEndYear - overallStartYear + 1 : period === "year" ? 12 : period === "day" ? 1 : totalDaysInPeriod;
   const trendBuckets = Array.from({ length: trendBucketCount }).map((_, index) => {
-    const date = period === "overall" ? new Date(overallStartYear + index, 0, 1) : period === "year" ? new Date(year, index, 1) : new Date(year, month - 1, period === "day" ? day : index + 1);
+    const date = period === "overall" ? new Date(overallStartYear + index, 0, 1) : period === "year" ? new Date(year, index, 1) : period === "custom" ? new Date(periodStart.getTime() + index * 24 * 60 * 60 * 1000) : new Date(year, month - 1, period === "day" ? day : index + 1);
     const key = period === "overall"
       ? String(date.getFullYear())
       : period === "year"
@@ -352,7 +361,7 @@ export async function GET(req: NextRequest) {
       ? String(date.getFullYear())
       : period === "year"
       ? date.toLocaleDateString("en", { month: "short" })
-      : period === "day" ? date.toLocaleDateString("en", { month: "short", day: "numeric" }) : String(index + 1);
+      : period === "day" || period === "custom" ? date.toLocaleDateString("en", { month: "short", day: "numeric" }) : String(index + 1);
     return {
       key,
       label,

@@ -854,6 +854,8 @@ export type ParsedProjectExpiration = {
   hostingRemark: string | null;
   domainExpireDate: Date | null;
   hostingExpireDate: Date | null;
+  offerExpireDate?: Date | null;
+  projectStatus?: string | null;
   remark: string | null;
   createdAt?: Date | null;
 };
@@ -889,6 +891,21 @@ export function isProjectExpiryHeaders(headers: string[]): boolean {
   );
 }
 
+// A unified Project & Service Tracking file contains both the expiry data used
+// by Project Expiries and the maintenance/update data used by Website Updates.
+// Detect it before the individual templates so one upload can populate both views.
+export function isProjectServiceTrackingHeaders(headers: string[]): boolean {
+  const normalized = headers.map(h => String(h || '').trim().toLowerCase().replace(/[_-]+/g, ' '));
+  const hasExpiry = normalized.includes('domain expiration date') ||
+    normalized.includes('hosting expiration date') ||
+    normalized.includes('offer expiry / renewal date');
+  const hasWebsite = normalized.includes('website link') || normalized.includes('url') || normalized.includes('link');
+
+  return hasExpiry && hasWebsite &&
+    normalized.includes('business type') &&
+    normalized.includes('update status');
+}
+
 export function parseProjectExpirySpreadsheet(fileBuffer: Buffer): ParsedProjectExpiration[] {
   const workbook = XLSX.read(fileBuffer, { type: 'buffer', cellDates: true });
   const allRecords: ParsedProjectExpiration[] = [];
@@ -913,15 +930,20 @@ export function parseProjectExpirySpreadsheet(fileBuffer: Buffer): ParsedProject
       const projectName = String(getVal(['Check List', 'Project Name', 'Name']) || '').trim();
       if (!projectName) continue;
 
-      const url = String(getVal(['URL', 'Link']) || '').trim() || null;
+      const url = String(getVal(['Website Link', 'Website_Link', 'URL', 'Link']) || '').trim() || null;
       const packageName = String(getVal(['Package', 'Package Name']) || '').trim() || null;
       const domainProvider = String(getVal(['Domain Provider']) || '').trim() || null;
       const hostingProvider = String(getVal(['Hosting Provider']) || '').trim() || null;
       const hostingRemark = String(getVal(['Hosting Remark']) || '').trim() || null;
       const domainExpireDate = parseExcelDate(getVal(['Domain Expiration Date', 'Domain Expiry', 'Domain Expire Date']));
       const hostingExpireDate = parseExcelDate(getVal(['Hosting Expiration Date', 'Hosting Expiry', 'Hosting Expire Date']));
-      const remark = String(getVal(['Remark', 'Remarks']) || '').trim() || null;
-      const createdAt = parseExcelDate(getVal(['Date', 'Record Date', 'Report Date'])) || null;
+      const offerExpireDate = parseExcelDate(getVal(['Offer Expiry / Renewal Date', 'Offer Expiry Date', 'Offer Renewal Date']));
+      const rawProjectStatus = String(getVal(['Project Status']) || '').trim().toLowerCase();
+      const projectStatus = ['planning', 'active', 'maintenance', 'finished'].includes(rawProjectStatus)
+        ? rawProjectStatus
+        : null;
+      const remark = String(getVal(['Expiry / Service Remark', 'Remark', 'Remarks']) || '').trim() || null;
+      const createdAt = parseExcelDate(getVal(['Expiry Record Date', 'Date', 'Record Date', 'Report Date'])) || null;
 
       allRecords.push({
         projectName,
@@ -932,6 +954,8 @@ export function parseProjectExpirySpreadsheet(fileBuffer: Buffer): ParsedProject
         hostingRemark,
         domainExpireDate,
         hostingExpireDate,
+        offerExpireDate,
+        projectStatus,
         remark,
         createdAt,
       });
@@ -988,8 +1012,8 @@ export function parseWebsiteUpdateSpreadsheet(fileBuffer: Buffer): ParsedWebsite
       const businessType = String(getVal(['Business Type', 'Business_Type', 'Business']) || '').trim() || null;
       const packageName = String(getVal(['Package', 'Package Name', 'Package_Name']) || '').trim() || null;
       const rawStatus = String(getVal(['Status', 'Update Status']) || '').trim();
-      const remark = String(getVal(['Remark', 'Remarks', 'Note', 'Notes']) || '').trim() || null;
-      const createdAt = parseExcelDate(getVal(['Date', 'Record Date', 'Report Date'])) || null;
+      const remark = String(getVal(['Update Remark', 'Remark', 'Remarks', 'Note', 'Notes']) || '').trim() || null;
+      const createdAt = parseExcelDate(getVal(['Update Record Date', 'Date', 'Record Date', 'Report Date'])) || null;
       let status: string | null = rawStatus || null;
       if (rawStatus) {
         const lower = rawStatus.toLowerCase().replace(/[\s_]/g, '');
@@ -1046,6 +1070,8 @@ Extract and return a JSON object with these fields:
   "hostingRemark": string | null (hosting notes/remarks),
   "domainExpireDate": string | null (domain expiration date in YYYY-MM-DD format),
   "hostingExpireDate": string | null (hosting expiration date in YYYY-MM-DD format),
+  "offerExpireDate": string | null (sold offer or renewal expiration date in YYYY-MM-DD format),
+  "projectStatus": "planning" | "active" | "maintenance" | "finished" | null,
   "remark": string | null (any general remarks or notes),
   "createdAt": string | null (the record's own date in YYYY-MM-DD format if a date is stated in the message, e.g. from a 'Date' label or line; null if none — do NOT invent today's date)
 }
@@ -1081,6 +1107,16 @@ Rules:
       if (!isNaN(p)) hostingExpireDate = new Date(p);
     }
 
+    let offerExpireDate: Date | null = null;
+    if (parsed.offerExpireDate) {
+      const p = Date.parse(parsed.offerExpireDate);
+      if (!isNaN(p)) offerExpireDate = new Date(p);
+    }
+
+    const projectStatus = ['planning', 'active', 'maintenance', 'finished'].includes(String(parsed.projectStatus).toLowerCase())
+      ? String(parsed.projectStatus).toLowerCase()
+      : fallback.projectStatus;
+
     let createdAt: Date | null = null;
     if (parsed.createdAt) {
       const p = Date.parse(parsed.createdAt);
@@ -1096,6 +1132,8 @@ Rules:
       hostingRemark: parsed.hostingRemark || fallback.hostingRemark,
       domainExpireDate: domainExpireDate || fallback.domainExpireDate,
       hostingExpireDate: hostingExpireDate || fallback.hostingExpireDate,
+      offerExpireDate: offerExpireDate || fallback.offerExpireDate,
+      projectStatus,
       remark: parsed.remark || fallback.remark,
       createdAt: createdAt || fallback.createdAt,
     };
@@ -1123,6 +1161,8 @@ export function parseProjectExpiryMessage(text: string): ParsedProjectExpiration
   const hostingRemark = getVal(['hosting remark', 'hosting note']) || null;
   const domainExpireDateStr = getVal(['domain expire', 'domain expiration', 'domain expiry', 'domain date']);
   const hostingExpireDateStr = getVal(['hosting expire', 'hosting expiration', 'hosting expiry', 'hosting date']);
+  const offerExpireDateStr = getVal(['offer expiry', 'offer expire', 'offer renewal', 'renewal date']);
+  const rawProjectStatus = (getVal(['project status']) || '').toLowerCase();
   const remark = getVal(['remark', 'remarks', 'note', 'notes']) || null;
 
   let domainExpireDate: Date | null = null;
@@ -1134,6 +1174,15 @@ export function parseProjectExpiryMessage(text: string): ParsedProjectExpiration
   if (hostingExpireDateStr) {
     hostingExpireDate = parseHumanDate(hostingExpireDateStr);
   }
+
+  let offerExpireDate: Date | null = null;
+  if (offerExpireDateStr) {
+    offerExpireDate = parseHumanDate(offerExpireDateStr);
+  }
+
+  const projectStatus = ['planning', 'active', 'maintenance', 'finished'].includes(rawProjectStatus)
+    ? rawProjectStatus
+    : null;
 
   // Record date ("Date:" line, line-anchored so it isn't confused with the
   // domain/hosting expiry dates). Absent → null → caller falls back to now().
@@ -1151,6 +1200,8 @@ export function parseProjectExpiryMessage(text: string): ParsedProjectExpiration
     hostingRemark,
     domainExpireDate,
     hostingExpireDate,
+    offerExpireDate,
+    projectStatus,
     remark,
     createdAt,
   };

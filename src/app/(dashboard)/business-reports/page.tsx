@@ -225,7 +225,8 @@ function ExpenseDonutChart({
   }).join(', ');
 
   return (
-    <div className="grid min-h-72 grid-cols-1 items-center gap-8 md:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="expense-breakdown-container">
+      <div className="expense-breakdown-layout grid min-h-72 grid-cols-1 items-center gap-6">
       <div className="flex justify-center">
         <div
           className="relative h-56 w-56 rounded-full shadow-sm"
@@ -241,17 +242,18 @@ function ExpenseDonutChart({
           const color = CHANNEL_COLORS[label] ?? '#64748B';
           const pct = total > 0 ? Math.round((item.budget / total) * 100) : 0;
           return (
-            <div key={item.channel} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5">
+            <div key={item.channel} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 py-2.5">
               <span className="flex min-w-0 items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
                 <span className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white shadow-sm dark:ring-slate-950" style={{ background: color }} />
-                <span>{label}</span>
+                <span className="truncate">{label}</span>
               </span>
-              <span className="whitespace-nowrap text-right text-xs font-bold text-slate-600 dark:text-slate-300">
+              <span className="ml-auto whitespace-nowrap text-right text-xs font-bold text-slate-600 dark:text-slate-300">
                 {fmt(item.budget)} MMK <span className="font-medium text-slate-500">({pct}%)</span>
               </span>
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );
@@ -264,6 +266,8 @@ function BusinessReportsPageContent() {
     month,
     day,
     year,
+    customFrom,
+    customTo,
     dateFrom,
     dateTo,
     updatePeriod,
@@ -334,27 +338,34 @@ function BusinessReportsPageContent() {
             <Wallet className="h-7 w-7 text-sky-600 dark:text-sky-400" />
             Finance Department
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Financial records, reporting, and cash flow.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-slate-200/80 bg-white/70 p-1.5 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60 lg:w-auto">
           <Select value={period} onValueChange={(value) => {
-            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year') {
+            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year' || value === 'custom') {
               updatePeriod({ period: value });
             }
           }}>
-            <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
-              {period === 'overall' ? 'Overall' : period === 'year' ? 'Yearly' : period === 'day' ? 'Daily' : 'Monthly'}
+            <SelectTrigger className="h-9 w-36 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
+              {period === 'overall' ? 'Overall' : period === 'year' ? 'Yearly' : period === 'day' ? 'Daily' : period === 'custom' ? 'Custom range' : 'Monthly'}
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="overall">Overall</SelectItem>
               <SelectItem value="day">Daily</SelectItem>
               <SelectItem value="month">Monthly</SelectItem>
               <SelectItem value="year">Yearly</SelectItem>
+              <SelectItem value="custom">Custom range</SelectItem>
             </SelectContent>
           </Select>
-          {period === 'day' ? (
+          {period === 'custom' ? (
+            <div className="flex items-center gap-1.5">
+              <Input type="date" value={customFrom} onChange={(event) => updatePeriod({ customFrom: event.target.value })} className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700" aria-label="Start date" />
+              <span className="px-1 text-xs font-medium text-muted-foreground">to</span>
+              <Input type="date" value={customTo} min={customFrom} onChange={(event) => updatePeriod({ customTo: event.target.value })} className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700" aria-label="End date" />
+            </div>
+          ) : period === 'day' ? (
             <Input
               type="date"
               value={`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
@@ -362,7 +373,7 @@ function BusinessReportsPageContent() {
                 const next = new Date(`${event.target.value}T00:00:00`);
                 if (!Number.isNaN(next.getTime())) updatePeriod({ year: next.getFullYear(), month: next.getMonth() + 1, day: next.getDate() });
               }}
-              className="h-9 w-40 rounded-lg border-2 border-slate-300 bg-card text-xs font-bold dark:border-slate-800"
+              className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700"
               aria-label="Select day"
             />
           ) : period === 'month' ? (
@@ -371,7 +382,7 @@ function BusinessReportsPageContent() {
                 updatePeriod({ month: Number(value) });
               }
             }}>
-              <SelectTrigger className="h-9 w-32 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              <SelectTrigger className="h-9 w-32 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
                 {new Date(year, month - 1, 1).toLocaleString('en', { month: 'long' })}
               </SelectTrigger>
               <SelectContent>
@@ -383,12 +394,12 @@ function BusinessReportsPageContent() {
               </SelectContent>
             </Select>
           ) : null}
-          {period !== 'day' && period !== 'overall' && <Select value={String(year)} onValueChange={(value) => {
+          {period !== 'day' && period !== 'overall' && period !== 'custom' && <Select value={String(year)} onValueChange={(value) => {
             if (value) {
               updatePeriod({ year: Number(value) });
             }
           }}>
-            <SelectTrigger className="h-9 w-24 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+            <SelectTrigger className="h-9 w-24 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
               {year}
             </SelectTrigger>
             <SelectContent>
@@ -404,7 +415,7 @@ function BusinessReportsPageContent() {
             size="sm"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={deleteAllMutation.isPending || deleteAllFinanceEntriesMutation.isPending}
-            className="h-9 border-2 border-red-200 bg-red-50 text-xs font-bold text-red-700 hover:bg-red-100 hover:text-red-800 dark:border-red-950 dark:bg-red-950/30 dark:text-red-300"
+            className="h-9 border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-100 hover:text-red-800 dark:border-red-950 dark:bg-red-950/30 dark:text-red-300"
           >
             <Trash2 className="w-4 h-4 mr-1.5" />
             Delete All

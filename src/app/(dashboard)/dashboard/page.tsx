@@ -147,11 +147,13 @@ type DashboardStats = {
   }[];
 };
 
-function useDashboardStats(period: PeriodMode, month: number, day: number, year: number) {
+function useDashboardStats(period: PeriodMode, month: number, day: number, year: number, customFrom?: string, customTo?: string) {
   return useQuery({
-    queryKey: ['dashboard-stats', period, month, day, year],
+    queryKey: ['dashboard-stats', period, month, day, year, customFrom, customTo],
     queryFn: async (): Promise<DashboardStats> => {
-      const res = await fetch(`/api/dashboard/stats?period=${period}&month=${month}&day=${day}&year=${year}`);
+      const params = new URLSearchParams({ period, month: String(month), day: String(day), year: String(year) });
+      if (period === 'custom') { params.set('from', customFrom ?? ''); params.set('to', customTo ?? ''); }
+      const res = await fetch(`/api/dashboard/stats?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch');
       return res.json();
     },
@@ -177,11 +179,13 @@ type ActionRecommendation = {
     | 'general_dashboard';
 };
 
-function useActionRecommendations(period: PeriodMode, month: number, day: number, year: number) {
+function useActionRecommendations(period: PeriodMode, month: number, day: number, year: number, customFrom?: string, customTo?: string) {
   return useQuery({
-    queryKey: ['action-recommendations', period, month, day, year],
+    queryKey: ['action-recommendations', period, month, day, year, customFrom, customTo],
     queryFn: async (): Promise<{ recommendations: ActionRecommendation[] }> => {
-      const res = await fetch(`/api/dashboard/action-recommendations?period=${period}&month=${month}&day=${day}&year=${year}`);
+      const params = new URLSearchParams({ period, month: String(month), day: String(day), year: String(year) });
+      if (period === 'custom') { params.set('from', customFrom ?? ''); params.set('to', customTo ?? ''); }
+      const res = await fetch(`/api/dashboard/action-recommendations?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch');
       return res.json();
     },
@@ -676,6 +680,8 @@ function DashboardPageContent() {
     month,
     day,
     year,
+    customFrom,
+    customTo,
     localPeriod,
     localMonth,
     localYear,
@@ -686,8 +692,8 @@ function DashboardPageContent() {
     years,
   } = useDateFilter('dashboard_filter');
 
-  const { data: stats, isLoading } = useDashboardStats(period, month, day, year);
-  const { data: recsData, isLoading: recsLoading } = useActionRecommendations(period, month, day, year);
+  const { data: stats, isLoading } = useDashboardStats(period, month, day, year, customFrom, customTo);
+  const { data: recsData, isLoading: recsLoading } = useActionRecommendations(period, month, day, year, customFrom, customTo);
   const router = useRouter();
 
   useEffect(() => {
@@ -799,6 +805,8 @@ function DashboardPageContent() {
           period,
           year,
           month: period === 'year' ? 0 : month,
+          from: period === 'custom' ? customFrom : undefined,
+          to: period === 'custom' ? customTo : undefined,
           targetSalesAmount: targetForm.targetSalesAmount === '' ? null : Number(targetForm.targetSalesAmount),
           targetExpenseAmount: targetForm.targetExpenseAmount === '' ? null : Number(targetForm.targetExpenseAmount),
           targetDemandCount: targetForm.targetDemandCount === '' ? null : Number(targetForm.targetDemandCount),
@@ -814,7 +822,7 @@ function DashboardPageContent() {
 
       toast.success('Targets updated successfully');
       setIsTargetModalOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats', period, month, year] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to save targets');
     } finally {
@@ -867,7 +875,8 @@ function DashboardPageContent() {
   const customerExpected = stats?.expectedNewCustomers || 0;
   const customerPacing = hasCustomerTarget ? getPacingStatus(customerValue, customerExpected) : { label: 'Not Set', color: '#64748b', barColor: '#94a3b8' };
 
-  const elapsedDaysText = stats?.elapsedDays ? ` (Day ${stats.elapsedDays})` : '';
+  const elapsedDaysText = localPeriod !== 'overall' && localPeriod !== 'day' && localPeriod !== 'custom' && stats?.elapsedDays ? ` (Day ${stats.elapsedDays})` : '';
+  const targetReferenceLabel = localPeriod === 'day' || localPeriod === 'custom' ? 'Monthly target' : `Expected${elapsedDaysText}`;
 
   if (session?.user.role === 'admin') {
     return <div className="space-y-6"><Skeleton className="h-24 w-full" /><Skeleton className="h-48 w-full" /></div>;
@@ -885,24 +894,27 @@ function DashboardPageContent() {
             Daily intelligence feed and target pacing.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-slate-200/80 bg-white/70 p-1.5 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60 lg:w-auto">
           <Select value={localPeriod} onValueChange={(value) => {
-            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year') {
+            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year' || value === 'custom') {
               setLocalPeriod(value);
               updatePeriod({ period: value });
             }
           }}>
-            <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
-              {localPeriod === 'overall' ? 'Overall' : localPeriod === 'year' ? 'Yearly' : localPeriod === 'day' ? 'Daily' : 'Monthly'}
+            <SelectTrigger className="h-9 w-36 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
+              {localPeriod === 'overall' ? 'Overall' : localPeriod === 'year' ? 'Yearly' : localPeriod === 'day' ? 'Daily' : localPeriod === 'custom' ? 'Custom range' : 'Monthly'}
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="overall">Overall</SelectItem>
               <SelectItem value="day">Daily</SelectItem>
               <SelectItem value="month">Monthly</SelectItem>
               <SelectItem value="year">Yearly</SelectItem>
+              <SelectItem value="custom">Custom range</SelectItem>
             </SelectContent>
           </Select>
-          {localPeriod === 'day' ? (
+          {localPeriod === 'custom' ? (
+            <div className="flex items-center gap-1.5"><Input type="date" value={customFrom} onChange={(event) => updatePeriod({ customFrom: event.target.value })} className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700" aria-label="Start date" /><span className="px-1 text-xs font-medium text-muted-foreground">to</span><Input type="date" value={customTo} min={customFrom} onChange={(event) => updatePeriod({ customTo: event.target.value })} className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700" aria-label="End date" /></div>
+          ) : localPeriod === 'day' ? (
             <Input
               type="date"
               value={`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
@@ -910,7 +922,7 @@ function DashboardPageContent() {
                 const next = new Date(`${event.target.value}T00:00:00`);
                 if (!Number.isNaN(next.getTime())) updatePeriod({ year: next.getFullYear(), month: next.getMonth() + 1, day: next.getDate() });
               }}
-              className="h-9 w-40 rounded-lg border-2 border-slate-300 bg-card text-xs font-bold dark:border-slate-800"
+              className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700"
               aria-label="Select day"
             />
           ) : localPeriod === 'month' ? (
@@ -920,7 +932,7 @@ function DashboardPageContent() {
                 updatePeriod({ month: Number(value) });
               }
             }}>
-              <SelectTrigger className="h-9 w-32 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              <SelectTrigger className="h-9 w-32 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
                 {new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long' })}
               </SelectTrigger>
               <SelectContent>
@@ -932,13 +944,13 @@ function DashboardPageContent() {
               </SelectContent>
             </Select>
           ) : null}
-          {localPeriod !== 'day' && localPeriod !== 'overall' && <Select value={localYear} onValueChange={(value) => {
+          {localPeriod !== 'day' && localPeriod !== 'overall' && localPeriod !== 'custom' && <Select value={localYear} onValueChange={(value) => {
             if (value) {
               setLocalYear(value);
               updatePeriod({ year: Number(value) });
             }
           }}>
-            <SelectTrigger className="h-9 w-24 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+            <SelectTrigger className="h-9 w-24 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
               {localYear}
             </SelectTrigger>
             <SelectContent>
@@ -950,14 +962,15 @@ function DashboardPageContent() {
             </SelectContent>
           </Select>}
 
-          <Button
-            onClick={() => setIsTargetModalOpen(true)}
-            className="h-9 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card hover:bg-slate-50 dark:hover:bg-slate-800/80 text-xs font-bold text-slate-800 dark:text-slate-200 gap-1.5 px-3"
-            variant="outline"
-          >
-            <Target className="w-4 h-4 text-emerald-500 animate-pulse" />
-            Set Targets
-          </Button>
+          {(localPeriod === 'month' || localPeriod === 'year') && (
+            <Button
+              onClick={() => setIsTargetModalOpen(true)}
+              className="h-9 gap-1.5 rounded-lg bg-emerald-600 px-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+            >
+              <Target className="h-4 w-4" />
+              Set Targets
+            </Button>
+          )}
         </div>
       </div>
 
@@ -977,7 +990,7 @@ function DashboardPageContent() {
               value={formatOverviewAmount(revenueValue)}
               maxValue={revenueTarget.toLocaleString()}
               valueSuffix="MMK"
-              expectedLabel={`Expected${elapsedDaysText}`}
+              expectedLabel={targetReferenceLabel}
               expectedValue={Math.round(revenueExpected).toLocaleString()}
               actualPct={revenueActualPct}
               timePct={timePct}
@@ -991,7 +1004,7 @@ function DashboardPageContent() {
               value={formatOverviewAmount(expenseValue)}
               maxValue={expenseTarget.toLocaleString()}
               valueSuffix="MMK"
-              expectedLabel={`Expected${elapsedDaysText}`}
+              expectedLabel={targetReferenceLabel}
               expectedValue={Math.round(expenseExpected).toLocaleString()}
               actualPct={expenseActualPct}
               timePct={timePct}
@@ -1021,7 +1034,7 @@ function DashboardPageContent() {
               statusColor={demandPacing.color}
               value={demandValue.toLocaleString()}
               maxValue={demandTarget.toLocaleString()}
-              expectedLabel={`Expected${elapsedDaysText}`}
+              expectedLabel={targetReferenceLabel}
               expectedValue={Math.round(demandExpected).toLocaleString()}
               actualPct={demandActualPct}
               timePct={timePct}
@@ -1034,7 +1047,7 @@ function DashboardPageContent() {
               statusColor={apptPacing.color}
               value={apptValue.toLocaleString()}
               maxValue={apptTarget.toLocaleString()}
-              expectedLabel={`Expected${elapsedDaysText}`}
+              expectedLabel={targetReferenceLabel}
               expectedValue={Math.round(apptExpected).toLocaleString()}
               actualPct={apptActualPct}
               timePct={timePct}
@@ -1047,7 +1060,7 @@ function DashboardPageContent() {
               statusColor={customerPacing.color}
               value={customerValue.toLocaleString()}
               maxValue={`${customerTarget} Target`}
-              expectedLabel={`Expected${elapsedDaysText}`}
+              expectedLabel={targetReferenceLabel}
               expectedValue={customerExpected.toLocaleString()}
               actualPct={customerActualPct}
               timePct={timePct}
@@ -1175,10 +1188,10 @@ function DashboardPageContent() {
             <div className="flex justify-between items-center mb-6 border-b-2 border-border pb-4">
                 <h3 className="font-bold text-foreground text-sm tracking-wide uppercase flex items-center gap-2">
                   <LineChart className="w-4 h-4 text-sky-500" />
-                  {period === 'overall' ? 'Yearly Income Trend (MMK)' : period === 'year' ? 'Monthly Income Trend (MMK)' : 'Daily Income Trend (MMK)'}
+                  {period === 'overall' ? 'Yearly Income Trend (MMK)' : period === 'year' ? 'Monthly Income Trend (MMK)' : period === 'custom' ? 'Custom Range Income Trend (MMK)' : 'Daily Income Trend (MMK)'}
                 </h3>
                 <span className="text-xs font-bold text-muted-foreground border-2 border-border bg-muted px-3 py-1 rounded-full">
-                  {period === 'overall' ? 'All years' : period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
+                  {period === 'overall' ? 'All years' : period === 'custom' ? `${customFrom} – ${customTo}` : period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
                 </span>
             </div>
             {isLoading ? <Skeleton className="h-[280px] w-full bg-card/60 rounded-xl" /> : (
@@ -1189,10 +1202,10 @@ function DashboardPageContent() {
             <div className="flex justify-between items-center mb-6 border-b-2 border-border pb-4">
                 <h3 className="font-bold text-foreground text-sm tracking-wide uppercase flex items-center gap-2">
                   <LineChart className="w-4 h-4 text-red-500" />
-                  {period === 'overall' ? 'Yearly Expense Trend (MMK)' : period === 'year' ? 'Monthly Expense Trend (MMK)' : 'Daily Expense Trend (MMK)'}
+                  {period === 'overall' ? 'Yearly Expense Trend (MMK)' : period === 'year' ? 'Monthly Expense Trend (MMK)' : period === 'custom' ? 'Custom Range Expense Trend (MMK)' : 'Daily Expense Trend (MMK)'}
                 </h3>
                 <span className="text-xs font-bold text-muted-foreground border-2 border-border bg-muted px-3 py-1 rounded-full">
-                  {period === 'overall' ? 'All years' : period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
+                  {period === 'overall' ? 'All years' : period === 'custom' ? `${customFrom} – ${customTo}` : period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
                 </span>
             </div>
             {isLoading ? <Skeleton className="h-[280px] w-full bg-card/60 rounded-xl" /> : (
@@ -1204,10 +1217,10 @@ function DashboardPageContent() {
             <div className="flex justify-between items-center mb-6 border-b-2 border-border pb-4">
                 <h3 className="font-bold text-foreground text-sm tracking-wide uppercase flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-sky-500" />
-                  {period === 'overall' ? 'Yearly' : period === 'year' ? 'Monthly' : 'Daily'} Demands Received
+                  {period === 'overall' ? 'Yearly' : period === 'year' ? 'Monthly' : period === 'custom' ? 'Custom Range' : 'Daily'} Demands Received
                 </h3>
                 <span className="text-xs font-bold text-muted-foreground border-2 border-border bg-muted px-3 py-1 rounded-full">
-                  {period === 'overall' ? 'All years' : period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
+                  {period === 'overall' ? 'All years' : period === 'custom' ? `${customFrom} – ${customTo}` : period === 'month' ? new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) : localYear}
                 </span>
             </div>
             {isLoading ? <Skeleton className="h-[280px] w-full bg-card/60 rounded-xl" /> : (

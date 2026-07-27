@@ -190,6 +190,20 @@
 /* ---------------------------------------------------------------------
  * Base layer
  * -------------------------------------------------------------------*/
+.expense-breakdown-container {
+  container-type: inline-size;
+}
+
+/* The Finance page may render each chart card quite narrowly after the
+ * sidebar and browser display scaling are applied. Stack the donut and legend
+ * until the card itself—not merely the viewport—is wide enough for both. */
+@container (min-width: 40rem) {
+  .expense-breakdown-layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 2rem;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

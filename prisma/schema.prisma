@@ -494,6 +494,8 @@ model PeriodTarget {
   period             String   // "month" | "year"
   year               Int
   month              Int?     // null if period is "year"
+  rangeStart         DateTime? @map("range_start")
+  rangeEnd           DateTime? @map("range_end")
   targetSalesAmount  Float?   @map("target_sales_amount")
   targetExpenseAmount Float?  @map("target_expense_amount")
   targetDemandCount  Int?     @map("target_demand_count")
@@ -504,6 +506,7 @@ model PeriodTarget {
   updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
+  @@index([userId, period, rangeStart, rangeEnd])
   @@unique([userId, period, year, month])
   @@map("period_targets")
 }

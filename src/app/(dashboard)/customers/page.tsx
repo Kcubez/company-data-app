@@ -42,8 +42,14 @@ import {
   CheckCircle2,
   DollarSign,
   Bot,
+  BarChart3,
+  Crown,
+  RotateCcw,
+  HeartPulse,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
-import { customersApi, type Customer, type DemandRecord } from '@/lib/api';
+import { customersApi, type Customer, type CustomerAnalyticsMetric, type DemandRecord } from '@/lib/api';
 import { clearListQueryData, removeListItemQueryData } from '@/lib/query-cache';
 import { toast } from 'sonner';
 import { formatPhoneNumber } from '@/lib/utils';
@@ -55,6 +61,7 @@ import {
   useDeleteDemandRecord,
 } from '@/hooks/use-demand-records';
 import { ModalPortal } from '@/components/ui/modal-portal';
+import { useCustomerAnalytics } from '@/hooks/use-customer-analytics';
 
 const PAGE_SIZE = 10;
 
@@ -96,6 +103,8 @@ function CustomersPageContent() {
     month,
     day,
     year,
+    customFrom,
+    customTo,
     dateFrom,
     dateTo,
     localPeriod,
@@ -127,6 +136,7 @@ function CustomersPageContent() {
     () => `${initialCustomerSearch}:${initialDemandSearch}:${initialFollowUpStatus}`,
   );
   const [showAiSuggestions, setShowAiSuggestions] = useState(false);
+  const [showBehaviorAnalysis, setShowBehaviorAnalysis] = useState(false);
 
   const urlCustomerSearch = searchParams.get('customerSearch') || '';
   const urlDemandSearch = searchParams.get('search') || searchParams.get('demandSearch') || '';
@@ -226,6 +236,7 @@ function CustomersPageContent() {
   });
 
   const { data: demandStats, isLoading: demandStatsLoading } = useDemandRecordStats({ dateFrom, dateTo });
+  const { data: customerAnalytics, isLoading: customerAnalyticsLoading } = useCustomerAnalytics({ dateFrom, dateTo });
 
   const { data: demandData, isLoading: demandLoading } = useDemandRecords({
     page: demandPage,
@@ -439,24 +450,27 @@ function CustomersPageContent() {
             Customer directory, demand leads, and satisfaction metrics.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-slate-200/80 bg-white/70 p-1.5 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60 lg:w-auto">
           <Select value={localPeriod} onValueChange={(value) => {
-            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year') {
+            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year' || value === 'custom') {
               setLocalPeriod(value);
               updatePeriod({ period: value });
             }
           }}>
-            <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
-              {localPeriod === 'overall' ? 'Overall' : localPeriod === 'year' ? 'Yearly' : localPeriod === 'day' ? 'Daily' : 'Monthly'}
+            <SelectTrigger className="h-9 w-36 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
+              {localPeriod === 'overall' ? 'Overall' : localPeriod === 'year' ? 'Yearly' : localPeriod === 'day' ? 'Daily' : localPeriod === 'custom' ? 'Custom range' : 'Monthly'}
             </SelectTrigger>
             <SelectContent className="bg-card border-border text-foreground rounded-lg">
               <SelectItem value="overall">Overall</SelectItem>
               <SelectItem value="day">Daily</SelectItem>
               <SelectItem value="month">Monthly</SelectItem>
               <SelectItem value="year">Yearly</SelectItem>
+              <SelectItem value="custom">Custom range</SelectItem>
             </SelectContent>
           </Select>
-          {localPeriod === 'day' ? (
+          {localPeriod === 'custom' ? (
+            <div className="flex items-center gap-1.5"><Input type="date" value={customFrom} onChange={(event) => updatePeriod({ customFrom: event.target.value })} className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700" aria-label="Start date" /><span className="px-1 text-xs font-medium text-muted-foreground">to</span><Input type="date" value={customTo} min={customFrom} onChange={(event) => updatePeriod({ customTo: event.target.value })} className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700" aria-label="End date" /></div>
+          ) : localPeriod === 'day' ? (
             <Input
               type="date"
               value={`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
@@ -464,7 +478,7 @@ function CustomersPageContent() {
                 const next = new Date(`${event.target.value}T00:00:00`);
                 if (!Number.isNaN(next.getTime())) updatePeriod({ year: next.getFullYear(), month: next.getMonth() + 1, day: next.getDate() });
               }}
-              className="h-9 w-40 rounded-lg border-2 border-slate-300 bg-card text-xs font-bold dark:border-slate-800"
+              className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700"
               aria-label="Select day"
             />
           ) : localPeriod === 'month' ? (
@@ -474,7 +488,7 @@ function CustomersPageContent() {
                 updatePeriod({ month: Number(value) });
               }
             }}>
-              <SelectTrigger className="h-9 w-32 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              <SelectTrigger className="h-9 w-32 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
                 {new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long' })}
               </SelectTrigger>
               <SelectContent className="bg-card border-border text-foreground rounded-lg">
@@ -486,13 +500,13 @@ function CustomersPageContent() {
               </SelectContent>
             </Select>
           ) : null}
-          {localPeriod !== 'day' && localPeriod !== 'overall' && <Select value={localYear} onValueChange={(value) => {
+          {localPeriod !== 'day' && localPeriod !== 'overall' && localPeriod !== 'custom' && <Select value={localYear} onValueChange={(value) => {
             if (value) {
               setLocalYear(value);
               updatePeriod({ year: Number(value) });
             }
           }}>
-            <SelectTrigger className="h-9 w-24 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+            <SelectTrigger className="h-9 w-24 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
               {localYear}
             </SelectTrigger>
             <SelectContent className="bg-card border-border text-foreground rounded-lg">
@@ -515,7 +529,7 @@ function CustomersPageContent() {
                 setDeleteAllConfirmText('');
                 setIsDeleteAllOpen(true);
               }}
-              className="inline-flex items-center gap-2 px-3 h-9 rounded-md text-sm border border-red-500/30 text-red-600 dark:text-red-400 bg-red-500/5 hover:bg-red-500/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-bold shrink-0 cursor-pointer animate-none"
+              className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 text-sm font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400"
             >
               <Trash2 className="w-4 h-4" />
               Delete All Clients
@@ -588,6 +602,51 @@ function CustomersPageContent() {
           );
         })}
       </div>      {/* Intelligence Cards */}
+
+      {/* Customer analytics — spend is scoped to the selected date range; LTV is all-time. */}
+      <Card id="customer-value-frequency" className="overflow-hidden rounded-xl border-2 border-slate-200 shadow-sm dark:border-slate-800">
+        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-950/30 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><BarChart3 className="h-4 w-4 text-sky-600" />Customer Value &amp; Frequency</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">Top and bottom 20 customers are ranked by selected-period spending. Lifetime value is calculated from all customer history.</p>
+          </div>
+          <Badge variant="outline" className="w-fit border-slate-300 bg-card text-xs font-semibold">{customerAnalytics?.summary.totalCustomers ?? 0} active customers</Badge>
+        </div>
+        <CardContent className="p-5">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <CustomerMetricCard label="Top 20 average spend" value={customerAnalytics?.summary.top20AverageSpend ?? 0} icon={Crown} tone="border-l-amber-500" loading={customerAnalyticsLoading} />
+            <CustomerMetricCard label="Bottom 20 average spend" value={customerAnalytics?.summary.bottom20AverageSpend ?? 0} icon={RotateCcw} tone="border-l-slate-500" loading={customerAnalyticsLoading} />
+            <CustomerMetricCard label="Average lifetime value" value={customerAnalytics?.summary.averageLifetimeValue ?? 0} icon={HeartPulse} tone="border-l-emerald-500" loading={customerAnalyticsLoading} />
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+            <CustomerRanking title="Top 20 customers" items={customerAnalytics?.top20 ?? []} loading={customerAnalyticsLoading} accent="text-amber-700 dark:text-amber-300" />
+            <CustomerRanking title="Bottom 20 customers" items={customerAnalytics?.bottom20 ?? []} loading={customerAnalyticsLoading} accent="text-slate-700 dark:text-slate-300" />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-2 border-sky-200 bg-sky-50/30 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/15">
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />AI Customer Behavior Analysis</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">Analyzes customer behavior and provides insights into customer actions.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setShowBehaviorAnalysis((visible) => !visible)} className="shrink-0 border-border bg-card text-foreground hover:bg-muted/50">
+            {showBehaviorAnalysis ? 'Hide analysis' : 'View analysis'}
+            {showBehaviorAnalysis ? <ChevronUp className="ml-1.5 h-4 w-4" /> : <ChevronDown className="ml-1.5 h-4 w-4" />}
+          </Button>
+        </CardContent>
+        {showBehaviorAnalysis && <CardContent className="border-t border-sky-200 p-5 dark:border-sky-900/60">
+          {customerAnalyticsLoading ? <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><Skeleton className="h-32 rounded-xl animate-pulse" /><Skeleton className="h-32 rounded-xl animate-pulse" /></div> : customerAnalytics?.recommendations.length ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{customerAnalytics.recommendations.map((insight) => {
+              const isWarning = insight.tone === 'warning';
+              const isSuccess = insight.tone === 'success';
+              const InsightIcon = isWarning ? AlertTriangle : isSuccess ? CheckCircle2 : Bot;
+              return <Card key={insight.title} className={`bg-white dark:bg-card border-2 rounded-xl shadow-sm flex flex-col justify-between ${isWarning ? 'border-amber-300 border-l-8 border-l-amber-500' : isSuccess ? 'border-emerald-300 border-l-8 border-l-emerald-500' : 'border-sky-300 border-l-8 border-l-sky-500'}`}><CardContent className="p-5 flex flex-col h-full justify-between"><div><div className="mb-2 flex items-center gap-3"><InsightIcon className={`h-5 w-5 shrink-0 ${isWarning ? 'text-amber-600' : isSuccess ? 'text-emerald-600' : 'text-sky-600'}`} /><h4 className="font-bold text-slate-900 dark:text-slate-100">{insight.title}</h4></div><p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">{insight.message}</p></div><div className="mt-3.5"><Button size="sm" onClick={() => document.getElementById('customer-value-frequency')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className={`${isWarning ? 'bg-amber-500 hover:bg-amber-600' : isSuccess ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-sky-600 hover:bg-sky-700'} h-8 rounded-lg border-none px-4 text-xs font-bold text-white shadow-sm transition cursor-pointer`}>{insight.action}</Button></div></CardContent></Card>;
+            })}</div>
+          ) : <p className="py-4 text-center text-sm text-muted-foreground">ဝယ်ယူမှုမှတ်တမ်း မလုံလောက်သေးပါ။ Demand records တွင် Service Amount ထည့်သွင်းပြီးနောက် အပြုအမူခွဲခြမ်းစိတ်ဖြာမှုကို ကြည့်ရှုနိုင်ပါသည်။</p>}
+        </CardContent>}
+      </Card>
 
       <Card className="border-2 border-sky-200 bg-sky-50/30 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/15">
         <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -1388,6 +1447,27 @@ function CustomersPageContent() {
           </AlertDialogContent>
         </AlertDialog>
       )}
+    </div>
+  );
+}
+
+function CustomerMetricCard({ label, value, icon: Icon, tone, loading }: { label: string; value: number; icon: typeof DollarSign; tone: string; loading: boolean }) {
+  return (
+    <div className={`rounded-xl border border-slate-200 border-l-4 ${tone} bg-card p-4 dark:border-slate-800`}>
+      <div className="flex items-start justify-between gap-3">
+        <div><p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{label}</p>{loading ? <Skeleton className="mt-2 h-6 w-28" /> : <p className="mt-2 text-xl font-black text-foreground">{Math.round(value).toLocaleString()} <span className="text-[10px] font-bold text-slate-400">MMK</span></p>}</div>
+        <Icon className="h-5 w-5 text-slate-400" />
+      </div>
+    </div>
+  );
+}
+
+function CustomerRanking({ title, items, loading, accent }: { title: string; items: CustomerAnalyticsMetric[]; loading: boolean; accent: string }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/30"><h3 className={`text-sm font-bold ${accent}`}>{title}</h3><span className="text-[11px] text-muted-foreground">Spend · frequency · LTV</span></div>
+      {loading ? <div className="space-y-3 p-4"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div> : items.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No customer spending data for this period.</p> : <div className="divide-y divide-slate-100 dark:divide-slate-900">{items.slice(0, 5).map((customer, index) => <div key={customer.id} className="grid grid-cols-[2rem_1fr_auto] items-center gap-3 px-4 py-3"><span className="text-xs font-black text-slate-400">{index + 1}</span><div className="min-w-0"><p className="truncate text-sm font-semibold text-foreground">{customer.name}</p><p className="truncate text-[11px] text-muted-foreground">{customer.purchaseFrequency} purchase{customer.purchaseFrequency === 1 ? '' : 's'} · LTV {Math.round(customer.lifetimeValue).toLocaleString()} MMK</p></div><p className="whitespace-nowrap text-sm font-bold text-foreground">{Math.round(customer.totalSpend).toLocaleString()}</p></div>)}</div>}
+      {items.length > 5 && <p className="border-t border-slate-100 px-4 py-2 text-center text-[11px] font-semibold text-muted-foreground dark:border-slate-900">Showing 5 of {items.length} customers</p>}
     </div>
   );
 }

@@ -582,6 +582,42 @@ export const customersApi = {
     request<{ success: boolean; count: number }>(`/api/customers${buildDateRangeQuery(params)}`, { method: "DELETE" }),
 };
 
+export type CustomerAnalyticsMetric = {
+  id: string;
+  name: string;
+  company: string | null;
+  totalSpend: number;
+  lifetimeValue: number;
+  purchaseFrequency: number;
+  averageOrderValue: number;
+  lastPurchaseAt: string | null;
+  segment: "vip" | "frequent" | "at_risk" | "new" | "standard";
+};
+
+export type CustomerAnalytics = {
+  top20: CustomerAnalyticsMetric[];
+  bottom20: CustomerAnalyticsMetric[];
+  summary: {
+    totalCustomers: number;
+    top20AverageSpend: number;
+    bottom20AverageSpend: number;
+    averageLifetimeValue: number;
+    averagePurchaseFrequency: number;
+    atRiskCustomers: number;
+  };
+  recommendations: { tone: "success" | "warning" | "info"; title: string; message: string; action: string }[];
+};
+
+export const customerAnalyticsApi = {
+  get: (params: { dateFrom?: string; dateTo?: string } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
+    if (params.dateTo) sp.set("dateTo", params.dateTo);
+    const qs = sp.toString();
+    return request<CustomerAnalytics>(`/api/customers/analytics${qs ? `?${qs}` : ""}`);
+  },
+};
+
 // ─── Trash API ───────────────────────────────────────────────────────────────
 
 export type TrashRecordType = "customers" | "sales" | "finance" | "projects" | "websites";

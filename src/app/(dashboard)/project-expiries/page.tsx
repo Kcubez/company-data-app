@@ -49,6 +49,8 @@ function ProjectExpiriesPageContent() {
     month,
     day,
     year,
+    customFrom,
+    customTo,
     dateFrom,
     dateTo,
     localPeriod,
@@ -340,27 +342,30 @@ function ProjectExpiriesPageContent() {
             Project Expiries
           </h1>
           <p className="text-muted-foreground text-sm">
-            Track and manage domain names, hosting servers, and active website subscription packages.
+            Manange domain names and hosting servers.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-slate-200/80 bg-white/70 p-1.5 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60 lg:w-auto">
           <Select value={localPeriod} onValueChange={(value) => {
-            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year') {
+            if (value === 'overall' || value === 'day' || value === 'month' || value === 'year' || value === 'custom') {
               setLocalPeriod(value);
               updatePeriod({ period: value });
             }
           }}>
-            <SelectTrigger className="h-9 w-28 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
-              {localPeriod === 'overall' ? 'Overall' : localPeriod === 'year' ? 'Yearly' : localPeriod === 'day' ? 'Daily' : 'Monthly'}
+            <SelectTrigger className="h-9 w-36 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
+              {localPeriod === 'overall' ? 'Overall' : localPeriod === 'year' ? 'Yearly' : localPeriod === 'day' ? 'Daily' : localPeriod === 'custom' ? 'Custom range' : 'Monthly'}
             </SelectTrigger>
             <SelectContent className="bg-card border-border text-foreground rounded-lg">
               <SelectItem value="overall">Overall</SelectItem>
               <SelectItem value="day">Daily</SelectItem>
               <SelectItem value="month">Monthly</SelectItem>
               <SelectItem value="year">Yearly</SelectItem>
+              <SelectItem value="custom">Custom range</SelectItem>
             </SelectContent>
           </Select>
-          {localPeriod === 'day' ? (
+          {localPeriod === 'custom' ? (
+            <div className="flex items-center gap-1.5"><Input type="date" value={customFrom} onChange={(event) => updatePeriod({ customFrom: event.target.value })} className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700" aria-label="Start date" /><span className="px-1 text-xs font-medium text-muted-foreground">to</span><Input type="date" value={customTo} min={customFrom} onChange={(event) => updatePeriod({ customTo: event.target.value })} className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700" aria-label="End date" /></div>
+          ) : localPeriod === 'day' ? (
             <Input
               type="date"
               value={`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`}
@@ -368,7 +373,7 @@ function ProjectExpiriesPageContent() {
                 const next = new Date(`${event.target.value}T00:00:00`);
                 if (!Number.isNaN(next.getTime())) updatePeriod({ year: next.getFullYear(), month: next.getMonth() + 1, day: next.getDate() });
               }}
-              className="h-9 w-40 rounded-lg border-2 border-slate-300 bg-card text-xs font-bold dark:border-slate-800"
+              className="h-9 w-40 rounded-lg border border-slate-200 bg-background text-sm font-semibold shadow-sm dark:border-slate-700"
               aria-label="Select day"
             />
           ) : localPeriod === 'month' ? (
@@ -378,7 +383,7 @@ function ProjectExpiriesPageContent() {
                 updatePeriod({ month: Number(value) });
               }
             }}>
-              <SelectTrigger className="h-9 w-32 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+              <SelectTrigger className="h-9 w-32 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
                 {new Date(Number(localYear), Number(localMonth) - 1, 1).toLocaleString('en', { month: 'long' })}
               </SelectTrigger>
               <SelectContent className="bg-card border-border text-foreground rounded-lg">
@@ -390,13 +395,13 @@ function ProjectExpiriesPageContent() {
               </SelectContent>
             </Select>
           ) : null}
-          {localPeriod !== 'day' && localPeriod !== 'overall' && <Select value={localYear} onValueChange={(value) => {
+          {localPeriod !== 'day' && localPeriod !== 'overall' && localPeriod !== 'custom' && <Select value={localYear} onValueChange={(value) => {
             if (value) {
               setLocalYear(value);
               updatePeriod({ year: Number(value) });
             }
           }}>
-            <SelectTrigger className="h-9 w-24 rounded-lg border-2 border-slate-300 dark:border-slate-800 bg-card text-xs font-bold text-slate-800 dark:text-slate-200">
+            <SelectTrigger className="h-9 w-24 rounded-lg border border-slate-200 bg-background text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-200">
               {localYear}
             </SelectTrigger>
             <SelectContent className="bg-card border-border text-foreground rounded-lg">
@@ -413,7 +418,7 @@ function ProjectExpiriesPageContent() {
             size="sm"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={!records.length || deleteAllMutation.isPending}
-            className="bg-red-950/20 border-red-900/50 text-red-700 dark:text-red-300 hover:bg-red-900/40 hover:text-red-800 dark:hover:text-red-200 h-9 rounded-lg shrink-0 cursor-pointer"
+            className="h-9 shrink-0 cursor-pointer rounded-lg border-red-900/50 bg-red-950/20 px-3 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-900/40 hover:text-red-800 dark:text-red-300 dark:hover:text-red-200"
           >
             <Trash2 className="w-4 h-4 mr-1.5" />
             Delete All
