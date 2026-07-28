@@ -262,7 +262,7 @@ Extract and return a JSON object with these fields:
   "customerName": string | null (client / customer name if mentioned),
   "customerPhone": string | null (client's phone number if mentioned),
   "customerCompany": string | null (client's business/company name or shop name if mentioned),
-  "serviceName": string | null (must be one of these exact values: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other"),
+  "serviceName": string | null (must be one of these exact values: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "AI automation book", "Prompt Packs ebook", or "Other"),
   "serviceAmount": number | null (revenue / package amount from the service),
   "serviceQty": number | null (quantity sold),
   "followUpDate": string | null (next follow-up date in YYYY-MM-DD format if mentioned),
@@ -463,7 +463,7 @@ STRUCTURED_DATA:
     "customerName": string | null (customer name from 'FB account Name' or similar name columns),
     "customerPhone": string | null (customer phone number if mentioned, e.g. from 'Phone', 'ph', or contact columns),
     "customerCompany": string | null (customer business/company name or shop name if mentioned, e.g. from 'Business', 'Company', or shop columns),
-    "serviceName": string | null (must be one of these exact values: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other"),
+  "serviceName": string | null (must be one of these exact values: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "AI automation book", "Prompt Packs ebook", or "Other"),
     "serviceAmount": number | null (revenue / package price),
     "serviceQty": number | null (quantity),
     "followUpDate": string | null (next follow-up date in YYYY-MM-DD format if mentioned, e.g. from 'Next FU Date' or similar columns),
@@ -498,7 +498,7 @@ For each data row, extract:
 - "customerPhone": extract the client/customer phone number from 'Phone'.
 - "customerCompany": extract the client/customer business/company name from 'Company'.
 - "note": extract/summarize remarks from 'Note' or 'Last Contact Note'. Include CSAT/email/status details in the note if present.
-- "serviceName": extract service or package name from 'Service Name' or 'Purchased Service' (must be classified into one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other").
+- "serviceName": extract service or package name from 'Service Name' or 'Purchased Service' (must be classified into one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "AI automation book", "Prompt Packs ebook", or "Other").
 - "serviceAmount": extract package price/amount from 'Service Amount' or 'Purchase Amount MMK'.
 - "serviceQty": quantity of services/items from 'Service Qty'.
 - "followUpDate": extract next follow-up date in YYYY-MM-DD format from 'Follow-up Date' or 'Next Follow Up'.
@@ -517,7 +517,7 @@ STRUCTURED_DATA:
     "customerName": string | null,
     "customerPhone": string | null,
     "customerCompany": string | null,
-    "serviceName": string | null (must be one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "Prompt Packs ebook", or "Other"),
+    "serviceName": string | null (must be one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "AI automation book", "Prompt Packs ebook", or "Other"),
     "serviceAmount": number | null,
     "serviceQty": number | null,
     "followUpDate": string | null,

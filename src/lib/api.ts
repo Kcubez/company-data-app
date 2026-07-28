@@ -186,6 +186,42 @@ export const settingsSendersApi = {
     }),
 };
 
+export type StaffSummary = {
+  totalStaff: number;
+  authorizedStaff: number;
+  pendingStaff: number;
+  departmentCounts: {
+    Sales: number;
+    IT: number;
+    Finance: number;
+    QA: number;
+  };
+};
+
+export type HRStaffResponse = {
+  staff: TelegramSender[];
+  summary: StaffSummary;
+};
+
+export const hrApi = {
+  list: () => request<HRStaffResponse>("/api/hr/staff"),
+  create: (data: { email: string; allowedDepartments: string[] }) =>
+    request<{ sender: TelegramSender }>("/api/hr/staff", {
+      method: "POST",
+      body: data,
+    }),
+  update: (id: string, data: { isAuthorized?: boolean; allowedDepartments?: string[] }) =>
+    request<{ sender: TelegramSender }>(`/api/hr/staff/${id}`, {
+      method: "PATCH",
+      body: data,
+    }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/api/hr/staff/${id}`, {
+      method: "DELETE",
+    }),
+};
+
+
 // ─── Demand Sheet API ───────────────────────────────────────────────────────
 
 export type DemandRecord = {

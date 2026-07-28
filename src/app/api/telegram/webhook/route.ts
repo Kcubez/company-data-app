@@ -1557,6 +1557,7 @@ async function createDemandRecordsFromParsedDemands({
   telegramMessageId,
   fileName,
   sourceType = 'telegram',
+  reportType = 'demand_report',
   importBatchId,
   ownerUserId,
 }: {
@@ -1565,6 +1566,7 @@ async function createDemandRecordsFromParsedDemands({
   telegramMessageId: string;
   fileName?: string | null;
   sourceType?: string;
+  reportType?: string;
   importBatchId?: string | null;
   ownerUserId: string | null;
 }) {
@@ -1588,6 +1590,7 @@ async function createDemandRecordsFromParsedDemands({
       customerId,
       customerName: parsedDemand.customerName,
       category: parsedDemand.category,
+      reportType,
       status: parsedDemand.status,
       note: parsedDemand.note,
       sourceType,
@@ -1974,6 +1977,7 @@ async function processFileInBackground({
         parsedRows: parsedDemands.map(serializeParsedDemand),
         summary,
         errors,
+        reportType: activeMode === 'customer_service' ? 'customer_service' : 'demand_report',
         status: 'pending',
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
@@ -2177,6 +2181,7 @@ export async function POST(req: NextRequest) {
           telegramMessageId: pending.messageId,
           fileName: pending.fileName,
           sourceType: 'telegram_file',
+          reportType: pending.reportType,
           importBatchId: importBatch.id,
           ownerUserId: settings.userId,
         });
@@ -3610,6 +3615,7 @@ export async function POST(req: NextRequest) {
         customerId,
         customerName: parsedDemand.customerName,
         category: parsedDemand.category,
+        reportType: activeMode === 'customer_service' ? 'customer_service' : 'demand_report',
         status: parsedDemand.status,
         note: parsedDemand.note,
         sourceChannel: parsedDemand.sourceChannel || 'Telegram',

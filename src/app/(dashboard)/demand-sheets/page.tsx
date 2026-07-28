@@ -724,6 +724,9 @@ function DemandSheetsPageContent() {
                                 <div className="shrink-0 text-right">
                                   <p className="text-xs font-extrabold text-foreground">{service.salesCount}</p>
                                   <p className="text-[10px] text-muted-foreground">sales</p>
+                                  <p className="mt-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                    {service.revenue.toLocaleString()} MMK
+                                  </p>
                                 </div>
                               </div>
                             </div>

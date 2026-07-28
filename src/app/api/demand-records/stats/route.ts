@@ -16,7 +16,13 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
 
-  const rangeWhere: Prisma.DemandRecordWhereInput = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
+  // This page represents Sales & Marketing only. Customer-service purchase
+  // history is stored in the same table but must not inflate sales rankings.
+  const rangeWhere: Prisma.DemandRecordWhereInput = {
+    reportType: "demand_report",
+    ...senderOwnedByUserOrAdmin(session),
+    ...notDeleted,
+  };
   if (dateFrom || dateTo) {
     rangeWhere.createdAt = {};
     if (dateFrom) rangeWhere.createdAt.gte = new Date(dateFrom);
@@ -39,6 +45,7 @@ export async function GET(req: NextRequest) {
     "EMS",
     "AI for careers ebook",
     "AI for businesses ebook",
+    "AI automation book",
     "Prompt Packs ebook",
     "Other",
   ];
@@ -119,19 +126,21 @@ export async function GET(req: NextRequest) {
     const stats = serviceStatsMap.get(service) || { count: 0, totalQty: 0, revenue: 0 };
     return {
       serviceName: service,
-      salesCount: stats.count,
+      // A demand row may contain more than one unit. The Sales & Marketing
+      // card calls this value "sales", so it must use Service Qty—not rows.
+      salesCount: stats.totalQty,
       totalQty: stats.totalQty,
       revenue: stats.revenue,
     };
   });
 
-  // Sort by revenue descending, then salesCount, and fallback to predefined order
+  // Rank by sales volume, then use revenue to break ties.
   servicesStats.sort((a, b) => {
-    if (b.revenue !== a.revenue) {
-      return b.revenue - a.revenue;
-    }
     if (b.salesCount !== a.salesCount) {
       return b.salesCount - a.salesCount;
+    }
+    if (b.revenue !== a.revenue) {
+      return b.revenue - a.revenue;
     }
     return allowedServices.indexOf(a.serviceName) - allowedServices.indexOf(b.serviceName);
   });

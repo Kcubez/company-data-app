@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { hasValidStaffDepartments } from "@/lib/staff-departments";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/settings/senders — list all Telegram senders for the logged-in Business Owner
@@ -40,8 +41,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Email is required" }, { status: 400 });
   }
 
-  if (!allowedDepartments || !Array.isArray(allowedDepartments) || allowedDepartments.length === 0) {
-    return NextResponse.json({ message: "Please select at least one department" }, { status: 400 });
+  if (!hasValidStaffDepartments(allowedDepartments)) {
+    return NextResponse.json({ message: "Please select at least one valid department" }, { status: 400 });
   }
 
   const normalizedEmail = email.toLowerCase().trim();

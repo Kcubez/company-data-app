@@ -60,10 +60,10 @@ export function useDeleteSenderSettings() {
     mutationFn: (id: string) => settingsSendersApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsSenderKeys.lists() });
-      toast.success("Staff bot access removed successfully");
+      toast.success("Staff bot access revoked successfully");
     },
     onError: (error: Error) => {
-      toast.error(error.message ?? "Failed to remove staff bot access");
+      toast.error(error.message ?? "Failed to revoke staff bot access");
     },
   });
 }

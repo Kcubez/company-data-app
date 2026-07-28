@@ -113,21 +113,25 @@ export default function TrashPage() {
   const totalPages = data?.totalPages ?? 1;
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-5 text-slate-950 dark:bg-slate-950 dark:text-slate-50 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-normal">Trash</h1>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Deleted business records stay here until an admin restores or permanently deletes them.
-            </p>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            {/* <Trash2 className="h-7 w-7 text-rose-600 dark:text-rose-400" /> */}
+            <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              Trash
+            </h1>
           </div>
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-            Permanent delete is admin-only.
-          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Deleted business records stay here until an admin restores or permanently deletes them.
+          </p>
         </div>
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
+          Permanent delete is admin-only.
+        </div>
+      </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="glass-card border border-border/70 shadow-xs rounded-xl overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-slate-200 p-4 dark:border-slate-800 md:flex-row md:items-end">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold uppercase text-slate-500">Record Type</label>
@@ -346,7 +350,6 @@ export default function TrashPage() {
             </div>
           </div>
         </div>
-      </div>
 
       {pendingPermanentDelete && (
         <DestructiveConfirmDialog

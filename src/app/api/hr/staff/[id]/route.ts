@@ -1,10 +1,11 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasValidStaffDepartments } from "@/lib/staff-departments";
+import { ownedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
-// PUT /api/settings/senders/[id] — update authorization status and allowed departments
-export async function PUT(
+// PATCH /api/hr/staff/[id] — update staff departments or authorization status
+export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -17,20 +18,20 @@ export async function PUT(
   const body = await req.json();
   const { isAuthorized, allowedDepartments } = body;
 
-  // Verify that the sender belongs to this Business Owner
+  const scope = ownedByUserOrAdmin(session);
   const sender = await prisma.telegramSender.findFirst({
-    where: {
-      id,
-      userId: session.user.id,
-    },
+    where: { id, ...scope },
   });
 
   if (!sender) {
-    return NextResponse.json({ message: "Sender not found or access denied" }, { status: 404 });
+    return NextResponse.json({ message: "Staff member not found" }, { status: 404 });
   }
 
   if (allowedDepartments !== undefined && !hasValidStaffDepartments(allowedDepartments)) {
-    return NextResponse.json({ message: "Please select at least one valid department" }, { status: 400 });
+    return NextResponse.json(
+      { message: "Assign at least one valid department" },
+      { status: 400 }
+    );
   }
 
   const nextDepartments = allowedDepartments ?? sender.allowedDepartments;
@@ -60,7 +61,7 @@ export async function PUT(
   });
 }
 
-// DELETE /api/settings/senders/[id] — revoke bot access while preserving sender history
+// DELETE /api/hr/staff/[id] — revoke staff access while preserving their history
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -71,17 +72,13 @@ export async function DELETE(
   }
 
   const { id } = await params;
-
-  // Verify that the sender belongs to this Business Owner
+  const scope = ownedByUserOrAdmin(session);
   const sender = await prisma.telegramSender.findFirst({
-    where: {
-      id,
-      userId: session.user.id,
-    },
+    where: { id, ...scope },
   });
 
   if (!sender) {
-    return NextResponse.json({ message: "Sender not found or access denied" }, { status: 404 });
+    return NextResponse.json({ message: "Staff member not found" }, { status: 404 });
   }
 
   await prisma.telegramSender.update({

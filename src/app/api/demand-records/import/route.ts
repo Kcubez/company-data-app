@@ -152,6 +152,7 @@ export async function POST(req: NextRequest) {
         customerId,
         customerName: row.normalized.customerName,
         category: row.normalized.category,
+        reportType: "demand_report",
         status: row.normalized.status,
         note: row.normalized.note,
         sourceType: "dashboard_upload",

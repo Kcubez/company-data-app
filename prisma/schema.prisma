@@ -203,6 +203,7 @@ model PendingDemandImport {
   parsedRows      Json             @map("parsed_rows")
   summary         Json?
   errors          String[]         @default([])
+  reportType      String           @default("demand_report") @map("report_type")
   status          String           @default("pending")
   expiresAt       DateTime         @map("expires_at")
   createdAt       DateTime         @default(now()) @map("created_at")
@@ -247,6 +248,7 @@ model DemandRecord {
   customer        Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
   customerName    String?
   category        String           @default("general")
+  reportType      String           @default("demand_report") @map("report_type")
   status          String           @default("new")
   note            String
   sourceType      String           @default("telegram") @map("source_type")
@@ -287,6 +289,7 @@ model DemandRecord {
   @@index([messageId])
   @@index([senderId])
   @@index([category])
+  @@index([reportType])
   @@index([status])
   @@index([followUpDate])
   @@index([createdAt])

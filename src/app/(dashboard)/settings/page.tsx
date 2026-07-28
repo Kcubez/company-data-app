@@ -790,12 +790,12 @@ function TelegramSendersList() {
           <DialogHeader>
             <DialogTitle className="text-lg flex items-center gap-2 text-rose-600 dark:text-rose-400">
               <ShieldAlert className="w-5 h-5" />
-              Remove Staff Bot Access?
+              Revoke Staff Bot Access?
             </DialogTitle>
             <DialogDescription className="text-muted-foreground mt-1">
-              Are you sure you want to remove bot access for{' '}
+              Are you sure you want to revoke bot access for{' '}
               <span className="font-semibold text-foreground">{deletingSender?.email || deletingSender?.displayName}</span>?
-              This action will revoke all permissions and unlink their Telegram bot session.
+              This action will revoke all permissions while preserving their Telegram and report history.
             </DialogDescription>
           </DialogHeader>
 
@@ -823,7 +823,7 @@ function TelegramSendersList() {
               ) : (
                 <Trash2 className="w-4 h-4 mr-2" />
               )}
-              Remove Access
+              Revoke Access
             </Button>
           </div>
         </DialogContent>

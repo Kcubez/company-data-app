@@ -142,6 +142,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
     {
       label: 'Operations',
       items: [
+        { title: 'HR & Staff', href: '/hr', icon: Users, adminOnly: false },
         { title: 'Data Feed', href: '/data-feed', icon: MessageSquare, adminOnly: false },
         { title: 'Trash', href: '/trash', icon: Trash2, adminOnly: false },
       ],
