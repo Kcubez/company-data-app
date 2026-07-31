@@ -446,7 +446,7 @@ model BusinessReport {
 model FinanceEntry {
   id               String    @id @default(cuid())
   entryDate        DateTime  @map("entry_date")
-  type             String    // salary | cogs | operating_expense | payment | receivable | debt | voucher
+  type             String    // salary | cogs | operating_expense | payment | receivable | debt | voucher | owner_capital
   title            String
   amount           Float
   status           String    @default("recorded") // recorded | pending | paid | settled | overdue

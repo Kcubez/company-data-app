@@ -979,7 +979,7 @@ function parseFinanceRecordsSpreadsheet(fileBuffer: Buffer): FinanceRecord[] {
 
 function normalizeFinanceEntryType(rec: FinanceRecord): string {
   const explicitType = rec.financeRecordType?.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  const validTypes = new Set(["salary", "cogs", "operating_expense", "payment", "receivable", "debt", "voucher"]);
+  const validTypes = new Set(["salary", "cogs", "operating_expense", "payment", "receivable", "debt", "voucher", "owner_capital"]);
   const recordType = rec.type.trim().toLowerCase();
   const isIncome = recordType === "income";
   const status = rec.status?.trim().toLowerCase();
@@ -997,6 +997,7 @@ function normalizeFinanceEntryType(rec: FinanceRecord): string {
 
   const category = rec.category.trim().toLowerCase();
   const title = rec.description.trim().toLowerCase();
+  if (category.includes("owner capital") || category.includes("owner's capital") || title.includes("owner capital") || title.includes("initial investment")) return "owner_capital";
   if (category.includes("salary") || title.includes("salary") || title.includes("payroll")) return "salary";
   if (category.includes("cogs") || category.includes("cost of goods") || category.includes("cost of goods sold")) return "cogs";
   if (category.includes("receivable") || title.includes("receivable")) return "receivable";
@@ -1859,7 +1860,7 @@ async function processFileInBackground({
     }
 
     if (isFinanceFile) {
-      const creates = parsedFinanceRecords.map((rec) => {
+      const creates = parsedFinanceRecords.filter((rec) => normalizeFinanceEntryType(rec) !== "owner_capital").map((rec) => {
         const isIncome = rec.type.toLowerCase() === 'income';
         const recordDate = rec.date || receivedAtMyanmar;
         return {

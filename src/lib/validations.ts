@@ -42,7 +42,7 @@ export const updateUserSchema = z.object({
 
 export const financeEntrySchema = z.object({
   entryDate: z.coerce.date(),
-  type: z.enum(["salary", "cogs", "operating_expense", "payment", "receivable", "debt", "voucher"]),
+  type: z.enum(["salary", "cogs", "operating_expense", "payment", "receivable", "debt", "voucher", "owner_capital"]),
   title: z.string().trim().min(1, "Title is required").max(160),
   amount: z.coerce.number().positive("Amount must be greater than zero"),
   status: z.enum(["recorded", "pending", "paid", "settled", "overdue"]).default("recorded"),

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
 import { useDateFilter, type PeriodMode } from '@/hooks/use-date-filter';
+import { useFinanceEntries } from '@/hooks/use-finance-entries';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -656,6 +657,27 @@ function ProgressCard({
   );
 }
 
+function OwnerCapitalCard({ amount }: { amount: number }) {
+  return (
+    <div className="bg-card dark:bg-slate-900/40 border-2 border-slate-300 border-l-4 border-l-indigo-500 dark:border-slate-800 p-6 flex flex-col justify-between h-48 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-slate-400 dark:hover:border-slate-700 transition-all duration-200">
+      <div className="flex justify-between items-center">
+        <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Owner Capital</h4>
+        <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+          <Wallet className="w-4 h-4" />
+        </div>
+      </div>
+      <div>
+        <div className="flex items-baseline gap-2">
+          <h3 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight font-sans">{formatOverviewAmount(amount)}</h3>
+          <p className="text-sm text-slate-400 dark:text-slate-500 font-medium font-sans">MMK</p>
+        </div>
+        <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">Total owner investment recorded</p>
+      </div>
+      <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Not included in revenue or expense</p>
+    </div>
+  );
+}
+
 function getPacingStatus(actual: number, expected: number, isInverse = false): { label: string; color: string; barColor: string } {
   if (isInverse) {
     // For expenses: lower is better
@@ -693,6 +715,7 @@ function DashboardPageContent() {
   } = useDateFilter('dashboard_filter');
 
   const { data: stats, isLoading } = useDashboardStats(period, month, day, year, customFrom, customTo);
+  const { data: ownerCapitalData } = useFinanceEntries({ type: 'owner_capital' });
   const { data: recsData, isLoading: recsLoading } = useActionRecommendations(period, month, day, year, customFrom, customTo);
   const router = useRouter();
 
@@ -874,6 +897,7 @@ function DashboardPageContent() {
   const customerActualPct = customerTarget > 0 ? (customerValue / customerTarget) * 100 : 0;
   const customerExpected = stats?.expectedNewCustomers || 0;
   const customerPacing = hasCustomerTarget ? getPacingStatus(customerValue, customerExpected) : { label: 'Not Set', color: '#64748b', barColor: '#94a3b8' };
+  const ownerCapital = ownerCapitalData?.summary.ownerCapital ?? 0;
 
   const elapsedDaysText = localPeriod !== 'overall' && localPeriod !== 'day' && localPeriod !== 'custom' && stats?.elapsedDays ? ` (Day ${stats.elapsedDays})` : '';
   const targetReferenceLabel = localPeriod === 'day' || localPeriod === 'custom' ? 'Monthly target' : `Expected${elapsedDaysText}`;
@@ -982,7 +1006,7 @@ function DashboardPageContent() {
       ) : (
         <div className="space-y-6">
           {/* Row 1 */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className={`grid grid-cols-1 gap-6 ${ownerCapital > 0 ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'}`}>
             <ProgressCard
               title="Revenue"
               statusLabel={revenuePacing.label}
@@ -1024,6 +1048,7 @@ function DashboardPageContent() {
               barColor={profitPacing.barColor}
               icon={TrendingUp}
             />
+            {ownerCapital > 0 && <OwnerCapitalCard amount={ownerCapital} />}
           </div>
 
           {/* Row 2 */}

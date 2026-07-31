@@ -872,7 +872,7 @@ export const businessReportsApi = {
 
 // ─── Finance Entries API ────────────────────────────────────────────────────
 
-export type FinanceEntryType = "salary" | "cogs" | "operating_expense" | "payment" | "receivable" | "debt" | "voucher";
+export type FinanceEntryType = "salary" | "cogs" | "operating_expense" | "payment" | "receivable" | "debt" | "voucher" | "owner_capital";
 export type FinanceEntryStatus = "recorded" | "pending" | "paid" | "settled" | "overdue";
 
 export type FinanceEntry = {
@@ -906,6 +906,7 @@ export type FinanceEntrySummary = {
   receivables: number;
   debts: number;
   vouchers: number;
+  ownerCapital: number;
 };
 
 export const financeEntriesApi = {

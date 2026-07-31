@@ -43,6 +43,7 @@ const TYPES: {
   { value: "receivable", label: "Receivables", detail: "Outstanding income", icon: HandCoins, tone: "border-l-cyan-500", iconTone: "text-cyan-600 bg-cyan-50" },
   { value: "debt", label: "Debt", detail: "Outstanding liabilities", icon: Landmark, tone: "border-l-rose-500", iconTone: "text-rose-600 bg-rose-50" },
   { value: "voucher", label: "Vouchers", detail: "Supporting records", icon: FileText, tone: "border-l-slate-500", iconTone: "text-slate-600 bg-slate-50" },
+  { value: "owner_capital", label: "Owner Capital", detail: "Business investment", icon: Landmark, tone: "border-l-indigo-500", iconTone: "text-indigo-600 bg-indigo-50" },
 ];
 
 const STATUSES: FinanceEntryStatus[] = ["recorded", "pending", "paid", "settled", "overdue"];
@@ -71,6 +72,7 @@ function statusClass(status: FinanceEntryStatus) {
 }
 
 function cashTypeFor(type: FinanceEntryType) {
+  if (type === "owner_capital") return "Capital";
   return type === "payment" || type === "receivable" || type === "voucher" ? "Income" : "Expense";
 }
 
@@ -105,7 +107,8 @@ export function AccountingRecords({ dateFrom, dateTo }: { dateFrom?: string; dat
       : item.value === "payment" ? summary?.payments ?? 0
       : item.value === "receivable" ? summary?.receivables ?? 0
       : item.value === "debt" ? summary?.debts ?? 0
-      : summary?.vouchers ?? 0;
+      : item.value === "voucher" ? summary?.vouchers ?? 0
+      : summary?.ownerCapital ?? 0;
 
     return { ...item, entryType: item.value, value, isCount: item.value === "voucher" };
   }), [summary]);
@@ -181,11 +184,12 @@ export function AccountingRecords({ dateFrom, dateTo }: { dateFrom?: string; dat
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-5">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${(summary?.ownerCapital ?? 0) > 0 ? "lg:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-2 xl:grid-cols-4"}`}>
           <Summary label="Accounting Expenses" value={<AmountValue value={totalExpense} />} icon={CircleDollarSign} tone="border-l-red-500" />
           <Summary label="Open Receivables" value={<AmountValue value={summary?.receivables ?? 0} />} icon={HandCoins} tone="border-l-cyan-500" />
           <Summary label="Open Debt" value={<AmountValue value={summary?.debts ?? 0} />} icon={Landmark} tone="border-l-rose-500" />
           <Summary label="Vouchers" value={<CountValue value={summary?.vouchers ?? 0} />} icon={FileText} tone="border-l-slate-500" />
+          {(summary?.ownerCapital ?? 0) > 0 && <Summary label="Owner Capital" value={<AmountValue value={summary?.ownerCapital ?? 0} />} icon={Landmark} tone="border-l-indigo-500" />}
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -275,7 +279,7 @@ export function AccountingRecords({ dateFrom, dateTo }: { dateFrom?: string; dat
                           <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{entry.notes ?? "-"}</p>
                         </td>
                         <td className="px-4 py-4">
-                          <Badge variant="outline" className={cashType === "Income" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}>
+                          <Badge variant="outline" className={cashType === "Income" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : cashType === "Capital" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-red-200 bg-red-50 text-red-700"}>
                             {cashType}
                           </Badge>
                         </td>
@@ -356,20 +360,20 @@ export function AccountingRecords({ dateFrom, dateTo }: { dateFrom?: string; dat
 
 function AmountValue({ value, size = "md" }: { value: number; size?: "md" | "sm" }) {
   return (
-    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-      <span className={size === "sm" ? "text-base font-black text-slate-900 dark:text-slate-100" : "text-xl font-black text-slate-900 dark:text-slate-100"}>
+    <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+      <span className={size === "sm" ? "text-base font-black text-slate-900 dark:text-slate-100" : "text-lg font-black sm:text-xl text-slate-900 dark:text-slate-100"}>
         {moneyNumber(value)}
       </span>
-      <span className="text-xs font-bold text-slate-400">MMK</span>
+      <span className="text-[11px] font-bold text-slate-400 shrink-0">MMK</span>
     </span>
   );
 }
 
 function CountValue({ value }: { value: number }) {
   return (
-    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-      <span className="text-xl font-black text-slate-900 dark:text-slate-100">{Math.round(value).toLocaleString()}</span>
-      <span className="text-xs font-bold text-slate-400">records</span>
+    <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+      <span className="text-lg font-black sm:text-xl text-slate-900 dark:text-slate-100">{Math.round(value).toLocaleString()}</span>
+      <span className="text-[11px] font-bold text-slate-400 shrink-0">records</span>
     </span>
   );
 }
@@ -377,10 +381,10 @@ function CountValue({ value }: { value: number }) {
 function Summary({ label, value, icon: Icon, tone }: { label: string; value: React.ReactNode; icon: typeof CircleDollarSign; tone: string }) {
   return (
     <div className={`rounded-xl border border-slate-200 border-l-4 ${tone} bg-card p-4 shadow-sm dark:border-slate-800`}>
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">{label}</p>
-          <div className="mt-2 truncate">{value}</div>
+          <div className="mt-2 overflow-x-auto no-scrollbar">{value}</div>
         </div>
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-900">
           <Icon className="h-4 w-4" />

@@ -6,7 +6,7 @@ import { financeEntrySchema } from "@/lib/validations";
 import type { Prisma } from "@/generated/prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
-const types = new Set(["salary", "cogs", "operating_expense", "payment", "receivable", "debt", "voucher"]);
+const types = new Set(["salary", "cogs", "operating_expense", "payment", "receivable", "debt", "voucher", "owner_capital"]);
 const statuses = new Set(["recorded", "pending", "paid", "settled", "overdue"]);
 
 function toNullable(value: string | null | undefined) {
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
   if (type && types.has(type)) where.type = type;
   if (status && statuses.has(status)) where.status = status;
-  if (dateFrom || dateTo) {
+  if ((dateFrom || dateTo) && type !== "owner_capital") {
     where.entryDate = {};
     if (dateFrom) where.entryDate.gte = new Date(dateFrom);
     if (dateTo) where.entryDate.lte = new Date(`${dateTo}T23:59:59.999Z`);
@@ -40,6 +40,16 @@ export async function GET(req: NextRequest) {
   const sum = (entryType: string, openOnly = false) => entries
     .filter((entry) => entry.type === entryType && (!openOnly || !["paid", "settled"].includes(entry.status)))
     .reduce((total, entry) => total + entry.amount, 0);
+
+  const lifetimeOwnerCapitalEntries = await prisma.financeEntry.findMany({
+    where: {
+      ...uploadedByUserOrAdmin(session),
+      ...notDeleted,
+      type: "owner_capital",
+    },
+    select: { amount: true },
+  });
+  const lifetimeOwnerCapital = lifetimeOwnerCapitalEntries.reduce((total, entry) => total + entry.amount, 0);
 
   return NextResponse.json({
     entries,
@@ -51,6 +61,7 @@ export async function GET(req: NextRequest) {
       receivables: sum("receivable", true),
       debts: sum("debt", true),
       vouchers: entries.filter((entry) => entry.type === "voucher").length,
+      ownerCapital: lifetimeOwnerCapital,
     },
   });
 }

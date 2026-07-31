@@ -9,7 +9,7 @@ import {
   useBusinessReportRecommendations,
   useDeleteAllBusinessReports,
 } from '@/hooks/use-business-reports';
-import { useDeleteAllFinanceEntries } from '@/hooks/use-finance-entries';
+import { useDeleteAllFinanceEntries, useFinanceEntries } from '@/hooks/use-finance-entries';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,7 @@ import {
   Megaphone,
   Wallet,
   CircleAlert,
+  Landmark,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -99,6 +100,45 @@ function FinanceKpiCard({
           <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400">
             <Icon className="w-4 h-4" />
           </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OwnerCapitalDetails({
+  entries,
+}: {
+  entries: { id: string; entryDate: string; title: string; amount: number; notes: string | null }[];
+}) {
+  if (entries.length === 0) return null;
+
+  return (
+    <Card className="overflow-hidden rounded-xl border-2 border-indigo-100 bg-indigo-50/30 shadow-sm dark:border-indigo-950 dark:bg-indigo-950/10">
+      <CardHeader className="border-b border-indigo-100 px-5 py-4 dark:border-indigo-950">
+        <CardTitle className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
+          <Landmark className="h-4 w-4 text-indigo-600" />
+          Owner Capital Details
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">Owner investment is tracked separately and does not change revenue, expense, or profit.</p>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[620px] text-left text-sm">
+            <thead className="bg-white/70 text-[11px] font-bold uppercase tracking-wide text-muted-foreground dark:bg-slate-950/20">
+              <tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Description</th><th className="px-5 py-3">Note</th><th className="px-5 py-3 text-right">Amount</th></tr>
+            </thead>
+            <tbody className="divide-y divide-indigo-100/80 dark:divide-indigo-950">
+              {entries.slice(0, 5).map((entry) => (
+                <tr key={entry.id}>
+                  <td className="whitespace-nowrap px-5 py-3 text-xs font-semibold text-muted-foreground">{format(new Date(entry.entryDate), 'yyyy-MM-dd')}</td>
+                  <td className="px-5 py-3 font-semibold text-slate-800 dark:text-slate-100">{entry.title}</td>
+                  <td className="max-w-md px-5 py-3 text-xs text-muted-foreground">{entry.notes || '—'}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-right font-black text-indigo-700 dark:text-indigo-300">{fmt(entry.amount)} MMK</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </CardContent>
     </Card>
@@ -292,6 +332,9 @@ function BusinessReportsPageContent() {
 
   const deleteAllMutation = useDeleteAllBusinessReports();
   const deleteAllFinanceEntriesMutation = useDeleteAllFinanceEntries();
+  // Owner capital is a business-level investment reference, so it is intentionally
+  // queried across all dates rather than changing with the reporting-period filter.
+  const { data: ownerCapitalData } = useFinanceEntries({ type: 'owner_capital' });
   const visibleInsights = recsData?.recommendations.slice(0, 2) || [];
 
   const s = statsData;
@@ -299,6 +342,8 @@ function BusinessReportsPageContent() {
   const totalExpense = s?.totalBudget ?? 0;
   const profitLoss = totalRevenue - totalExpense;
   const profitMargin = totalRevenue > 0 ? Math.round((profitLoss / totalRevenue) * 100) : 0;
+  const ownerCapital = ownerCapitalData?.summary.ownerCapital ?? 0;
+  const ownerCapitalEntries = ownerCapitalData?.entries ?? [];
   const expenseBreakdown = s?.channelPerformance?.filter((ch) => ch.budget > 0) ?? [];
   const monthlyTrend = buildMonthlyTrend(yearStatsData?.dailyTrend ?? [], month, year, period);
   const computedFinanceInsights = [
@@ -451,7 +496,7 @@ function BusinessReportsPageContent() {
       )}
 
       {/* ─── KPI Cards ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
         {statsLoading ? (
           [...Array(4)].map((_, index) => <Skeleton key={index} className="h-32 rounded-xl" />)
         ) : (
@@ -483,9 +528,20 @@ function BusinessReportsPageContent() {
               icon={Percent}
               accentClass={profitMargin >= 0 ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-amber-500'}
             />
+            {ownerCapital > 0 && (
+              <FinanceKpiCard
+                label="Owner Capital"
+                value={fmt(ownerCapital)}
+                unit="MMK"
+                icon={Landmark}
+                accentClass="border-l-4 border-l-indigo-500"
+              />
+            )}
           </>
         )}
       </div>
+
+      <OwnerCapitalDetails entries={ownerCapitalEntries} />
 
       {/* ─── AI Insights ────────────────────────────────────────────── */}
       {!(totalRevenue === 0 && totalExpense === 0) && (
