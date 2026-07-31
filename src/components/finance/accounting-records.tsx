@@ -184,12 +184,11 @@ export function AccountingRecords({ dateFrom, dateTo }: { dateFrom?: string; dat
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-5">
-        <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${(summary?.ownerCapital ?? 0) > 0 ? "lg:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-2 xl:grid-cols-4"}`}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
           <Summary label="Accounting Expenses" value={<AmountValue value={totalExpense} />} icon={CircleDollarSign} tone="border-l-red-500" />
           <Summary label="Open Receivables" value={<AmountValue value={summary?.receivables ?? 0} />} icon={HandCoins} tone="border-l-cyan-500" />
           <Summary label="Open Debt" value={<AmountValue value={summary?.debts ?? 0} />} icon={Landmark} tone="border-l-rose-500" />
           <Summary label="Vouchers" value={<CountValue value={summary?.vouchers ?? 0} />} icon={FileText} tone="border-l-slate-500" />
-          {(summary?.ownerCapital ?? 0) > 0 && <Summary label="Owner Capital" value={<AmountValue value={summary?.ownerCapital ?? 0} />} icon={Landmark} tone="border-l-indigo-500" />}
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">

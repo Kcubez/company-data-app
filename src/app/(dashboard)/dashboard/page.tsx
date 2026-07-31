@@ -603,18 +603,20 @@ function ProgressCard({
   value, maxValue, valueSuffix,
   actualDetail,
   expectedLabel, expectedValue,
-  actualPct, timePct, barColor, icon: Icon
+  actualPct, timePct, barColor, icon: Icon,
+  accentClass, iconTone
 }: {
   title: string; statusLabel: string; statusColor: string;
   value: number | string; maxValue?: number | string; valueSuffix?: string; actualDetail?: string;
   expectedLabel: string; expectedValue: number | string;
   actualPct: number; timePct: number; barColor: string; icon: LucideIcon;
+  accentClass?: string; iconTone?: string;
 }) {
   return (
-    <div className="bg-card dark:bg-slate-900/40 border-2 border-slate-300 dark:border-slate-800 p-6 flex flex-col justify-between h-48 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-slate-400 dark:hover:border-slate-700 transition-all duration-200">
+    <div className={`bg-card dark:bg-slate-900/40 border-2 border-slate-300 dark:border-slate-800 p-6 flex flex-col justify-between h-48 rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-slate-400 dark:hover:border-slate-700 transition-all duration-200 ${accentClass ?? 'border-l-4 border-l-slate-400'}`}>
       <div className="flex justify-between items-center">
         <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{title}</h4>
-        <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 dark:text-slate-500">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${iconTone ?? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500'}`}>
           {Icon && <Icon className="w-4 h-4" />}
         </div>
       </div>
@@ -666,14 +668,17 @@ function OwnerCapitalCard({ amount }: { amount: number }) {
           <Wallet className="w-4 h-4" />
         </div>
       </div>
+
       <div>
         <div className="flex items-baseline gap-2">
           <h3 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight font-sans">{formatOverviewAmount(amount)}</h3>
           <p className="text-sm text-slate-400 dark:text-slate-500 font-medium font-sans">MMK</p>
         </div>
-        <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">Total owner investment recorded</p>
       </div>
-      <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Not included in revenue or expense</p>
+
+      <div className="flex items-center justify-between text-xs font-bold pt-2.5 border-t border-slate-100 dark:border-slate-800">
+        <span className="text-slate-500 dark:text-slate-400">Total owner investment</span>
+      </div>
     </div>
   );
 }
@@ -1006,7 +1011,7 @@ function DashboardPageContent() {
       ) : (
         <div className="space-y-6">
           {/* Row 1 */}
-          <div className={`grid grid-cols-1 gap-6 ${ownerCapital > 0 ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3'}`}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <ProgressCard
               title="Revenue"
               statusLabel={revenuePacing.label}
@@ -1020,6 +1025,8 @@ function DashboardPageContent() {
               timePct={timePct}
               barColor={revenuePacing.barColor}
               icon={Banknote}
+              accentClass="border-l-4 border-l-sky-500"
+              iconTone="bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400"
             />
             <ProgressCard
               title="Expense Limit"
@@ -1034,6 +1041,8 @@ function DashboardPageContent() {
               timePct={timePct}
               barColor={expensePacing.barColor}
               icon={Wallet}
+              accentClass="border-l-4 border-l-red-500"
+              iconTone="bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400"
             />
             <ProgressCard
               title="Profit Margin"
@@ -1047,8 +1056,9 @@ function DashboardPageContent() {
               timePct={timePct}
               barColor={profitPacing.barColor}
               icon={TrendingUp}
+              accentClass="border-l-4 border-l-emerald-500"
+              iconTone="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400"
             />
-            {ownerCapital > 0 && <OwnerCapitalCard amount={ownerCapital} />}
           </div>
 
           {/* Row 2 */}
@@ -1065,6 +1075,8 @@ function DashboardPageContent() {
               timePct={timePct}
               barColor={demandPacing.barColor}
               icon={Megaphone}
+              accentClass="border-l-4 border-l-amber-500"
+              iconTone="bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400"
             />
             <ProgressCard
               title="Appointments"
@@ -1078,6 +1090,8 @@ function DashboardPageContent() {
               timePct={timePct}
               barColor={apptPacing.barColor}
               icon={CalendarCheck}
+              accentClass="border-l-4 border-l-cyan-500"
+              iconTone="bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400"
             />
             <ProgressCard
               title="New Customers"
@@ -1091,8 +1105,17 @@ function DashboardPageContent() {
               timePct={timePct}
               barColor={customerPacing.barColor}
               icon={Users}
+              accentClass="border-l-4 border-l-violet-500"
+              iconTone="bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
             />
           </div>
+
+          {/* Row 3 - Owner Capital */}
+          {ownerCapital > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <OwnerCapitalCard amount={ownerCapital} />
+            </div>
+          )}
         </div>
       )}
 
