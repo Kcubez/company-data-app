@@ -16,6 +16,7 @@ import {
   parseProjectExpiryMessageWithGemini,
   parseWebsiteUpdateMessageWithGemini,
   parseBusinessReportWithGemini,
+  parseBusinessReportMessage,
   parseExcelDate,
   type ParsedDemandRecord,
   type ParsedProjectExpiration,
@@ -3440,7 +3441,10 @@ export async function POST(req: NextRequest) {
             settings,
             chatId,
             senderId: sender.id,
-            telegramMessageId: telegramMessage.id,
+            // Keep Telegram's numeric message ID for later approval copies.
+            // The database row ID is an internal CUID and cannot be used with
+            // Telegram's copyMessage API.
+            telegramMessageId: String(message.message_id),
             progressMsgId,
             receivedAtMyanmar,
             activeMode,
@@ -3736,12 +3740,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      const parsed = await parseBusinessReportWithGemini({
-        text: message.text,
-        apiKey: settings?.geminiApiKey,
-        model: settings?.geminiModel,
-        fallbackDate: receivedAtMyanmar,
-      });
+      // Finance text follows a fixed template, so parse it locally. This
+      // returns the staff preview immediately instead of waiting for Gemini.
+      const parsed = parseBusinessReportMessage(message.text, receivedAtMyanmar);
 
       const financeRecords: FinanceRecord[] = [
         ...(parsed.totalSalesAmount && parsed.totalSalesAmount > 0 ? [{
