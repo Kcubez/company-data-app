@@ -144,6 +144,36 @@ async function sendTelegramMessage({
   }
 }
 
+async function copyTelegramMessage({
+  botToken,
+  fromChatId,
+  toChatId,
+  messageId,
+}: {
+  botToken: string | null | undefined;
+  fromChatId: bigint | number;
+  toChatId: bigint | number;
+  messageId: string | number;
+}) {
+  if (!botToken) return false;
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/copyMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: toChatId.toString(),
+        from_chat_id: fromChatId.toString(),
+        message_id: Number(messageId),
+      }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error('Error copying Telegram message for data approval:', err);
+    return false;
+  }
+}
+
 async function answerCallbackQuery(botToken: string | null | undefined, callbackQueryId: string, text: string) {
   if (!botToken) return;
   await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
@@ -2366,11 +2396,19 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: true });
           }
           await prisma.pendingDemandImport.update({ where: { id: pending.id }, data: { status: 'pending_owner_review' } });
-          await Promise.all(approvers.map((approver) => sendTelegramMessage({
+          await Promise.all(approvers.map(async (approver) => {
+            await copyTelegramMessage({
+              botToken: settings.botToken,
+              fromChatId: pending.chatId,
+              toChatId: approver.telegramUserId!,
+              messageId: pending.messageId,
+            });
+            return sendTelegramMessage({
             botToken: settings.botToken, chatId: approver.telegramUserId!,
             text: ['🧾 <b>Data approval required</b>', '━━━━━━━━━━━━━━━━━━━━', `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Records:</b> <code>${recordCount}</code>`, '', 'Data format ကိုစစ်ဆေးပြီး approval ပြုလုပ်ပါ။'].join('\n'),
             replyMarkup: { inline_keyboard: [[{ text: '✅ Approve & Import', callback_data: `data_approval_approve:${pending.id}` }, { text: '❌ Reject', callback_data: `data_approval_reject:${pending.id}` }]] },
-          })));
+            });
+          }));
           await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Sent for data approval');
           if (chatId && messageId) await editTelegramMessage({
             botToken: settings?.botToken, chatId: BigInt(chatId), messageId,
@@ -2468,7 +2506,14 @@ export async function POST(req: NextRequest) {
           where: { id: pending.id },
           data: { status: 'pending_owner_review' },
         });
-        await Promise.all(approvers.map((approver) => sendTelegramMessage({
+        await Promise.all(approvers.map(async (approver) => {
+          await copyTelegramMessage({
+            botToken: settings.botToken,
+            fromChatId: pending.chatId,
+            toChatId: approver.telegramUserId!,
+            messageId: pending.messageId,
+          });
+          return sendTelegramMessage({
           botToken: settings.botToken,
           chatId: approver.telegramUserId!,
           text: [
@@ -2490,7 +2535,8 @@ export async function POST(req: NextRequest) {
               { text: '❌ Reject', callback_data: `data_approval_reject:${pending.id}` },
             ]],
           },
-        })));
+          });
+        }));
 
         await answerCallbackQuery(
           settings?.botToken,
@@ -3697,42 +3743,33 @@ export async function POST(req: NextRequest) {
         fallbackDate: receivedAtMyanmar,
       });
 
-      await prisma.businessReport.create({
-        data: {
-          uploadedByUserId: settings.userId,
-          reportDate: parsed.reportDate,
-          reporterName: parsed.reporterName || sender.displayName,
-          senderId: sender.id,
-          messageId: telegramMessage.id,
-          marketingBudget: parsed.marketingBudget,
-          marketingChannel: parsed.marketingChannel,
-          callsMade: parsed.callsMade,
-          appointmentsMade: parsed.appointmentsMade,
-          appointmentsKept: parsed.appointmentsKept,
-          newLeads: parsed.newLeads,
-          totalDemandCount: parsed.totalDemandCount,
-          totalSalesAmount: parsed.totalSalesAmount,
-          closedDeals: parsed.closedDeals,
-          pendingDeals: parsed.pendingDeals,
-          notes: parsed.notes,
-        },
-      });
-
-      const confirmParts = [
-        "✅ <b>ဘဏ္ဍာရေး ငွေသွင်း/ငွေထုတ် မှတ်တမ်း တင်သွင်းခြင်း အောင်မြင်ပါသည်</b>",
-        "━━━━━━━━━━━━━━━━━━━━",
-        `📅 <b>ရက်စွဲ:</b> <code>${parsed.reportDate.toISOString().slice(0, 10)}</code>`,
+      const financeRecords: FinanceRecord[] = [
+        ...(parsed.totalSalesAmount && parsed.totalSalesAmount > 0 ? [{
+          date: parsed.reportDate,
+          description: parsed.notes || 'Telegram finance entry',
+          category: parsed.marketingChannel || 'Service',
+          type: 'Income', amount: parsed.totalSalesAmount,
+          paymentMethod: '', reference: '', notes: parsed.notes || '',
+        }] : []),
+        ...(parsed.marketingBudget && parsed.marketingBudget > 0 ? [{
+          date: parsed.reportDate,
+          description: parsed.notes || 'Telegram finance entry',
+          category: parsed.marketingChannel || 'Operating Expense',
+          type: 'Expense', amount: parsed.marketingBudget,
+          paymentMethod: '', reference: '', notes: parsed.notes || '',
+        }] : []),
       ];
-      if (parsed.marketingChannel) confirmParts.push(`🏷️ <b>Category/Channel:</b> <code>${parsed.marketingChannel}</code>`);
-      if (parsed.marketingBudget != null) confirmParts.push(`💸 <b>Expense:</b> <code>${parsed.marketingBudget.toLocaleString()} Ks</code>`);
-      if (parsed.totalSalesAmount != null) confirmParts.push(`💰 <b>Income:</b> <code>${parsed.totalSalesAmount.toLocaleString()} Ks</code>`);
-      if (parsed.notes) confirmParts.push(`📝 <b>Notes:</b> <i>${parsed.notes}</i>`);
-      confirmParts.push(getFormatHintFooter('finance_transactions'));
-
-      await sendTelegramMessage({
-        botToken: settings?.botToken,
+      await queueStructuredSubmission({
+        fileName: `Finance text entry — ${parsed.reportDate.toISOString().slice(0, 10)}`,
+        fileType: 'text/plain',
+        kind: 'finance_transactions',
+        payload: { records: financeRecords },
+        rowCount: financeRecords.length,
+        senderId: sender.id,
+        messageId: String(message.message_id),
         chatId,
-        text: confirmParts.join('\n'),
+        progressMsgId: null,
+        botToken: settings.botToken,
       });
 
       return NextResponse.json({ ok: true });
