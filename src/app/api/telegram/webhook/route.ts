@@ -1079,6 +1079,14 @@ function structuredSubmissionCount(pending: { summary: Prisma.JsonValue }) {
   return 0;
 }
 
+function sourceTelegramMessageId(pending: { summary: Prisma.JsonValue }) {
+  if (pending.summary && typeof pending.summary === 'object' && !Array.isArray(pending.summary)) {
+    const value = (pending.summary as Record<string, unknown>).sourceTelegramMessageId;
+    if (typeof value === 'string' || typeof value === 'number') return String(value);
+  }
+  return null;
+}
+
 function buildStructuredPreviewText({ fileName, kind, rowCount }: { fileName: string; kind: StructuredSubmissionKind; rowCount: number }) {
   return [
     `📄 <b>${structuredSubmissionTitle(kind)} file preview</b>`,
@@ -1098,6 +1106,7 @@ async function queueStructuredSubmission({
   rowCount,
   senderId,
   messageId,
+  sourceTelegramMessageId,
   chatId,
   progressMsgId,
   botToken,
@@ -1109,6 +1118,7 @@ async function queueStructuredSubmission({
   rowCount: number;
   senderId: string;
   messageId: string;
+  sourceTelegramMessageId?: string | null;
   chatId: bigint;
   progressMsgId: number | null;
   botToken: string | null;
@@ -1123,7 +1133,7 @@ async function queueStructuredSubmission({
       fileType,
       extractedText: '',
       parsedRows: serializeForPending(payload),
-      summary: serializeForPending({ total: rowCount }),
+      summary: serializeForPending({ total: rowCount, ...(sourceTelegramMessageId ? { sourceTelegramMessageId } : {}) }),
       reportType: kind,
       status: 'pending',
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -1822,6 +1832,7 @@ async function processFileInBackground({
   chatId,
   senderId,
   telegramMessageId,
+  sourceTelegramMessageId,
   progressMsgId,
   receivedAtMyanmar,
   activeMode,
@@ -1833,6 +1844,7 @@ async function processFileInBackground({
   chatId: bigint;
   senderId: string;
   telegramMessageId: string;
+  sourceTelegramMessageId: string;
   progressMsgId: number | null;
   receivedAtMyanmar: Date;
   activeMode: string;
@@ -1894,7 +1906,7 @@ async function processFileInBackground({
         fileName: fileInfo.fileName, fileType: fileInfo.mimeType, kind: 'project_service_tracking',
         payload: { projects: parsedExpiryRecords, websites: parsedWebsiteUpdateRecords },
         rowCount: Math.max(parsedExpiryRecords.length, parsedWebsiteUpdateRecords.length),
-        senderId, messageId: telegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
+        senderId, messageId: telegramMessageId, sourceTelegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
       });
       return;
     }
@@ -1976,7 +1988,7 @@ async function processFileInBackground({
       await queueStructuredSubmission({
         fileName: fileInfo.fileName, fileType: fileInfo.mimeType, kind: 'business_report',
         payload: { records: parsedBusinessReportRecords }, rowCount: parsedBusinessReportRecords.length,
-        senderId, messageId: telegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
+        senderId, messageId: telegramMessageId, sourceTelegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
       });
       return;
     }
@@ -1985,7 +1997,7 @@ async function processFileInBackground({
       await queueStructuredSubmission({
         fileName: fileInfo.fileName, fileType: fileInfo.mimeType, kind: 'finance_transactions',
         payload: { records: parsedFinanceRecords }, rowCount: parsedFinanceRecords.length,
-        senderId, messageId: telegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
+        senderId, messageId: telegramMessageId, sourceTelegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
       });
       return;
     }
@@ -2038,7 +2050,7 @@ async function processFileInBackground({
         fileType: fileInfo.mimeType,
         extractedText: extractedText.slice(0, 10000),
         parsedRows: parsedDemands.map(serializeParsedDemand),
-        summary,
+        summary: { ...summary, sourceTelegramMessageId },
         errors,
         reportType: activeMode === 'customer_service' ? 'customer_service' : 'demand_report',
         status: 'pending',
@@ -2398,11 +2410,10 @@ export async function POST(req: NextRequest) {
           }
           await prisma.pendingDemandImport.update({ where: { id: pending.id }, data: { status: 'pending_owner_review' } });
           await Promise.all(approvers.map(async (approver) => {
-            await copyTelegramMessage({
-              botToken: settings.botToken,
-              fromChatId: pending.chatId,
-              toChatId: approver.telegramUserId!,
-              messageId: pending.messageId,
+            const originalMessageId = sourceTelegramMessageId(pending);
+            if (originalMessageId) await copyTelegramMessage({
+              botToken: settings.botToken, fromChatId: pending.chatId,
+              toChatId: approver.telegramUserId!, messageId: originalMessageId,
             });
             return sendTelegramMessage({
             botToken: settings.botToken, chatId: approver.telegramUserId!,
@@ -2508,11 +2519,10 @@ export async function POST(req: NextRequest) {
           data: { status: 'pending_owner_review' },
         });
         await Promise.all(approvers.map(async (approver) => {
-          await copyTelegramMessage({
-            botToken: settings.botToken,
-            fromChatId: pending.chatId,
-            toChatId: approver.telegramUserId!,
-            messageId: pending.messageId,
+          const originalMessageId = sourceTelegramMessageId(pending);
+          if (originalMessageId) await copyTelegramMessage({
+            botToken: settings.botToken, fromChatId: pending.chatId,
+            toChatId: approver.telegramUserId!, messageId: originalMessageId,
           });
           return sendTelegramMessage({
           botToken: settings.botToken,
@@ -3441,10 +3451,10 @@ export async function POST(req: NextRequest) {
             settings,
             chatId,
             senderId: sender.id,
-            // Keep Telegram's numeric message ID for later approval copies.
-            // The database row ID is an internal CUID and cannot be used with
-            // Telegram's copyMessage API.
-            telegramMessageId: String(message.message_id),
+            // This foreign key references the stored TelegramMessage row.
+            telegramMessageId: telegramMessage.id,
+            // Retain Telegram's numeric ID separately for copyMessage.
+            sourceTelegramMessageId: String(message.message_id),
             progressMsgId,
             receivedAtMyanmar,
             activeMode,
@@ -3767,7 +3777,8 @@ export async function POST(req: NextRequest) {
         payload: { records: financeRecords },
         rowCount: financeRecords.length,
         senderId: sender.id,
-        messageId: String(message.message_id),
+        messageId: telegramMessage.id,
+        sourceTelegramMessageId: String(message.message_id),
         chatId,
         progressMsgId: null,
         botToken: settings.botToken,
