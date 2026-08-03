@@ -23,7 +23,11 @@ function personName(person: DataApproval['sender'] | null) {
 }
 
 function reportLabel(reportType: string) {
-  return reportType === 'customer_service' ? 'Customer Service' : 'Sales & Marketing';
+  if (reportType === 'customer_service') return 'Customer Service';
+  if (reportType === 'finance_transactions') return 'Finance Transactions';
+  if (reportType === 'project_service_tracking') return 'Project & Service Tracking';
+  if (reportType === 'business_report') return 'Business KPI Report';
+  return 'Sales & Marketing';
 }
 
 function formatDate(value: string | null) {

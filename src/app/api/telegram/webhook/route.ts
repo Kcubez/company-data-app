@@ -1018,6 +1018,166 @@ function normalizeFinanceEntryStatus(rec: FinanceRecord): string {
   return "recorded";
 }
 
+type StructuredSubmissionKind = 'finance_transactions' | 'project_service_tracking' | 'business_report';
+
+function isStructuredSubmission(reportType: string): reportType is StructuredSubmissionKind {
+  return reportType === 'finance_transactions' || reportType === 'project_service_tracking' || reportType === 'business_report';
+}
+
+function serializeForPending(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function dateFromPending(value: unknown): Date | null {
+  if (!value) return null;
+  const timestamp = Date.parse(String(value));
+  return Number.isNaN(timestamp) ? null : new Date(timestamp);
+}
+
+function structuredSubmissionTitle(kind: StructuredSubmissionKind) {
+  if (kind === 'finance_transactions') return 'Finance Transactions';
+  if (kind === 'project_service_tracking') return 'Project & Service Tracking';
+  return 'Business KPI Report';
+}
+
+function structuredSubmissionCount(pending: { summary: Prisma.JsonValue }) {
+  if (pending.summary && typeof pending.summary === 'object' && !Array.isArray(pending.summary)) {
+    const total = (pending.summary as Record<string, unknown>).total;
+    if (typeof total === 'number' && Number.isFinite(total)) return total;
+  }
+  return 0;
+}
+
+function buildStructuredPreviewText({ fileName, kind, rowCount }: { fileName: string; kind: StructuredSubmissionKind; rowCount: number }) {
+  return [
+    `📄 <b>${structuredSubmissionTitle(kind)} file preview</b>`,
+    '━━━━━━━━━━━━━━━━━━━━',
+    `📎 <b>File:</b> <code>${escapeHtml(fileName)}</code>`,
+    `📊 <b>Records detected:</b> <code>${rowCount}</code>`,
+    '',
+    'ဒီ preview မှန်တယ်ဆိုရင် <b>Confirm Import</b> ကိုနှိပ်ပါ။ Confirm ပြီးလျှင် Data Approver ရှိပါက approval စောင့်ပါမည်။',
+  ].join('\n');
+}
+
+async function queueStructuredSubmission({
+  fileName,
+  fileType,
+  kind,
+  payload,
+  rowCount,
+  senderId,
+  messageId,
+  chatId,
+  progressMsgId,
+  botToken,
+}: {
+  fileName: string;
+  fileType: string | null;
+  kind: StructuredSubmissionKind;
+  payload: unknown;
+  rowCount: number;
+  senderId: string;
+  messageId: string;
+  chatId: bigint;
+  progressMsgId: number | null;
+  botToken: string | null;
+}) {
+  const pending = await prisma.pendingDemandImport.create({
+    data: {
+      senderId,
+      messageId,
+      chatId,
+      previewMessageId: progressMsgId,
+      fileName,
+      fileType,
+      extractedText: '',
+      parsedRows: serializeForPending(payload),
+      summary: serializeForPending({ total: rowCount }),
+      reportType: kind,
+      status: 'pending',
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    },
+  });
+  const replyMarkup = {
+    inline_keyboard: [[
+      { text: '✅ Confirm Import', callback_data: `demand_import_confirm:${pending.id}` },
+      { text: '❌ Cancel', callback_data: `demand_import_cancel:${pending.id}` },
+    ]],
+  };
+  const text = buildStructuredPreviewText({ fileName, kind, rowCount });
+  if (progressMsgId) {
+    await editTelegramMessage({ botToken, chatId, messageId: progressMsgId, text, replyMarkup });
+  } else {
+    const preview = await sendTelegramMessage({ botToken, chatId, text, replyMarkup });
+    if (preview) {
+      await prisma.pendingDemandImport.update({ where: { id: pending.id }, data: { previewMessageId: preview.message_id } });
+    }
+  }
+}
+
+async function importStructuredSubmission(pending: { reportType: string; parsedRows: Prisma.JsonValue; senderId: string; messageId: string; fileName: string; fileType: string | null }, ownerUserId: string | null, fallbackDate: Date) {
+  const payload = pending.parsedRows as Record<string, unknown>;
+  if (pending.reportType === 'finance_transactions') {
+    const records = Array.isArray(payload.records) ? payload.records : [];
+    const financeRecords: FinanceRecord[] = records.map((row) => {
+      const value = row as Record<string, unknown>;
+      return {
+        date: dateFromPending(value.date) || fallbackDate,
+        description: String(value.description || ''), category: String(value.category || ''), type: String(value.type || ''),
+        amount: Number(value.amount || 0), paymentMethod: String(value.paymentMethod || ''), reference: String(value.reference || ''), notes: String(value.notes || ''),
+        financeRecordType: typeof value.financeRecordType === 'string' ? value.financeRecordType : undefined,
+        status: typeof value.status === 'string' ? value.status : undefined,
+        counterparty: typeof value.counterparty === 'string' ? value.counterparty : undefined,
+        dueDate: dateFromPending(value.dueDate), voucherNumber: typeof value.voucherNumber === 'string' ? value.voucherNumber : undefined,
+        accountingSection: typeof value.accountingSection === 'string' ? value.accountingSection : undefined,
+      };
+    });
+    const businessCreates = financeRecords.filter((rec) => normalizeFinanceEntryType(rec) !== 'owner_capital').map((rec) => {
+      const isIncome = rec.type.toLowerCase() === 'income'; const recordDate = rec.date || fallbackDate;
+      return { uploadedByUserId: ownerUserId, reportDate: recordDate, senderId: pending.senderId, messageId: pending.messageId, marketingBudget: isIncome ? 0 : rec.amount, marketingChannel: rec.category || 'Service', notes: `${rec.description} (Ref: ${rec.reference}, Method: ${rec.paymentMethod}). ${rec.notes || ''}`, totalSalesAmount: isIncome ? rec.amount : 0, newLeads: isIncome ? 0 : (rec.category === 'Marketing' ? 1 : 0), closedDeals: isIncome ? 1 : 0, totalDemandCount: 1, reporterName: 'Telegram Upload', createdAt: recordDate };
+    });
+    const accountingCreates = financeRecords.map((rec) => {
+      const noteParts = [rec.notes, rec.paymentMethod ? `Method: ${rec.paymentMethod}` : '', rec.reference ? `Reference: ${rec.reference}` : '', rec.accountingSection ? `Section: ${rec.accountingSection}` : ''].filter(Boolean);
+      return { uploadedByUserId: ownerUserId, entryDate: rec.date || fallbackDate, type: normalizeFinanceEntryType(rec), title: rec.description || rec.category || 'Finance record', amount: rec.amount, status: normalizeFinanceEntryStatus(rec), counterparty: rec.counterparty?.trim() || null, dueDate: rec.dueDate || null, voucherNumber: rec.voucherNumber?.trim() || rec.reference?.trim() || null, notes: noteParts.join('. ') || null, createdAt: rec.date || fallbackDate };
+    });
+    await prisma.$transaction([
+      ...(businessCreates.length ? [prisma.businessReport.createMany({ data: businessCreates })] : []),
+      ...(accountingCreates.length ? [prisma.financeEntry.createMany({ data: accountingCreates })] : []),
+    ]);
+    return financeRecords.length;
+  }
+
+  if (pending.reportType === 'project_service_tracking') {
+    const projectRows = Array.isArray(payload.projects) ? payload.projects : [];
+    const websiteRows = Array.isArray(payload.websites) ? payload.websites : [];
+    const projectCreates = projectRows.map((row) => {
+      const value = row as Record<string, unknown>;
+      return { uploadedByUserId: ownerUserId, projectName: String(value.projectName || ''), url: typeof value.url === 'string' ? value.url : null, packageName: typeof value.packageName === 'string' ? value.packageName : null, domainProvider: typeof value.domainProvider === 'string' ? value.domainProvider : null, hostingProvider: typeof value.hostingProvider === 'string' ? value.hostingProvider : null, hostingRemark: typeof value.hostingRemark === 'string' ? value.hostingRemark : null, domainExpireDate: dateFromPending(value.domainExpireDate), hostingExpireDate: dateFromPending(value.hostingExpireDate), offerExpireDate: dateFromPending(value.offerExpireDate), projectStatus: typeof value.projectStatus === 'string' ? value.projectStatus : 'active', remark: typeof value.remark === 'string' ? value.remark : null, createdAt: dateFromPending(value.createdAt) || fallbackDate };
+    });
+    const websiteCreates = websiteRows.map((row) => {
+      const value = row as Record<string, unknown>;
+      return { uploadedByUserId: ownerUserId, name: String(value.name || ''), url: typeof value.url === 'string' ? value.url : null, businessType: typeof value.businessType === 'string' ? value.businessType : null, packageName: typeof value.packageName === 'string' ? value.packageName : null, status: typeof value.status === 'string' ? value.status : 'pending_update', remark: typeof value.remark === 'string' ? value.remark : null, createdAt: dateFromPending(value.createdAt) || fallbackDate };
+    });
+    await prisma.$transaction([
+      ...(projectCreates.length ? [prisma.projectExpiration.createMany({ data: projectCreates })] : []),
+      ...(websiteCreates.length ? [prisma.websiteUpdate.createMany({ data: websiteCreates })] : []),
+    ]);
+    return Math.max(projectCreates.length, websiteCreates.length);
+  }
+
+  if (pending.reportType === 'business_report') {
+    const records = Array.isArray(payload.records) ? payload.records : [];
+    const creates = records.map((row) => {
+      const value = row as Record<string, unknown>;
+      const numberOrNull = (input: unknown) => typeof input === 'number' && Number.isFinite(input) ? input : null;
+      return { uploadedByUserId: ownerUserId, reportDate: dateFromPending(value.reportDate) || fallbackDate, reporterName: typeof value.reporterName === 'string' ? value.reporterName : null, senderId: pending.senderId, messageId: pending.messageId, marketingBudget: numberOrNull(value.marketingBudget), marketingChannel: typeof value.marketingChannel === 'string' ? value.marketingChannel : null, callsMade: numberOrNull(value.callsMade), appointmentsMade: numberOrNull(value.appointmentsMade), appointmentsKept: numberOrNull(value.appointmentsKept), newLeads: numberOrNull(value.newLeads), totalDemandCount: numberOrNull(value.totalDemandCount), totalSalesAmount: numberOrNull(value.totalSalesAmount), closedDeals: numberOrNull(value.closedDeals), pendingDeals: numberOrNull(value.pendingDeals), notes: typeof value.notes === 'string' ? value.notes : null, targetDemandCount: numberOrNull(value.targetDemandCount), targetAppointments: numberOrNull(value.targetAppointments), targetSalesAmount: numberOrNull(value.targetSalesAmount) };
+    });
+    if (creates.length) await prisma.businessReport.createMany({ data: creates });
+    return creates.length;
+  }
+  return 0;
+}
+
 function getCopyPasteTemplateForMode(mode: string | null | undefined): string {
   switch (mode) {
     case 'demand_report':
@@ -1699,50 +1859,12 @@ async function processFileInBackground({
     }
 
     if (isProjectServiceTrackingFile) {
-      const expiryCreates = parsedExpiryRecords.map(rec => ({
-        uploadedByUserId: settings.userId,
-        projectName: rec.projectName,
-        url: rec.url,
-        packageName: rec.packageName,
-        domainProvider: rec.domainProvider,
-        hostingProvider: rec.hostingProvider,
-        hostingRemark: rec.hostingRemark,
-        domainExpireDate: rec.domainExpireDate,
-        hostingExpireDate: rec.hostingExpireDate,
-        offerExpireDate: rec.offerExpireDate || null,
-        projectStatus: rec.projectStatus || 'active',
-        remark: rec.remark,
-        createdAt: rec.createdAt || receivedAtMyanmar,
-      }));
-      const updateCreates = parsedWebsiteUpdateRecords.map(rec => ({
-        uploadedByUserId: settings.userId,
-        name: rec.name,
-        url: rec.url,
-        businessType: rec.businessType,
-        packageName: rec.packageName,
-        status: rec.status || 'pending_update',
-        remark: rec.remark,
-        createdAt: rec.createdAt || receivedAtMyanmar,
-      }));
-
-      await prisma.$transaction([
-        prisma.projectExpiration.createMany({ data: expiryCreates }),
-        prisma.websiteUpdate.createMany({ data: updateCreates }),
-      ]);
-
-      if (progressMsgId) {
-        await editTelegramMessage({
-          botToken: settings.botToken,
-          chatId,
-          messageId: progressMsgId,
-          text: [
-            '✅ <b>Project & Service Tracking စာရင်းသွင်းပြီးပါပြီ</b>',
-            '━━━━━━━━━━━━━━━━━━━━',
-            `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
-            `📊 <b>အရေအတွက်:</b> <code>${Math.max(expiryCreates.length, updateCreates.length)}</code> ခုကို Project expiry နှင့် Website update အဖြစ် အောင်မြင်စွာ မှတ်တမ်းတင်ပြီးပါပြီ။`,
-          ].join('\n'),
-        });
-      }
+      await queueStructuredSubmission({
+        fileName: fileInfo.fileName, fileType: fileInfo.mimeType, kind: 'project_service_tracking',
+        payload: { projects: parsedExpiryRecords, websites: parsedWebsiteUpdateRecords },
+        rowCount: Math.max(parsedExpiryRecords.length, parsedWebsiteUpdateRecords.length),
+        senderId, messageId: telegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
+      });
       return;
     }
 
@@ -1820,111 +1942,20 @@ async function processFileInBackground({
     }
 
     if (isBusinessReportFile) {
-      const creates = parsedBusinessReportRecords.map((rec) => ({
-        uploadedByUserId: settings.userId,
-        reportDate: rec.reportDate || receivedAtMyanmar,
-        reporterName: rec.reporterName || null,
-        senderId: senderId,
-        messageId: telegramMessageId,
-        marketingBudget: rec.marketingBudget,
-        marketingChannel: rec.marketingChannel,
-        callsMade: rec.callsMade,
-        appointmentsMade: rec.appointmentsMade,
-        appointmentsKept: rec.appointmentsKept,
-        newLeads: rec.newLeads,
-        totalDemandCount: rec.totalDemandCount,
-        totalSalesAmount: rec.totalSalesAmount,
-        closedDeals: rec.closedDeals,
-        pendingDeals: rec.pendingDeals,
-        notes: rec.notes,
-      }));
-
-      if (creates.length > 0) {
-        await prisma.businessReport.createMany({ data: creates });
-      }
-
-      if (progressMsgId) {
-        await editTelegramMessage({
-          botToken: settings.botToken,
-          chatId,
-          messageId: progressMsgId,
-          text: [
-            "✅ <b>လုပ်ငန်းလှုပ်ရှားမှု မှတ်တမ်းများ တင်သွင်းပြီးပါပြီ</b>",
-            "━━━━━━━━━━━━━━━━━━━━",
-            `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
-            `📊 <b>အရေအတွက်:</b> <code>${creates.length}</code> ရက်/မှတ်တမ်းများကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။`,
-          ].join("\n"),
-        });
-      }
+      await queueStructuredSubmission({
+        fileName: fileInfo.fileName, fileType: fileInfo.mimeType, kind: 'business_report',
+        payload: { records: parsedBusinessReportRecords }, rowCount: parsedBusinessReportRecords.length,
+        senderId, messageId: telegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
+      });
       return;
     }
 
     if (isFinanceFile) {
-      const creates = parsedFinanceRecords.filter((rec) => normalizeFinanceEntryType(rec) !== "owner_capital").map((rec) => {
-        const isIncome = rec.type.toLowerCase() === 'income';
-        const recordDate = rec.date || receivedAtMyanmar;
-        return {
-          uploadedByUserId: settings.userId,
-          reportDate: recordDate,
-          senderId: senderId,
-          messageId: telegramMessageId,
-          marketingBudget: isIncome ? 0 : rec.amount,
-          marketingChannel: rec.category || "Service",
-          notes: `${rec.description} (Ref: ${rec.reference}, Method: ${rec.paymentMethod}). ${rec.notes || ""}`,
-          totalSalesAmount: isIncome ? rec.amount : 0,
-          newLeads: isIncome ? 0 : (rec.category === "Marketing" ? 1 : 0),
-          closedDeals: isIncome ? 1 : 0,
-          totalDemandCount: 1,
-          reporterName: "Telegram Upload",
-          createdAt: recordDate,
-        };
+      await queueStructuredSubmission({
+        fileName: fileInfo.fileName, fileType: fileInfo.mimeType, kind: 'finance_transactions',
+        payload: { records: parsedFinanceRecords }, rowCount: parsedFinanceRecords.length,
+        senderId, messageId: telegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
       });
-      const accountingCreates = parsedFinanceRecords.map((rec) => {
-        const recordDate = rec.date || receivedAtMyanmar;
-        const entryType = normalizeFinanceEntryType(rec);
-        const status = normalizeFinanceEntryStatus(rec);
-        const noteParts = [
-          rec.notes,
-          rec.paymentMethod ? `Method: ${rec.paymentMethod}` : "",
-          rec.reference ? `Reference: ${rec.reference}` : "",
-          rec.accountingSection ? `Section: ${rec.accountingSection}` : "",
-        ].filter(Boolean);
-
-        return {
-          uploadedByUserId: settings.userId,
-          entryDate: recordDate,
-          type: entryType,
-          title: rec.description || rec.category || "Finance record",
-          amount: rec.amount,
-          status,
-          counterparty: rec.counterparty?.trim() || null,
-          dueDate: rec.dueDate || null,
-          voucherNumber: rec.voucherNumber?.trim() || rec.reference?.trim() || null,
-          notes: noteParts.join(". ") || null,
-          createdAt: recordDate,
-        };
-      });
-
-      if (creates.length > 0) {
-        await prisma.businessReport.createMany({ data: creates });
-      }
-      if (accountingCreates.length > 0) {
-        await prisma.financeEntry.createMany({ data: accountingCreates });
-      }
-
-      if (progressMsgId) {
-        await editTelegramMessage({
-          botToken: settings.botToken,
-          chatId,
-          messageId: progressMsgId,
-          text: [
-            "✅ <b>ဘဏ္ဍာရေး ငွေသွင်း/ငွေထုတ် မှတ်တမ်းများ တင်သွင်းပြီးပါပြီ</b>",
-            "━━━━━━━━━━━━━━━━━━━━",
-            `📄 <b>ဖိုင်အမည်:</b> <code>${fileInfo.fileName}</code>`,
-            `📊 <b>အရေအတွက်:</b> <code>${creates.length}</code> စောင်ကို အောင်မြင်စွာ မှတ်တမ်းတင်ပြီးပါပြီ။`,
-          ].join("\n"),
-        });
-      }
       return;
     }
 
@@ -2151,6 +2182,42 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ ok: true });
         }
 
+        if (isStructuredSubmission(pending.reportType)) {
+          const importedCount = await importStructuredSubmission(pending, settings.userId, new Date());
+          await prisma.pendingDemandImport.update({
+            where: { id: pending.id },
+            data: { status: 'approved', approverId: sender.id, reviewedAt: new Date(), reviewNote: `Approved by ${reviewerName}` },
+          });
+          await sendTelegramMessage({
+            botToken: settings.botToken,
+            chatId: pending.chatId,
+            text: [
+              '✅ <b>File submission approved and imported</b>',
+              '━━━━━━━━━━━━━━━━━━━━',
+              `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+              `📁 <b>Mode:</b> ${structuredSubmissionTitle(pending.reportType)}`,
+              `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
+              `👤 <b>Approved by:</b> ${escapeHtml(reviewerName)}`,
+            ].join('\n'),
+          });
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, `Imported ${importedCount} records`);
+          if (chatId && messageId) {
+            await editTelegramMessage({
+              botToken: settings.botToken,
+              chatId: BigInt(chatId),
+              messageId,
+              text: [
+                '✅ <b>File submission approved</b>',
+                '━━━━━━━━━━━━━━━━━━━━',
+                `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+                `📁 <b>Mode:</b> ${structuredSubmissionTitle(pending.reportType)}`,
+                `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
+              ].join('\n'),
+            });
+          }
+          return NextResponse.json({ ok: true });
+        }
+
         const rows = Array.isArray(pending.parsedRows)
           ? pending.parsedRows.map((row) => hydrateParsedDemand(row as Record<string, unknown>))
           : [];
@@ -2275,6 +2342,42 @@ export async function POST(req: NextRequest) {
         const rows = Array.isArray(pending.parsedRows)
           ? pending.parsedRows.map((row) => hydrateParsedDemand(row as Record<string, unknown>))
           : [];
+
+        if (isStructuredSubmission(pending.reportType)) {
+          const structuredKind = pending.reportType;
+          const recordCount = structuredSubmissionCount(pending);
+          if (recordCount === 0) {
+            await prisma.pendingDemandImport.update({ where: { id: pending.id }, data: { status: 'cancelled' } });
+            await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'No records to import');
+            return NextResponse.json({ ok: true });
+          }
+          const approvers = await prisma.telegramSender.findMany({
+            where: { userId: settings.userId, isAuthorized: true, isVerified: true, isDataApprover: true, id: { not: pending.senderId }, telegramUserId: { not: null } },
+            select: { telegramUserId: true },
+          });
+          if (approvers.length === 0) {
+            const importedCount = await importStructuredSubmission(pending, settings.userId, new Date());
+            await prisma.pendingDemandImport.update({ where: { id: pending.id }, data: { status: 'confirmed', reviewNote: 'Imported directly: no Data Approver configured' } });
+            await answerCallbackQuery(settings?.botToken, callbackQuery.id, `Imported ${importedCount} records`);
+            if (chatId && messageId) await editTelegramMessage({
+              botToken: settings?.botToken, chatId: BigInt(chatId), messageId,
+              text: ['✅ <b>File imported</b>', '━━━━━━━━━━━━━━━━━━━━', `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Imported:</b> <code>${importedCount}</code> records`, '', 'Independent Data Approver မရှိသေးသဖြင့် dashboard ထဲသို့ တိုက်ရိုက်သွင်းပြီးပါပြီ။'].join('\n'),
+            });
+            return NextResponse.json({ ok: true });
+          }
+          await prisma.pendingDemandImport.update({ where: { id: pending.id }, data: { status: 'pending_owner_review' } });
+          await Promise.all(approvers.map((approver) => sendTelegramMessage({
+            botToken: settings.botToken, chatId: approver.telegramUserId!,
+            text: ['🧾 <b>Data approval required</b>', '━━━━━━━━━━━━━━━━━━━━', `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Records:</b> <code>${recordCount}</code>`, '', 'Data format ကိုစစ်ဆေးပြီး approval ပြုလုပ်ပါ။'].join('\n'),
+            replyMarkup: { inline_keyboard: [[{ text: '✅ Approve & Import', callback_data: `data_approval_approve:${pending.id}` }, { text: '❌ Reject', callback_data: `data_approval_reject:${pending.id}` }]] },
+          })));
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Sent for data approval');
+          if (chatId && messageId) await editTelegramMessage({
+            botToken: settings?.botToken, chatId: BigInt(chatId), messageId,
+            text: ['⏳ <b>File submitted for approval</b>', '━━━━━━━━━━━━━━━━━━━━', `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Records submitted:</b> <code>${recordCount}</code>`, '', 'Data Approver ဆီသို့ notification ပို့ပြီးပါပြီ။ Approve လုပ်ပြီးမှ dashboard ထဲသို့ data ဝင်ပါမည်။'].join('\n'),
+          });
+          return NextResponse.json({ ok: true });
+        }
 
         if (rows.length === 0) {
           await prisma.pendingDemandImport.update({
