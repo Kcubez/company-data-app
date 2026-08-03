@@ -156,16 +156,19 @@ model TelegramSender {
   otpCode            String?
   otpExpiresAt       DateTime?
   isAuthorized       Boolean          @default(false)
+  isDataApprover     Boolean          @default(false) @map("is_data_approver")
   allowedDepartments String[]         @default([])
 
   messages        TelegramMessage[]
   demandRecords   DemandRecord[]
   activities      CustomerActivity[]
   businessReports BusinessReport[]
-  pendingDemandImports PendingDemandImport[]
+  pendingDemandImports PendingDemandImport[] @relation("PendingImportSender")
+  reviewedDemandImports PendingDemandImport[] @relation("DemandImportApprover")
 
   @@map("telegram_sender")
   @@index([telegramUserId])
+  @@index([isDataApprover])
   @@unique([userId, telegramUserId])
 }
 
@@ -192,7 +195,7 @@ model TelegramMessage {
 model PendingDemandImport {
   id              String           @id @default(cuid())
   senderId        String
-  sender          TelegramSender   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  sender          TelegramSender   @relation("PendingImportSender", fields: [senderId], references: [id], onDelete: Cascade)
   messageId       String
   message         TelegramMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
   chatId          BigInt           @map("chat_id")
@@ -205,6 +208,10 @@ model PendingDemandImport {
   errors          String[]         @default([])
   reportType      String           @default("demand_report") @map("report_type")
   status          String           @default("pending")
+  approverId      String?          @map("approver_id")
+  approver        TelegramSender?  @relation("DemandImportApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  reviewedAt      DateTime?        @map("reviewed_at")
+  reviewNote      String?          @map("review_note")
   expiresAt       DateTime         @map("expires_at")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
@@ -213,6 +220,7 @@ model PendingDemandImport {
   @@index([senderId])
   @@index([messageId])
   @@index([status])
+  @@index([approverId])
   @@index([expiresAt])
 }
 

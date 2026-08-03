@@ -16,7 +16,7 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await req.json();
-  const { isAuthorized, allowedDepartments } = body;
+  const { isAuthorized, isDataApprover, allowedDepartments } = body;
 
   const scope = ownedByUserOrAdmin(session);
   const sender = await prisma.telegramSender.findFirst({
@@ -37,6 +37,12 @@ export async function PATCH(
   const nextDepartments = allowedDepartments ?? sender.allowedDepartments;
   const nextAuthorization =
     typeof isAuthorized === "boolean" ? isAuthorized : sender.isAuthorized;
+  const nextDataApprover =
+    nextAuthorization && typeof isDataApprover === "boolean"
+      ? isDataApprover
+      : nextAuthorization
+        ? sender.isDataApprover
+        : false;
 
   if (nextAuthorization && nextDepartments.length === 0) {
     return NextResponse.json(
@@ -49,6 +55,7 @@ export async function PATCH(
     where: { id },
     data: {
       isAuthorized: nextAuthorization,
+      isDataApprover: nextDataApprover,
       allowedDepartments: nextDepartments,
     },
   });
@@ -85,6 +92,7 @@ export async function DELETE(
     where: { id },
     data: {
       isAuthorized: false,
+      isDataApprover: false,
       allowedDepartments: [],
       activeReportType: "none",
     },

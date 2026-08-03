@@ -35,7 +35,7 @@ export function useUpdateHRStaff() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { isAuthorized?: boolean; allowedDepartments?: string[] } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { isAuthorized?: boolean; isDataApprover?: boolean; allowedDepartments?: string[] } }) =>
       hrApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: hrKeys.staff() });

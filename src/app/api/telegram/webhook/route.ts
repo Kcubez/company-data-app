@@ -2099,6 +2099,141 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      if (data.startsWith('data_approval_approve:') || data.startsWith('data_approval_reject:')) {
+        const isApprove = data.startsWith('data_approval_approve:');
+        const pendingId = data.replace(isApprove ? 'data_approval_approve:' : 'data_approval_reject:', '');
+
+        if (!sender.isDataApprover) {
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Data approver permission required');
+          return NextResponse.json({ ok: true });
+        }
+
+        const pending = await prisma.pendingDemandImport.findFirst({
+          where: { id: pendingId, sender: { userId: settings.userId } },
+        });
+        if (!pending || pending.status !== 'pending_owner_review') {
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'This submission is no longer awaiting review');
+          return NextResponse.json({ ok: true });
+        }
+
+        if (pending.senderId === sender.id) {
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'You cannot approve your own submission');
+          return NextResponse.json({ ok: true });
+        }
+
+        const reviewerName = sender.displayName || sender.firstName || sender.email || 'Data approver';
+
+        if (!isApprove) {
+          await prisma.pendingDemandImport.update({
+            where: { id: pending.id },
+            data: { status: 'awaiting_rejection_reason' },
+          });
+          await prisma.telegramSender.update({
+            where: { id: sender.id },
+            data: { activeReportType: `awaiting_rejection_reason:${pending.id}` },
+          });
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Please enter a rejection reason');
+          if (chatId && messageId) {
+            await editTelegramMessage({
+              botToken: settings.botToken,
+              chatId: BigInt(chatId),
+              messageId,
+              text: [
+                '✍️ <b>Rejection reason required</b>',
+                '━━━━━━━━━━━━━━━━━━━━',
+                `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+                '',
+                'Reason ကို စာတစ်စောင်အဖြစ် ရိုက်ပို့ပါ။ အဲဒီစာကို staff ဆီသို့ reject notification နှင့်အတူ ပို့ပေးပါမည်။',
+                'မပယ်ဖျက်လိုလျှင် <code>/cancel</code> ရိုက်ပို့ပါ။',
+              ].join('\n'),
+            });
+          }
+          return NextResponse.json({ ok: true });
+        }
+
+        const rows = Array.isArray(pending.parsedRows)
+          ? pending.parsedRows.map((row) => hydrateParsedDemand(row as Record<string, unknown>))
+          : [];
+        if (rows.length === 0) {
+          await prisma.pendingDemandImport.update({
+            where: { id: pending.id },
+            data: { status: 'cancelled', approverId: sender.id, reviewedAt: new Date(), reviewNote: 'No rows to import' },
+          });
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'No rows to import');
+          return NextResponse.json({ ok: true });
+        }
+
+        const importBatch = await prisma.demandImportBatch.create({
+          data: {
+            fileName: pending.fileName,
+            fileType: pending.fileType,
+            status: 'imported',
+            source: 'telegram_file',
+            detectedColumns: Prisma.JsonNull,
+            columnMapping: Prisma.JsonNull,
+            rowCount: rows.length,
+            importedCount: 0,
+            uploadedByUserId: settings.userId,
+          },
+        });
+        await prisma.qADocument.create({
+          data: {
+            userId: settings.userId,
+            title: `📎 ${pending.fileName}`,
+            content: pending.extractedText.slice(0, 10000),
+            source: 'telegram_file',
+            fileType: pending.fileType,
+            fileName: pending.fileName,
+            senderId: pending.senderId,
+          },
+        });
+        const importedCount = await createDemandRecordsFromParsedDemands({
+          parsedDemands: rows,
+          senderId: pending.senderId,
+          telegramMessageId: pending.messageId,
+          fileName: pending.fileName,
+          sourceType: 'telegram_file',
+          reportType: pending.reportType,
+          importBatchId: importBatch.id,
+          ownerUserId: settings.userId,
+        });
+        await Promise.all([
+          prisma.demandImportBatch.update({ where: { id: importBatch.id }, data: { importedCount } }),
+          prisma.pendingDemandImport.update({
+            where: { id: pending.id },
+            data: { status: 'approved', approverId: sender.id, reviewedAt: new Date(), reviewNote: `Approved by ${reviewerName}` },
+          }),
+        ]);
+        await sendTelegramMessage({
+          botToken: settings.botToken,
+          chatId: pending.chatId,
+          text: [
+            '✅ <b>File submission approved and imported</b>',
+            '━━━━━━━━━━━━━━━━━━━━',
+            `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+            `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
+            `👤 <b>Approved by:</b> ${escapeHtml(reviewerName)}`,
+          ].join('\n'),
+        });
+        await answerCallbackQuery(settings?.botToken, callbackQuery.id, `Imported ${importedCount} records`);
+        if (chatId && messageId) {
+          await editTelegramMessage({
+            botToken: settings.botToken,
+            chatId: BigInt(chatId),
+            messageId,
+            text: [
+              '✅ <b>File submission approved</b>',
+              '━━━━━━━━━━━━━━━━━━━━',
+              `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+              `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
+              '',
+              `Staff member ကို approval အကြောင်းကြားပြီး dashboard ထဲသို့ data သွင်းပြီးပါပြီ။`,
+            ].join('\n'),
+          });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
       if (data.startsWith('demand_import_confirm:')) {
         const pendingId = data.replace('demand_import_confirm:', '');
         const pending = await prisma.pendingDemandImport.findUnique({
@@ -2150,73 +2285,127 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ ok: true });
         }
 
-        const importBatch = await prisma.demandImportBatch.create({
-          data: {
-            fileName: pending.fileName,
-            fileType: pending.fileType,
-            status: 'imported',
-            source: 'telegram_file',
-            detectedColumns: Prisma.JsonNull,
-            columnMapping: Prisma.JsonNull,
-            rowCount: rows.length,
-            importedCount: 0,
-            uploadedByUserId: settings.userId,
-          },
-        });
-
-        await prisma.qADocument.create({
-          data: {
-            userId: settings.userId,
-            title: `📎 ${pending.fileName}`,
-            content: pending.extractedText.slice(0, 10000),
-            source: 'telegram_file',
-            fileType: pending.fileType,
-            fileName: pending.fileName,
-            senderId: pending.senderId,
-          },
-        });
-
-        const importedCount = await createDemandRecordsFromParsedDemands({
-          parsedDemands: rows,
-          senderId: pending.senderId,
-          telegramMessageId: pending.messageId,
-          fileName: pending.fileName,
-          sourceType: 'telegram_file',
-          reportType: pending.reportType,
-          importBatchId: importBatch.id,
-          ownerUserId: settings.userId,
-        });
-
-        await Promise.all([
-          prisma.demandImportBatch.update({
-            where: { id: importBatch.id },
-            data: { importedCount },
-          }),
-          prisma.pendingDemandImport.update({
-            where: { id: pending.id },
-            data: { status: 'confirmed' },
-          }),
-        ]);
-
         const summary = summarizeParsedDemands(rows);
-        await answerCallbackQuery(settings?.botToken, callbackQuery.id, `Imported ${importedCount} records`);
+        const approvers = await prisma.telegramSender.findMany({
+          where: {
+            userId: settings.userId,
+            isAuthorized: true,
+            isVerified: true,
+            isDataApprover: true,
+            id: { not: pending.senderId },
+            telegramUserId: { not: null },
+          },
+          select: { telegramUserId: true },
+        });
+
+        // Until at least one independent Data Approver is configured, retain
+        // the original direct-import behavior so business reporting is not blocked.
+        if (approvers.length === 0) {
+          const importBatch = await prisma.demandImportBatch.create({
+            data: {
+              fileName: pending.fileName,
+              fileType: pending.fileType,
+              status: 'imported',
+              source: 'telegram_file',
+              detectedColumns: Prisma.JsonNull,
+              columnMapping: Prisma.JsonNull,
+              rowCount: rows.length,
+              importedCount: 0,
+              uploadedByUserId: settings.userId,
+            },
+          });
+          await prisma.qADocument.create({
+            data: {
+              userId: settings.userId,
+              title: `📎 ${pending.fileName}`,
+              content: pending.extractedText.slice(0, 10000),
+              source: 'telegram_file',
+              fileType: pending.fileType,
+              fileName: pending.fileName,
+              senderId: pending.senderId,
+            },
+          });
+          const importedCount = await createDemandRecordsFromParsedDemands({
+            parsedDemands: rows,
+            senderId: pending.senderId,
+            telegramMessageId: pending.messageId,
+            fileName: pending.fileName,
+            sourceType: 'telegram_file',
+            reportType: pending.reportType,
+            importBatchId: importBatch.id,
+            ownerUserId: settings.userId,
+          });
+          await Promise.all([
+            prisma.demandImportBatch.update({ where: { id: importBatch.id }, data: { importedCount } }),
+            prisma.pendingDemandImport.update({
+              where: { id: pending.id },
+              data: { status: 'confirmed', reviewNote: 'Imported directly: no Data Approver configured' },
+            }),
+          ]);
+          await answerCallbackQuery(settings?.botToken, callbackQuery.id, `Imported ${importedCount} records`);
+          if (chatId && messageId) {
+            await editTelegramMessage({
+              botToken: settings?.botToken,
+              chatId: BigInt(chatId),
+              messageId,
+              text: [
+                '✅ <b>File imported</b>',
+                '━━━━━━━━━━━━━━━━━━━━',
+                `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+                `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
+                '',
+                'Data Approver မသတ်မှတ်ထားသေးသဖြင့် အရင် flow အတိုင်း dashboard ထဲသို့ တိုက်ရိုက်သွင်းပြီးပါပြီ။',
+              ].join('\n'),
+            });
+          }
+          return NextResponse.json({ ok: true });
+        }
+
+        await prisma.pendingDemandImport.update({
+          where: { id: pending.id },
+          data: { status: 'pending_owner_review' },
+        });
+        await Promise.all(approvers.map((approver) => sendTelegramMessage({
+          botToken: settings.botToken,
+          chatId: approver.telegramUserId!,
+          text: [
+            '🧾 <b>Data approval required</b>',
+            '━━━━━━━━━━━━━━━━━━━━',
+            `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+            `📊 <b>Rows:</b> <code>${rows.length}</code>`,
+            `📁 <b>Department:</b> ${pending.reportType === 'customer_service' ? 'Customer Service' : 'Sales & Marketing'}`,
+            '',
+            `• High priority: <b>${summary.high}</b>`,
+            `• Missing phone: <b>${summary.missingPhone}</b>`,
+            `• Missing service: <b>${summary.missingService}</b>`,
+            '',
+            'Data format ကိုစစ်ဆေးပြီး approval ပြုလုပ်ပါ။',
+          ].join('\n'),
+          replyMarkup: {
+            inline_keyboard: [[
+              { text: '✅ Approve & Import', callback_data: `data_approval_approve:${pending.id}` },
+              { text: '❌ Reject', callback_data: `data_approval_reject:${pending.id}` },
+            ]],
+          },
+        })));
+
+        await answerCallbackQuery(
+          settings?.botToken,
+          callbackQuery.id,
+          'Sent for owner review',
+        );
         if (chatId && messageId) {
           await editTelegramMessage({
             botToken: settings?.botToken,
             chatId: BigInt(chatId),
             messageId,
             text: [
-              "✅ <b>Sales & Marketing file imported</b>",
+              "⏳ <b>File submitted for approval</b>",
               "━━━━━━━━━━━━━━━━━━━━",
               `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
-              `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
+              `📊 <b>Rows submitted:</b> <code>${rows.length}</code>`,
               "",
-              "🎯 <b>Priority summary</b>",
-              `• High: <b>${summary.high}</b>`,
-              `• Medium: <b>${summary.medium}</b>`,
-              `• Low: <b>${summary.low}</b>`,
-              "",
-              "Dashboard မှာ Sales & Marketing records ကိုကြည့်ပြီး priority/action တွေကို ဆက်လုပ်နိုင်ပါပြီ။",
+              "Data Approver ဆီသို့ notification ပို့ပြီးပါပြီ။ Approve လုပ်ပြီးမှ dashboard ထဲသို့ data ဝင်ပါမည်။",
             ].join("\n"),
           });
         }
@@ -2761,6 +2950,7 @@ export async function POST(req: NextRequest) {
                 email: sender.email,
                 isVerified: true,
                 isAuthorized: preRegistered.isAuthorized,
+                isDataApprover: preRegistered.isDataApprover,
                 allowedDepartments: preRegistered.allowedDepartments,
                 activeReportType: 'none',
                 otpCode: null,
@@ -2812,6 +3002,82 @@ export async function POST(req: NextRequest) {
     // ─── Guard: Check General Authorization ───────────────────────────
     const isAuthorized = await checkAuthorization(sender, settings?.botToken, chatId);
     if (!isAuthorized) {
+      return NextResponse.json({ ok: true });
+    }
+
+    // ─── Data approver: collect a custom rejection reason ─────────────
+    if (message.text && sender.activeReportType.startsWith('awaiting_rejection_reason:')) {
+      const pendingId = sender.activeReportType.replace('awaiting_rejection_reason:', '');
+      const reason = message.text.trim();
+      const pending = await prisma.pendingDemandImport.findFirst({
+        where: { id: pendingId, status: 'awaiting_rejection_reason', sender: { userId: settings.userId } },
+      });
+
+      if (!sender.isDataApprover || !pending || pending.senderId === sender.id) {
+        await prisma.telegramSender.update({ where: { id: sender.id }, data: { activeReportType: 'none' } });
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId,
+          text: 'This approval request is no longer available.',
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      if (reason === '/cancel') {
+        await Promise.all([
+          prisma.pendingDemandImport.update({ where: { id: pending.id }, data: { status: 'pending_owner_review' } }),
+          prisma.telegramSender.update({ where: { id: sender.id }, data: { activeReportType: 'none' } }),
+        ]);
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId,
+          text: '↩️ Rejection cancelled. This submission is available for approval again.',
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      if (!reason || reason.length > 1000) {
+        await sendTelegramMessage({
+          botToken: settings?.botToken,
+          chatId,
+          text: 'Please enter a clear rejection reason (up to 1,000 characters), or send /cancel.',
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      const reviewerName = sender.displayName || sender.firstName || sender.email || 'Data approver';
+      await Promise.all([
+        prisma.pendingDemandImport.update({
+          where: { id: pending.id },
+          data: {
+            status: 'rejected',
+            approverId: sender.id,
+            reviewedAt: new Date(),
+            reviewNote: reason,
+          },
+        }),
+        prisma.telegramSender.update({ where: { id: sender.id }, data: { activeReportType: 'none' } }),
+      ]);
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId: pending.chatId,
+        text: [
+          '❌ <b>File submission rejected</b>',
+          '━━━━━━━━━━━━━━━━━━━━',
+          `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+          `👤 <b>Reviewed by:</b> ${escapeHtml(reviewerName)}`,
+          '',
+          '<b>Reason:</b>',
+          escapeHtml(reason),
+          '',
+          'Reason ကိုအခြေခံပြီး file/data format ပြင်ကာ preview အသစ်ဖြင့် ပြန်လည်ပို့ပေးပါ။',
+        ].join('\n'),
+      });
+      await sendTelegramMessage({
+        botToken: settings?.botToken,
+        chatId,
+        text: `✅ Rejection reason sent to the staff member for <code>${escapeHtml(pending.fileName)}</code>.`,
+      });
       return NextResponse.json({ ok: true });
     }
 

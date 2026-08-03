@@ -111,6 +111,7 @@ export type TelegramSender = {
   email?: string | null;
   isVerified?: boolean;
   isAuthorized?: boolean;
+  isDataApprover?: boolean;
   allowedDepartments?: string[];
 };
 
@@ -175,7 +176,7 @@ export const settingsSendersApi = {
       method: "POST",
       body: data,
     }),
-  update: (id: string, data: { isAuthorized?: boolean; allowedDepartments?: string[] }) =>
+  update: (id: string, data: { isAuthorized?: boolean; isDataApprover?: boolean; allowedDepartments?: string[] }) =>
     request<{ sender: TelegramSender }>(`/api/settings/senders/${id}`, {
       method: "PUT",
       body: data,
@@ -210,7 +211,7 @@ export const hrApi = {
       method: "POST",
       body: data,
     }),
-  update: (id: string, data: { isAuthorized?: boolean; allowedDepartments?: string[] }) =>
+  update: (id: string, data: { isAuthorized?: boolean; isDataApprover?: boolean; allowedDepartments?: string[] }) =>
     request<{ sender: TelegramSender }>(`/api/hr/staff/${id}`, {
       method: "PATCH",
       body: data,
@@ -219,6 +220,37 @@ export const hrApi = {
     request<{ success: boolean }>(`/api/hr/staff/${id}`, {
       method: "DELETE",
     }),
+};
+
+export type DataApprovalActor = {
+  displayName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+};
+
+export type DataApproval = {
+  id: string;
+  fileName: string;
+  fileType: string | null;
+  reportType: string;
+  status: string;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  summary: unknown;
+  sender: DataApprovalActor;
+  approver: DataApprovalActor | null;
+};
+
+export type DataApprovalsResponse = {
+  approvals: DataApproval[];
+  summary: { awaitingReview: number; approved: number; rejected: number };
+};
+
+export const dataApprovalsApi = {
+  list: () => request<DataApprovalsResponse>('/api/data-approvals'),
 };
 
 

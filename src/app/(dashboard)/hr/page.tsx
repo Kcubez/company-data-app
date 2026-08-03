@@ -105,6 +105,7 @@ export default function HRManagementPage() {
 
   const [editingStaff, setEditingStaff] = useState<TelegramSender | null>(null);
   const [editIsAuthorized, setEditIsAuthorized] = useState(false);
+  const [editIsDataApprover, setEditIsDataApprover] = useState(false);
   const [editAllowedDeps, setEditAllowedDeps] = useState<string[]>([]);
 
   const [deletingStaff, setDeletingStaff] = useState<TelegramSender | null>(null);
@@ -159,6 +160,7 @@ export default function HRManagementPage() {
   const openEditModal = (staff: TelegramSender) => {
     setEditingStaff(staff);
     setEditIsAuthorized(staff.isAuthorized ?? false);
+    setEditIsDataApprover(staff.isDataApprover ?? false);
     setEditAllowedDeps(staff.allowedDepartments ?? []);
   };
 
@@ -169,6 +171,7 @@ export default function HRManagementPage() {
         id: editingStaff.id,
         data: {
           isAuthorized: editIsAuthorized,
+          isDataApprover: editIsDataApprover,
           allowedDepartments: editAllowedDeps,
         },
       },
@@ -424,6 +427,11 @@ export default function HRManagementPage() {
                             ) : (
                               <span className="text-[11px] text-rose-500 font-semibold italic">No departments assigned</span>
                             )}
+                            {staff.isDataApprover && (
+                              <Badge className="border-violet-200 bg-violet-50 text-[10px] font-semibold text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">
+                                Data Approver
+                              </Badge>
+                            )}
                           </div>
                         </td>
 
@@ -600,6 +608,14 @@ export default function HRManagementPage() {
                 <p className="text-[11px] text-muted-foreground">Enable or suspend Telegram reporting access</p>
               </div>
               <Switch checked={editIsAuthorized} onCheckedChange={setEditIsAuthorized} />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-violet-200/80 bg-violet-50/50 p-3 dark:border-violet-900/60 dark:bg-violet-950/20">
+              <div>
+                <p className="text-xs font-bold text-foreground">Data Approver</p>
+                <p className="text-[11px] text-muted-foreground">Receives bot notifications and can approve or reject staff file submissions</p>
+              </div>
+              <Switch checked={editIsDataApprover} onCheckedChange={setEditIsDataApprover} disabled={!editIsAuthorized} />
             </div>
 
             <div className="space-y-3">
