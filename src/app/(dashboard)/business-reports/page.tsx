@@ -115,12 +115,12 @@ function RevenueExpenseTimeline({
   const maxVal = Math.max(...trendData.flatMap((item) => [item.revenue, item.expense]), 1);
   const maxMillions = Math.max(1, maxVal / 1_000_000);
   const axisMax = Math.ceil(maxMillions * 10) / 10;
-  const width = 680;
-  const height = 300;
-  const paddingLeft = 56;
-  const paddingRight = 22;
+  const width = 1120;
+  const height = 330;
+  const paddingLeft = 72;
+  const paddingRight = 32;
   const paddingTop = 24;
-  const paddingBottom = 42;
+  const paddingBottom = 48;
   const innerHeight = height - paddingTop - paddingBottom;
   const pointFor = (value: number, index: number) => {
     const x = paddingLeft + (trendData.length <= 1 ? 0 : (index / (trendData.length - 1)) * (width - paddingLeft - paddingRight));
@@ -134,6 +134,7 @@ function RevenueExpenseTimeline({
     const y = paddingTop + innerHeight - (value / axisMax) * innerHeight;
     return { value, y };
   });
+  const labelStep = trendData.length <= 8 ? 1 : Math.ceil((trendData.length - 1) / 6);
 
   if (!trendData.length) return null;
 
@@ -149,13 +150,13 @@ function RevenueExpenseTimeline({
           Expense
         </span>
       </div>
-      <div className="relative h-80 w-full">
-        <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Revenue and expense monthly line graph">
+      <div className="relative h-[21rem] w-full sm:h-[23rem]">
+        <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Revenue and expense timeline">
           {ticks.map((tick) => (
             <g key={tick.value}>
               <line x1={paddingLeft} x2={width - paddingRight} y1={tick.y} y2={tick.y} stroke="#e2e8f0" strokeWidth="1" />
               <text x={paddingLeft - 12} y={tick.y + 4} textAnchor="end" className="fill-slate-500 text-[12px] font-semibold">
-                {tick.value.toFixed(1)}
+                {fmt(Math.round(tick.value * 1_000_000))}
               </text>
             </g>
           ))}
@@ -170,9 +171,11 @@ function RevenueExpenseTimeline({
               <g key={item.label}>
                 <circle cx={revenueX} cy={revenueY} r="4" fill="#0ea5e9" stroke="white" strokeWidth="2" vectorEffect="non-scaling-stroke" />
                 <circle cx={expenseX} cy={expenseY} r="4" fill="#ef4444" stroke="white" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-                <text x={revenueX} y={height - 14} textAnchor="middle" className="fill-slate-500 text-[13px] font-semibold">
-                  {item.label}
-                </text>
+                {(index === 0 || index === trendData.length - 1 || index % labelStep === 0) && (
+                  <text x={revenueX} y={height - 14} textAnchor="middle" className="fill-slate-500 text-[13px] font-semibold">
+                    {item.label}
+                  </text>
+                )}
               </g>
             );
           })}
@@ -211,6 +214,22 @@ function buildMonthlyTrend(
   return monthly;
 }
 
+function buildSelectedPeriodTrend(
+  dailyTrend: { date: string; sales: number; budget: number; leads: number }[],
+  selectedYear: number,
+  selectedPeriod: PeriodMode,
+) {
+  if (selectedPeriod === 'year') {
+    return buildMonthlyTrend(dailyTrend, 12, selectedYear, 'year');
+  }
+
+  return dailyTrend.map((item) => ({
+    label: new Date(item.date).toLocaleDateString('en', { month: 'short', day: 'numeric' }),
+    revenue: item.sales,
+    expense: item.budget,
+  }));
+}
+
 function ExpenseDonutChart({
   items,
 }: {
@@ -227,15 +246,18 @@ function ExpenseDonutChart({
   }).join(', ');
 
   return (
-    <div className="expense-breakdown-container">
-      <div className="expense-breakdown-layout grid min-h-72 grid-cols-1 items-center gap-6">
-      <div className="flex justify-center">
+    <div className="grid min-h-72 grid-cols-1 items-center gap-8 md:grid-cols-[minmax(15rem,0.8fr)_minmax(0,1.2fr)]">
+      <div className="flex justify-center md:justify-end">
         <div
-          className="relative h-56 w-56 rounded-full shadow-sm"
+          className="relative h-60 w-60 rounded-full shadow-sm"
           style={{ background: `conic-gradient(${gradient})` }}
           aria-label="Expense breakdown donut chart"
         >
-          <div className="absolute inset-[3.5rem] rounded-full bg-card shadow-inner" />
+          <div className="absolute inset-[3.75rem] flex flex-col items-center justify-center rounded-full bg-card px-2 text-center shadow-inner">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Total expense</span>
+            <span className="mt-1 text-sm font-black tracking-tight text-slate-900 dark:text-slate-100">{fmt(total)}</span>
+            <span className="text-[10px] font-semibold text-slate-500">MMK</span>
+          </div>
         </div>
       </div>
       <div className="w-full divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50/50 dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950/30">
@@ -255,7 +277,6 @@ function ExpenseDonutChart({
             </div>
           );
         })}
-      </div>
       </div>
     </div>
   );
@@ -282,15 +303,11 @@ function BusinessReportsPageContent() {
     dateFrom,
     dateTo,
   });
-  const { data: yearStatsData, isLoading: yearStatsLoading } = useBusinessReportStats({
-    dateFrom: `${year}-01-01`,
-    dateTo: `${year}-12-31`,
-  });
   const {
     data: recsData,
     isLoading: recsLoading,
     isFetching: recsFetching,
-  } = useBusinessReportRecommendations();
+  } = useBusinessReportRecommendations({ dateFrom, dateTo });
 
   const deleteAllMutation = useDeleteAllBusinessReports();
   const deleteAllFinanceEntriesMutation = useDeleteAllFinanceEntries();
@@ -306,7 +323,7 @@ function BusinessReportsPageContent() {
   const profitMargin = totalRevenue > 0 ? Math.round((profitLoss / totalRevenue) * 100) : 0;
   const ownerCapital = ownerCapitalData?.summary.ownerCapital ?? 0;
   const expenseBreakdown = s?.channelPerformance?.filter((ch) => ch.budget > 0) ?? [];
-  const monthlyTrend = buildMonthlyTrend(yearStatsData?.dailyTrend ?? [], month, year, period);
+  const selectedPeriodTrend = buildSelectedPeriodTrend(statsData?.dailyTrend ?? [], year, period);
   const computedFinanceInsights = [
     {
       tone: profitLoss >= 0 ? 'success' : 'warning',
@@ -568,17 +585,17 @@ function BusinessReportsPageContent() {
       )}
 
       {/* ─── Finance Charts ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="space-y-6">
         <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
           <CardHeader>
             <CardTitle className="border-b-2 border-slate-100 pb-3 text-sm font-bold uppercase tracking-wide text-slate-900 dark:border-slate-800 dark:text-slate-100">
               Revenue vs Expense Timeline
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            {yearStatsLoading ? <Skeleton className="h-72 w-full" /> : monthlyTrend.every((item) => item.revenue === 0 && item.expense === 0) ? (
+          <CardContent className="px-4 pb-5 sm:px-6">
+            {statsLoading ? <Skeleton className="h-72 w-full" /> : selectedPeriodTrend.length === 0 || selectedPeriodTrend.every((item) => item.revenue === 0 && item.expense === 0) ? (
               <p className="py-12 text-center text-sm text-slate-500">No timeline data yet.</p>
-            ) : <RevenueExpenseTimeline trendData={monthlyTrend} />}
+            ) : <RevenueExpenseTimeline trendData={selectedPeriodTrend} />}
           </CardContent>
         </Card>
         <Card className="rounded-xl border-2 border-slate-200 bg-card shadow-sm dark:border-slate-800">
@@ -587,7 +604,7 @@ function BusinessReportsPageContent() {
               Expense Breakdown
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-5 sm:p-6">
             {statsLoading ? <Skeleton className="h-72 w-full" /> : expenseBreakdown.length === 0 ? (
               <p className="py-12 text-center text-sm text-slate-500">No expense breakdown yet.</p>
             ) : <ExpenseDonutChart items={expenseBreakdown.slice(0, 6)} />}

@@ -11,7 +11,8 @@ export const websiteUpdatesKeys = {
   all: ["website-updates"] as const,
   lists: () => [...websiteUpdatesKeys.all, "list"] as const,
   list: (params: WebsiteUpdatesParams) => [...websiteUpdatesKeys.lists(), params] as const,
-  recommendations: () => [...websiteUpdatesKeys.all, "recommendations"] as const,
+  recommendations: (params: { dateFrom?: string; dateTo?: string } = {}) =>
+    [...websiteUpdatesKeys.all, "recommendations", params] as const,
 };
 
 export function useWebsiteUpdates(params: WebsiteUpdatesParams = {}) {
@@ -38,10 +39,10 @@ export function useUpdateWebsiteUpdate() {
   });
 }
 
-export function useWebsiteUpdateRecommendations(options: { enabled?: boolean } = {}) {
+export function useWebsiteUpdateRecommendations(options: { enabled?: boolean; dateFrom?: string; dateTo?: string } = {}) {
   return useQuery({
-    queryKey: websiteUpdatesKeys.recommendations(),
-    queryFn: () => websiteUpdatesApi.recommendations(),
+    queryKey: websiteUpdatesKeys.recommendations(options),
+    queryFn: () => websiteUpdatesApi.recommendations(options),
     // AI calls are costly — fetch once on mount, then only on manual refresh.
     staleTime: Infinity,
     refetchOnWindowFocus: false,

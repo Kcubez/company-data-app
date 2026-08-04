@@ -15,7 +15,8 @@ export const businessReportKeys = {
     [...businessReportKeys.all, "list", params] as const,
   stats: (params?: { dateFrom?: string; dateTo?: string }) =>
     [...businessReportKeys.all, "stats", params] as const,
-  recommendations: () => [...businessReportKeys.all, "recommendations"] as const,
+  recommendations: (params: { dateFrom?: string; dateTo?: string } = {}) =>
+    [...businessReportKeys.all, "recommendations", params] as const,
 };
 
 export function useBusinessReports(params: BusinessReportsParams = {}) {
@@ -32,10 +33,10 @@ export function useBusinessReportStats(params: { dateFrom?: string; dateTo?: str
   });
 }
 
-export function useBusinessReportRecommendations() {
+export function useBusinessReportRecommendations(params: { dateFrom?: string; dateTo?: string } = {}) {
   return useQuery({
-    queryKey: businessReportKeys.recommendations(),
-    queryFn: () => businessReportsApi.recommendations(),
+    queryKey: businessReportKeys.recommendations(params),
+    queryFn: () => businessReportsApi.recommendations(params),
     staleTime: 1000 * 60 * 5, // 5 min cache
   });
 }

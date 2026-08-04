@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { notDeleted } from "@/lib/soft-delete";
 import { ownedByUserOrAdmin, uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { GoogleGenAI } from "@google/genai";
+import type { Prisma } from "@/generated/prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 async function generateContentWithRetry(
@@ -39,6 +40,15 @@ export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
+  const dateFrom = req.nextUrl.searchParams.get("dateFrom");
+  const dateTo = req.nextUrl.searchParams.get("dateTo");
+  const periodWhere: Prisma.BusinessReportWhereInput = {};
+  if (dateFrom || dateTo) {
+    periodWhere.reportDate = {};
+    if (dateFrom) periodWhere.reportDate.gte = new Date(dateFrom);
+    if (dateTo) periodWhere.reportDate.lte = new Date(`${dateTo}T23:59:59.999Z`);
+  }
+
   try {
     const settings = await prisma.botSettings.findFirst({
       where: { isActive: true, ...ownedByUserOrAdmin(session) },
@@ -47,7 +57,7 @@ export async function GET(req: NextRequest) {
 
     // Aggregate last 30 reports for trend analysis
     const reports = await prisma.businessReport.findMany({
-      where: { ...uploadedByUserOrAdmin(session), ...notDeleted },
+      where: { ...periodWhere, ...uploadedByUserOrAdmin(session), ...notDeleted },
       orderBy: { reportDate: "desc" },
       take: 30,
       include: { sender: { select: { displayName: true } } },

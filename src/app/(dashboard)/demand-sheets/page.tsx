@@ -110,11 +110,28 @@ type DashboardStats = {
   upcomingRecords: UpcomingRecord[];
 };
 
-function useDashboardStats(period: string, month: number, year: number) {
+function useDashboardStats(
+  period: string,
+  month: number,
+  day: number,
+  year: number,
+  customFrom?: string,
+  customTo?: string,
+) {
   return useQuery({
-    queryKey: ['dashboard-stats', period, month, year],
+    queryKey: ['dashboard-stats', period, month, day, year, customFrom, customTo],
     queryFn: async (): Promise<DashboardStats> => {
-      const res = await fetch(`/api/dashboard/stats?period=${period}&month=${month}&year=${year}`);
+      const params = new URLSearchParams({
+        period,
+        month: String(month),
+        day: String(day),
+        year: String(year),
+      });
+      if (period === 'custom') {
+        params.set('from', customFrom ?? '');
+        params.set('to', customTo ?? '');
+      }
+      const res = await fetch(`/api/dashboard/stats?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch');
       return res.json();
     },
@@ -311,21 +328,21 @@ function DemandSheetsPageContent() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const [lastDateFilter, setLastDateFilter] = useState(() => `${period}:${month}:${year}`);
-  const dateFilter = `${period}:${month}:${year}`;
+  const [lastDateFilter, setLastDateFilter] = useState(() => `${period}:${month}:${day}:${year}:${customFrom}:${customTo}`);
+  const dateFilter = `${period}:${month}:${day}:${year}:${customFrom}:${customTo}`;
   if (lastDateFilter !== dateFilter) {
     setLastDateFilter(dateFilter);
     setPage(1);
   }
 
-  const { data: stats, isLoading: statsLoading } = useDashboardStats(period, month, year);
+  const { data: stats, isLoading: statsLoading } = useDashboardStats(period, month, day, year, customFrom, customTo);
   const { data: demandStats, isLoading: demandStatsLoading } = useDemandRecordStats({ dateFrom, dateTo });
   const {
     data: recsData,
     isLoading: recsLoading,
     refetch: recsRefetch,
     isFetching: recsFetching,
-  } = useDemandRecordRecommendations();
+  } = useDemandRecordRecommendations({ dateFrom, dateTo });
 
   const deleteAllMutation = useDeleteAllDemandRecords();
   const updateMutation = useUpdateDemandRecord();

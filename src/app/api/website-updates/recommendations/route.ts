@@ -4,6 +4,7 @@ import { notDeleted } from "@/lib/soft-delete";
 import { ownedByUserOrAdmin, uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { GoogleGenAI } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@/generated/prisma/client";
 
 async function generateContentWithRetry(
   genAI: GoogleGenAI,
@@ -41,6 +42,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
+  const dateFrom = req.nextUrl.searchParams.get("dateFrom");
+  const dateTo = req.nextUrl.searchParams.get("dateTo");
+  const periodWhere: Prisma.WebsiteUpdateWhereInput = {};
+  if (dateFrom || dateTo) {
+    periodWhere.createdAt = {};
+    if (dateFrom) periodWhere.createdAt.gte = new Date(dateFrom);
+    if (dateTo) periodWhere.createdAt.lte = new Date(`${dateTo}T23:59:59.999Z`);
+  }
+
   try {
     const settings = await prisma.botSettings.findFirst({
       where: { isActive: true, ...ownedByUserOrAdmin(session) },
@@ -51,6 +61,7 @@ export async function GET(req: NextRequest) {
     const websites = await prisma.websiteUpdate.findMany({
       where: {
         status: { in: ["pending_update", "in_progress"] },
+        ...periodWhere,
         ...uploadedByUserOrAdmin(session),
         ...notDeleted,
       },
@@ -132,7 +143,7 @@ Example output:
     console.error("Website update recommendations failed:", err);
     try {
       const websites = await prisma.websiteUpdate.findMany({
-        where: { status: { in: ["pending_update", "in_progress"] }, ...uploadedByUserOrAdmin(session), ...notDeleted },
+        where: { status: { in: ["pending_update", "in_progress"] }, ...periodWhere, ...uploadedByUserOrAdmin(session), ...notDeleted },
         take: 5,
       });
       const fallback = websites.map((w) => ({

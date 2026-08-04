@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { notDeleted } from "@/lib/soft-delete";
 import { ownedByUserOrAdmin, senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { GoogleGenAI } from "@google/genai";
+import type { Prisma } from "@/generated/prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 // Helper for Gemini retry
@@ -44,6 +45,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
+  const dateFrom = req.nextUrl.searchParams.get("dateFrom");
+  const dateTo = req.nextUrl.searchParams.get("dateTo");
+  const periodWhere: Prisma.DemandRecordWhereInput = {};
+  if (dateFrom || dateTo) {
+    periodWhere.createdAt = {};
+    if (dateFrom) periodWhere.createdAt.gte = new Date(dateFrom);
+    if (dateTo) periodWhere.createdAt.lte = new Date(`${dateTo}T23:59:59.999Z`);
+  }
+
   try {
     const settings = await prisma.botSettings.findFirst({
       where: { isActive: true, ...ownedByUserOrAdmin(session) },
@@ -55,6 +65,7 @@ export async function GET(req: NextRequest) {
       where: {
         status: { notIn: ['closed', 'completed'] },
         customerName: { not: null },
+        ...periodWhere,
         ...senderOwnedByUserOrAdmin(session),
         ...notDeleted,
       },
@@ -139,6 +150,7 @@ Example Output:
         where: {
           status: { notIn: ['closed', 'completed'] },
           customerName: { not: null },
+          ...periodWhere,
           ...senderOwnedByUserOrAdmin(session),
           ...notDeleted,
         },

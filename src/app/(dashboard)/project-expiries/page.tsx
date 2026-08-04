@@ -150,11 +150,11 @@ function ProjectExpiriesPageContent() {
     dateTo,
   });
 
-  const { refetch: recsRefetch } = useProjectExpiryRecommendations();
+  const { refetch: recsRefetch } = useProjectExpiryRecommendations({ dateFrom, dateTo });
 
   // Website Update Hooks & Mutations
   const updateWebsiteMutation = useUpdateWebsiteUpdate();
-  const { data: websiteRecsData, isLoading: websiteRecsLoading, refetch: websiteRecsRefetch, isFetching: websiteRecsFetching } = useWebsiteUpdateRecommendations({ enabled: showWebsiteSuggestions });
+  const { data: websiteRecsData, isLoading: websiteRecsLoading, refetch: websiteRecsRefetch, isFetching: websiteRecsFetching } = useWebsiteUpdateRecommendations({ enabled: showWebsiteSuggestions, dateFrom, dateTo });
   const websiteInsightTotal = websiteRecsData?.recommendations.length || 0;
   const [lastWebsiteInsightTotal, setLastWebsiteInsightTotal] = useState(websiteInsightTotal);
   const websiteInsightTotalPages = Math.max(1, Math.ceil(websiteInsightTotal / websiteInsightPageSize));

@@ -5,6 +5,7 @@ import { ownedByUserOrAdmin, uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { GoogleGenAI } from "@google/genai";
 import { differenceInDays } from "date-fns";
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@/generated/prisma/client";
 
 async function generateContentWithRetry(
   genAI: GoogleGenAI,
@@ -42,6 +43,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
+  const dateFrom = req.nextUrl.searchParams.get("dateFrom");
+  const dateTo = req.nextUrl.searchParams.get("dateTo");
+  const periodWhere: Prisma.ProjectExpirationWhereInput = {};
+  if (dateFrom || dateTo) {
+    periodWhere.createdAt = {};
+    if (dateFrom) periodWhere.createdAt.gte = new Date(dateFrom);
+    if (dateTo) periodWhere.createdAt.lte = new Date(`${dateTo}T23:59:59.999Z`);
+  }
+
   try {
     const settings = await prisma.botSettings.findFirst({
       where: { isActive: true, ...ownedByUserOrAdmin(session) },
@@ -52,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch all projects sorted by most urgent expiry
     const projects = await prisma.projectExpiration.findMany({
-      where: { ...uploadedByUserOrAdmin(session), ...notDeleted },
+      where: { ...periodWhere, ...uploadedByUserOrAdmin(session), ...notDeleted },
       orderBy: { createdAt: "desc" },
       take: 20,
     });
@@ -173,7 +183,7 @@ Example output:
     // Graceful fallback
     try {
       const projects = await prisma.projectExpiration.findMany({
-        where: { ...uploadedByUserOrAdmin(session), ...notDeleted },
+        where: { ...periodWhere, ...uploadedByUserOrAdmin(session), ...notDeleted },
         orderBy: { createdAt: "desc" },
         take: 5,
       });

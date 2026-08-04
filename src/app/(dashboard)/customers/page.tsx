@@ -218,8 +218,8 @@ function CustomersPageContent() {
     return () => clearTimeout(timer);
   }, [demandSearch]);
 
-  const [lastDateFilter, setLastDateFilter] = useState(() => `${period}:${month}:${year}`);
-  const dateFilter = `${period}:${month}:${year}`;
+  const [lastDateFilter, setLastDateFilter] = useState(() => `${period}:${month}:${day}:${year}:${customFrom}:${customTo}`);
+  const dateFilter = `${period}:${month}:${day}:${year}:${customFrom}:${customTo}`;
   if (lastDateFilter !== dateFilter) {
     setLastDateFilter(dateFilter);
     setCustomerPage(1);
@@ -248,9 +248,14 @@ function CustomersPageContent() {
   });
 
   const { data: dashboardStats } = useQuery({
-    queryKey: ['dashboard-stats-cs', period, month, year],
+    queryKey: ['dashboard-stats-cs', period, month, day, year, customFrom, customTo],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard/stats?period=${period}&month=${month}&year=${year}`);
+      const params = new URLSearchParams({ period, month: String(month), day: String(day), year: String(year) });
+      if (period === 'custom') {
+        params.set('from', customFrom);
+        params.set('to', customTo);
+      }
+      const res = await fetch(`/api/dashboard/stats?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch');
       return res.json();
     },

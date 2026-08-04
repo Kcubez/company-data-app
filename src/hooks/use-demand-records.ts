@@ -23,10 +23,10 @@ export function useDemandRecordStats(params: { dateFrom?: string; dateTo?: strin
   });
 }
 
-export function useDemandRecordRecommendations(options: { enabled?: boolean } = {}) {
+export function useDemandRecordRecommendations(options: { enabled?: boolean; dateFrom?: string; dateTo?: string } = {}) {
   return useQuery({
-    queryKey: ["demand-record-recommendations"],
-    queryFn: () => demandRecordsApi.recommendations(),
+    queryKey: ["demand-record-recommendations", options.dateFrom, options.dateTo],
+    queryFn: () => demandRecordsApi.recommendations(options),
     // AI calls are costly — fetch once on mount, then only on manual refresh.
     staleTime: Infinity,
     refetchOnWindowFocus: false,

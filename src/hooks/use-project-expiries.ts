@@ -11,7 +11,8 @@ export const projectExpiriesKeys = {
   all: ["project-expiries"] as const,
   lists: () => [...projectExpiriesKeys.all, "list"] as const,
   list: (params: ProjectExpiriesParams) => [...projectExpiriesKeys.lists(), params] as const,
-  recommendations: () => [...projectExpiriesKeys.all, "recommendations"] as const,
+  recommendations: (params: { dateFrom?: string; dateTo?: string } = {}) =>
+    [...projectExpiriesKeys.all, "recommendations", params] as const,
 };
 
 export function useProjectExpiries(params: ProjectExpiriesParams = {}) {
@@ -22,10 +23,10 @@ export function useProjectExpiries(params: ProjectExpiriesParams = {}) {
   });
 }
 
-export function useProjectExpiryRecommendations() {
+export function useProjectExpiryRecommendations(params: { dateFrom?: string; dateTo?: string } = {}) {
   return useQuery({
-    queryKey: projectExpiriesKeys.recommendations(),
-    queryFn: () => projectExpiriesApi.recommendations(),
+    queryKey: projectExpiriesKeys.recommendations(params),
+    queryFn: () => projectExpiriesApi.recommendations(params),
     // AI calls are costly — fetch once on mount, then only on manual refresh.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
