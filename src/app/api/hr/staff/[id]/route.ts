@@ -68,7 +68,7 @@ export async function PATCH(
   });
 }
 
-// DELETE /api/hr/staff/[id] — revoke staff access while preserving their history
+// DELETE /api/hr/staff/[id] — remove the Telegram staff account
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -88,15 +88,7 @@ export async function DELETE(
     return NextResponse.json({ message: "Staff member not found" }, { status: 404 });
   }
 
-  await prisma.telegramSender.update({
-    where: { id },
-    data: {
-      isAuthorized: false,
-      isDataApprover: false,
-      allowedDepartments: [],
-      activeReportType: "none",
-    },
-  });
+  await prisma.telegramSender.delete({ where: { id } });
 
   return NextResponse.json({ success: true });
 }

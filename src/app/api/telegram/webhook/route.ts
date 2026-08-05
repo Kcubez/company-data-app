@@ -175,6 +175,36 @@ async function copyTelegramMessage({
   }
 }
 
+async function sendTelegramDocument({
+  botToken,
+  chatId,
+  fileId,
+  fileName,
+}: {
+  botToken: string | null | undefined;
+  chatId: bigint | number;
+  fileId: string;
+  fileName: string;
+}) {
+  if (!botToken) return false;
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId.toString(),
+        document: fileId,
+        caption: `📎 File for approval: ${fileName}`,
+      }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error('Error sending approval file to data approver:', err);
+    return false;
+  }
+}
+
 async function answerCallbackQuery(botToken: string | null | undefined, callbackQueryId: string, text: string) {
   if (!botToken) return;
   await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
@@ -1087,6 +1117,60 @@ function sourceTelegramMessageId(pending: { summary: Prisma.JsonValue }) {
   return null;
 }
 
+function sourceTelegramFileId(pending: { summary: Prisma.JsonValue }) {
+  if (pending.summary && typeof pending.summary === 'object' && !Array.isArray(pending.summary)) {
+    const value = (pending.summary as Record<string, unknown>).sourceTelegramFileId;
+    if (typeof value === 'string' && value) return value;
+  }
+  return null;
+}
+
+async function getIndependentDataApprovers(senderId: string, fallbackOwnerUserId: string | null) {
+  const submitter = await prisma.telegramSender.findUnique({
+    where: { id: senderId },
+    select: { userId: true },
+  });
+  const ownerUserId = submitter?.userId ?? fallbackOwnerUserId;
+
+  // A bot can serve more than one business owner. Approval must follow the
+  // submitting staff member's tenant, not whichever owner configured the bot.
+  return prisma.telegramSender.findMany({
+    where: {
+      userId: ownerUserId,
+      isAuthorized: true,
+      isVerified: true,
+      isDataApprover: true,
+      id: { not: senderId },
+      telegramUserId: { not: null },
+    },
+    select: { telegramUserId: true },
+  });
+}
+
+async function deliverApprovalFile({
+  pending,
+  approverChatId,
+  botToken,
+}: {
+  pending: { chatId: bigint; fileName: string; summary: Prisma.JsonValue };
+  approverChatId: bigint;
+  botToken: string | null | undefined;
+}) {
+  const originalMessageId = sourceTelegramMessageId(pending);
+  const copied = originalMessageId
+    ? await copyTelegramMessage({ botToken, fromChatId: pending.chatId, toChatId: approverChatId, messageId: originalMessageId })
+    : false;
+
+  // copyMessage can be blocked by Telegram chat protection. For uploaded
+  // documents, the bot's file ID provides a dependable fallback.
+  if (!copied) {
+    const fileId = sourceTelegramFileId(pending);
+    if (fileId) {
+      await sendTelegramDocument({ botToken, chatId: approverChatId, fileId, fileName: pending.fileName });
+    }
+  }
+}
+
 function buildStructuredPreviewText({ fileName, kind, rowCount }: { fileName: string; kind: StructuredSubmissionKind; rowCount: number }) {
   return [
     `📄 <b>${structuredSubmissionTitle(kind)} file preview</b>`,
@@ -1107,6 +1191,7 @@ async function queueStructuredSubmission({
   senderId,
   messageId,
   sourceTelegramMessageId,
+  sourceTelegramFileId,
   chatId,
   progressMsgId,
   botToken,
@@ -1119,6 +1204,7 @@ async function queueStructuredSubmission({
   senderId: string;
   messageId: string;
   sourceTelegramMessageId?: string | null;
+  sourceTelegramFileId?: string | null;
   chatId: bigint;
   progressMsgId: number | null;
   botToken: string | null;
@@ -1133,7 +1219,11 @@ async function queueStructuredSubmission({
       fileType,
       extractedText: '',
       parsedRows: serializeForPending(payload),
-      summary: serializeForPending({ total: rowCount, ...(sourceTelegramMessageId ? { sourceTelegramMessageId } : {}) }),
+      summary: serializeForPending({
+        total: rowCount,
+        ...(sourceTelegramMessageId ? { sourceTelegramMessageId } : {}),
+        ...(sourceTelegramFileId ? { sourceTelegramFileId } : {}),
+      }),
       reportType: kind,
       status: 'pending',
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -1833,18 +1923,20 @@ async function processFileInBackground({
   senderId,
   telegramMessageId,
   sourceTelegramMessageId,
+  sourceTelegramFileId,
   progressMsgId,
   receivedAtMyanmar,
   activeMode,
 }: {
   downloadedBuffer: Buffer;
-  fileInfo: { fileName: string; mimeType: string; fileSize: number };
+  fileInfo: { fileId: string; fileName: string; mimeType: string; fileSize: number };
   caption?: string;
   settings: { userId: string | null; botToken: string | null; geminiApiKey: string | null; geminiModel: string | null };
   chatId: bigint;
   senderId: string;
   telegramMessageId: string;
   sourceTelegramMessageId: string;
+  sourceTelegramFileId: string;
   progressMsgId: number | null;
   receivedAtMyanmar: Date;
   activeMode: string;
@@ -1906,7 +1998,7 @@ async function processFileInBackground({
         fileName: fileInfo.fileName, fileType: fileInfo.mimeType, kind: 'project_service_tracking',
         payload: { projects: parsedExpiryRecords, websites: parsedWebsiteUpdateRecords },
         rowCount: Math.max(parsedExpiryRecords.length, parsedWebsiteUpdateRecords.length),
-        senderId, messageId: telegramMessageId, sourceTelegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
+        senderId, messageId: telegramMessageId, sourceTelegramMessageId, sourceTelegramFileId, chatId, progressMsgId, botToken: settings.botToken,
       });
       return;
     }
@@ -1988,7 +2080,7 @@ async function processFileInBackground({
       await queueStructuredSubmission({
         fileName: fileInfo.fileName, fileType: fileInfo.mimeType, kind: 'business_report',
         payload: { records: parsedBusinessReportRecords }, rowCount: parsedBusinessReportRecords.length,
-        senderId, messageId: telegramMessageId, sourceTelegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
+        senderId, messageId: telegramMessageId, sourceTelegramMessageId, sourceTelegramFileId, chatId, progressMsgId, botToken: settings.botToken,
       });
       return;
     }
@@ -1997,7 +2089,7 @@ async function processFileInBackground({
       await queueStructuredSubmission({
         fileName: fileInfo.fileName, fileType: fileInfo.mimeType, kind: 'finance_transactions',
         payload: { records: parsedFinanceRecords }, rowCount: parsedFinanceRecords.length,
-        senderId, messageId: telegramMessageId, sourceTelegramMessageId, chatId, progressMsgId, botToken: settings.botToken,
+        senderId, messageId: telegramMessageId, sourceTelegramMessageId, sourceTelegramFileId, chatId, progressMsgId, botToken: settings.botToken,
       });
       return;
     }
@@ -2050,7 +2142,7 @@ async function processFileInBackground({
         fileType: fileInfo.mimeType,
         extractedText: extractedText.slice(0, 10000),
         parsedRows: parsedDemands.map(serializeParsedDemand),
-        summary: { ...summary, sourceTelegramMessageId },
+        summary: { ...summary, sourceTelegramMessageId, sourceTelegramFileId },
         errors,
         reportType: activeMode === 'customer_service' ? 'customer_service' : 'demand_report',
         status: 'pending',
@@ -2182,10 +2274,11 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ ok: true });
         }
 
-        const pending = await prisma.pendingDemandImport.findFirst({
-          where: { id: pendingId, sender: { userId: settings.userId } },
+        const pending = await prisma.pendingDemandImport.findUnique({
+          where: { id: pendingId },
+          include: { sender: { select: { userId: true } } },
         });
-        if (!pending || pending.status !== 'pending_owner_review') {
+        if (!pending || pending.sender.userId !== sender.userId || pending.status !== 'pending_owner_review') {
           await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'This submission is no longer awaiting review');
           return NextResponse.json({ ok: true });
         }
@@ -2394,10 +2487,7 @@ export async function POST(req: NextRequest) {
             await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'No records to import');
             return NextResponse.json({ ok: true });
           }
-          const approvers = await prisma.telegramSender.findMany({
-            where: { userId: settings.userId, isAuthorized: true, isVerified: true, isDataApprover: true, id: { not: pending.senderId }, telegramUserId: { not: null } },
-            select: { telegramUserId: true },
-          });
+          const approvers = await getIndependentDataApprovers(pending.senderId, settings.userId);
           if (approvers.length === 0) {
             const importedCount = await importStructuredSubmission(pending, settings.userId, new Date());
             await prisma.pendingDemandImport.update({ where: { id: pending.id }, data: { status: 'confirmed', reviewNote: 'Imported directly: no Data Approver configured' } });
@@ -2410,11 +2500,7 @@ export async function POST(req: NextRequest) {
           }
           await prisma.pendingDemandImport.update({ where: { id: pending.id }, data: { status: 'pending_owner_review' } });
           await Promise.all(approvers.map(async (approver) => {
-            const originalMessageId = sourceTelegramMessageId(pending);
-            if (originalMessageId) await copyTelegramMessage({
-              botToken: settings.botToken, fromChatId: pending.chatId,
-              toChatId: approver.telegramUserId!, messageId: originalMessageId,
-            });
+            await deliverApprovalFile({ pending, approverChatId: approver.telegramUserId!, botToken: settings.botToken });
             return sendTelegramMessage({
             botToken: settings.botToken, chatId: approver.telegramUserId!,
             text: ['🧾 <b>Data approval required</b>', '━━━━━━━━━━━━━━━━━━━━', `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Records:</b> <code>${recordCount}</code>`, '', 'Data format ကိုစစ်ဆေးပြီး approval ပြုလုပ်ပါ။'].join('\n'),
@@ -2439,17 +2525,7 @@ export async function POST(req: NextRequest) {
         }
 
         const summary = summarizeParsedDemands(rows);
-        const approvers = await prisma.telegramSender.findMany({
-          where: {
-            userId: settings.userId,
-            isAuthorized: true,
-            isVerified: true,
-            isDataApprover: true,
-            id: { not: pending.senderId },
-            telegramUserId: { not: null },
-          },
-          select: { telegramUserId: true },
-        });
+        const approvers = await getIndependentDataApprovers(pending.senderId, settings.userId);
 
         // Until at least one independent Data Approver is configured, retain
         // the original direct-import behavior so business reporting is not blocked.
@@ -2519,11 +2595,7 @@ export async function POST(req: NextRequest) {
           data: { status: 'pending_owner_review' },
         });
         await Promise.all(approvers.map(async (approver) => {
-          const originalMessageId = sourceTelegramMessageId(pending);
-          if (originalMessageId) await copyTelegramMessage({
-            botToken: settings.botToken, fromChatId: pending.chatId,
-            toChatId: approver.telegramUserId!, messageId: originalMessageId,
-          });
+          await deliverApprovalFile({ pending, approverChatId: approver.telegramUserId!, botToken: settings.botToken });
           return sendTelegramMessage({
           botToken: settings.botToken,
           chatId: approver.telegramUserId!,
@@ -2968,11 +3040,11 @@ export async function POST(req: NextRequest) {
               "",
               "━━━━━━━━━━━━━━━━━━━━",
               "",
-              `ဤအီးမေးလ် <code>${email}</code> ကို Staff Bot Access တွင်`,
+              `ဤအီးမေးလ် <code>${email}</code> ကို HR & Staff တွင်`,
               "Business Owner မှ ကြိုတင်ထည့်သွင်းထားခြင်း မရှိပါ။",
               "",
               "💡 <i>ကျေးဇူးပြု၍ သင့်လုပ်ငန်းတာဝန်ရှိသူအား</i>",
-              "<i>Staff Bot Access တွင် စာရင်းသွင်းပေးရန် ပြောပါ။</i>",
+              "<i>HR & Staff တွင် စာရင်းသွင်းပေးရန် ပြောပါ။</i>",
             ].join("\n"),
             replyMarkup: KEYBOARD_UNLINKED,
           });
@@ -3169,11 +3241,12 @@ export async function POST(req: NextRequest) {
     if (message.text && sender.activeReportType.startsWith('awaiting_rejection_reason:')) {
       const pendingId = sender.activeReportType.replace('awaiting_rejection_reason:', '');
       const reason = message.text.trim();
-      const pending = await prisma.pendingDemandImport.findFirst({
-        where: { id: pendingId, status: 'awaiting_rejection_reason', sender: { userId: settings.userId } },
+      const pending = await prisma.pendingDemandImport.findUnique({
+        where: { id: pendingId },
+        include: { sender: { select: { userId: true } } },
       });
 
-      if (!sender.isDataApprover || !pending || pending.senderId === sender.id) {
+      if (!sender.isDataApprover || !pending || pending.sender.userId !== sender.userId || pending.status !== 'awaiting_rejection_reason' || pending.senderId === sender.id) {
         await prisma.telegramSender.update({ where: { id: sender.id }, data: { activeReportType: 'none' } });
         await sendTelegramMessage({
           botToken: settings?.botToken,
@@ -3455,6 +3528,9 @@ export async function POST(req: NextRequest) {
             telegramMessageId: telegramMessage.id,
             // Retain Telegram's numeric ID separately for copyMessage.
             sourceTelegramMessageId: String(message.message_id),
+            // Keep the bot file ID so the approver can still receive the file
+            // if Telegram prevents copying a message between chats.
+            sourceTelegramFileId: fileInfo.fileId,
             progressMsgId,
             receivedAtMyanmar,
             activeMode,

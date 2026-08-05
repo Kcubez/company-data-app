@@ -494,7 +494,7 @@ export default function HRManagementPage() {
                                 }
                               >
                                 <Shield className="h-3.5 w-3.5 mr-2 text-amber-500" />
-                                {staff.isAuthorized ? 'Revoke Authorization' : 'Grant Authorization'}
+                                {staff.isAuthorized ? 'Disable Authorization' : 'Grant Authorization'}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
@@ -502,7 +502,7 @@ export default function HRManagementPage() {
                                 className="text-rose-600 dark:text-rose-400 focus:bg-rose-50 dark:focus:bg-rose-950/40"
                               >
                                 <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                Revoke Staff Access
+                                Delete Staff Account
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -666,10 +666,10 @@ export default function HRManagementPage() {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-rose-600 dark:text-rose-400 flex items-center gap-2">
-              <AlertCircle className="h-5 w-5" /> Revoke Staff Access
+              <AlertCircle className="h-5 w-5" /> Delete Staff Account
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Are you sure you want to revoke access for {deletingStaff?.displayName || deletingStaff?.email || 'this staff member'}? Their Telegram and report history will be preserved.
+              Delete {deletingStaff?.displayName || deletingStaff?.email || 'this staff member'} from this business? They can be added and linked again later. Their linked Telegram messages and reports will also be removed.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="pt-3">
@@ -678,7 +678,7 @@ export default function HRManagementPage() {
             </Button>
             <Button variant="destructive" onClick={handleConfirmDelete} disabled={deleteStaff.isPending}>
               {deleteStaff.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Revoke Access
+              Delete Account
             </Button>
           </DialogFooter>
         </DialogContent>

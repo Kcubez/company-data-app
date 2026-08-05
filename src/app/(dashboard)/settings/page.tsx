@@ -99,7 +99,6 @@ function useSaveBotSettings() {
 }
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'bot' | 'senders'>('bot');
   const { data: settings, isLoading: isSettingsLoading } = useBotSettings();
   const saveMutation = useSaveBotSettings();
 
@@ -134,55 +133,23 @@ export default function SettingsPage() {
       <div>
         <div className="flex items-center gap-3 mb-2">
           <h1 className="text-3xl font-bold text-foreground font-heading">Settings</h1>
-          {settings?.isActive && activeTab === 'bot' && (
+          {settings?.isActive && (
             <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
               <CheckCircle2 className="w-3 h-3 mr-1" />
               Bot Connected
             </Badge>
           )}
-          {settings && !settings.isActive && !isSettingsLoading && activeTab === 'bot' && (
+          {settings && !settings.isActive && !isSettingsLoading && (
             <Badge className="bg-muted text-muted-foreground border-border">
               <AlertCircle className="w-3 h-3 mr-1" />
               Not Configured
             </Badge>
           )}
         </div>
-        <p className="text-muted-foreground">
-          {activeTab === 'bot'
-            ? 'Configure Telegram intake and Gemini AI parsing settings'
-            : 'Manage staff Telegram access, verification status, and department access levels'}
-        </p>
+        <p className="text-muted-foreground">Configure Telegram intake and Gemini AI parsing settings.</p>
       </div>
 
-      {/* Tabs Selector */}
-      <div className="flex border-b border-border/60">
-        <button
-          onClick={() => setActiveTab('bot')}
-          className={`px-5 py-2.5 font-medium text-sm flex items-center gap-2 border-b-2 transition-all duration-200 ${
-            activeTab === 'bot'
-              ? 'border-blue-500 text-blue-600 dark:text-blue-400 font-semibold'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Bot className="w-4 h-4" />
-          Bot Configuration
-        </button>
-        <button
-          onClick={() => setActiveTab('senders')}
-          className={`px-5 py-2.5 font-medium text-sm flex items-center gap-2 border-b-2 transition-all duration-200 ${
-            activeTab === 'senders'
-              ? 'border-blue-500 text-blue-600 dark:text-blue-400 font-semibold'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          Staff Bot Access
-        </button>
-      </div>
-
-      {/* Tab Content */}
-      {activeTab === 'bot' ? (
-        <div className="space-y-6">
+      <div className="space-y-6">
           {/* Bot Token Card */}
           <Card className="glass-card border-border/70 shadow-sm">
             <CardHeader>
@@ -335,10 +302,7 @@ export default function SettingsPage() {
               Save Settings
             </Button>
           </div>
-        </div>
-      ) : (
-        <TelegramSendersList />
-      )}
+      </div>
     </div>
   );
 }

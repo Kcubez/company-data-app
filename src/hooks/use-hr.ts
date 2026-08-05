@@ -58,10 +58,10 @@ export function useDeleteHRStaff() {
       queryClient.invalidateQueries({ queryKey: hrKeys.staff() });
       queryClient.invalidateQueries({ queryKey: ['senders'] });
       queryClient.invalidateQueries({ queryKey: ['settings', 'senders'] });
-      toast.success('Staff access revoked');
+      toast.success('Staff account deleted');
     },
     onError: (err: Error) => {
-      toast.error(err.message || 'Failed to revoke staff access');
+      toast.error(err.message || 'Failed to delete staff account');
     },
   });
 }
