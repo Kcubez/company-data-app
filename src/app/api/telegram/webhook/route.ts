@@ -1271,6 +1271,16 @@ function isTextSubmission(pending: { fileName: string; fileType?: string | null 
   return name.toLowerCase().includes('text entry');
 }
 
+function isPendingImportBelongsToApprover(
+  pendingSenderUserId: string | null | undefined,
+  approverUserId: string | null | undefined,
+  fallbackOwnerUserId: string | null | undefined
+) {
+  const ownerUserId = approverUserId || fallbackOwnerUserId;
+  if (!ownerUserId) return true;
+  return pendingSenderUserId === ownerUserId || pendingSenderUserId === null || pendingSenderUserId === undefined;
+}
+
 function buildStructuredPreviewText({ fileName, kind, rowCount, fileType }: { fileName: string; kind: StructuredSubmissionKind; rowCount: number; fileType?: string | null }) {
   const isText = isTextSubmission({ fileName, fileType });
   const itemLabel = isText ? 'Record' : 'File';
@@ -2328,7 +2338,8 @@ export async function POST(req: NextRequest) {
           where: { id: pendingId },
           include: { sender: { select: { userId: true, displayName: true, firstName: true } } },
         });
-        if (!pending || pending.sender.userId !== sender.userId || pending.senderId === sender.id || pending.status !== 'pending_owner_review') {
+        const isBelongs = pending ? isPendingImportBelongsToApprover(pending.sender.userId, sender.userId, settings?.userId) : false;
+        if (!pending || !isBelongs || pending.senderId === sender.id || pending.status !== 'pending_owner_review') {
           await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'This submission is no longer awaiting review');
           return NextResponse.json({ ok: true });
         }
@@ -2337,6 +2348,7 @@ export async function POST(req: NextRequest) {
           ? structuredSubmissionCount(pending)
           : Array.isArray(pending.parsedRows) ? pending.parsedRows.length : 0;
         const submitterName = pending.sender.displayName || pending.sender.firstName || 'Staff member';
+        const itemLabel = isTextSubmission(pending) ? 'Record' : 'File';
 
         // A pending-list entry may be opened hours later, so forward/copy the
         // source again here rather than relying on the original notification.
@@ -2348,7 +2360,7 @@ export async function POST(req: NextRequest) {
             '🧾 <b>Data approval required</b>',
             '━━━━━━━━━━━━━━━━━━━━',
             `👤 <b>Submitted by:</b> ${escapeHtml(submitterName)}`,
-            `📎 <b>File / entry:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+            `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
             `📁 <b>Mode:</b> ${approvalReportTypeTitle(pending.reportType)}`,
             `📊 <b>Records:</b> <code>${recordCount}</code>`,
             '',
@@ -2378,7 +2390,8 @@ export async function POST(req: NextRequest) {
           where: { id: pendingId },
           include: { sender: { select: { userId: true } } },
         });
-        if (!pending || pending.sender.userId !== sender.userId || pending.status !== 'pending_owner_review') {
+        const isBelongs = pending ? isPendingImportBelongsToApprover(pending.sender.userId, sender.userId, settings?.userId) : false;
+        if (!pending || !isBelongs || pending.status !== 'pending_owner_review') {
           await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'This submission is no longer awaiting review');
           return NextResponse.json({ ok: true });
         }
@@ -3339,8 +3352,9 @@ export async function POST(req: NextRequest) {
         where: { id: pendingId },
         include: { sender: { select: { userId: true } } },
       });
+      const isBelongs = pending ? isPendingImportBelongsToApprover(pending.sender.userId, sender.userId, settings?.userId) : false;
 
-      if (!sender.isDataApprover || !pending || pending.sender.userId !== sender.userId || pending.status !== 'awaiting_rejection_reason' || pending.senderId === sender.id) {
+      if (!sender.isDataApprover || !pending || !isBelongs || pending.status !== 'awaiting_rejection_reason' || pending.senderId === sender.id) {
         await prisma.telegramSender.update({ where: { id: sender.id }, data: { activeReportType: 'none' } });
         await sendTelegramMessage({
           botToken: settings?.botToken,
@@ -3445,11 +3459,21 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      const ownerUserId = sender.userId ?? settings?.userId;
       const pendingWhere = {
-        status: 'pending_owner_review',
+        status: { in: ['pending_owner_review', 'awaiting_rejection_reason'] },
         senderId: { not: sender.id },
-        sender: { userId: sender.userId },
-      } as const;
+        ...(ownerUserId
+          ? {
+              sender: {
+                OR: [
+                  { userId: ownerUserId },
+                  { userId: null },
+                ],
+              },
+            }
+          : {}),
+      };
       const [totalPending, pendingItems] = await Promise.all([
         prisma.pendingDemandImport.count({ where: pendingWhere }),
         prisma.pendingDemandImport.findMany({
@@ -3478,7 +3502,8 @@ export async function POST(req: NextRequest) {
         const count = isStructuredSubmission(item.reportType)
           ? structuredSubmissionCount(item)
           : Array.isArray(item.parsedRows) ? item.parsedRows.length : 0;
-        return `${index + 1}. <b>${escapeHtml(submitter)}</b> — ${approvalReportTypeTitle(item.reportType)}\n   📎 <code>${escapeHtml(item.fileName)}</code> · ${count} records`;
+        const itemLabel = isTextSubmission(item) ? 'Record' : 'File';
+        return `${index + 1}. <b>${escapeHtml(submitter)}</b> — ${approvalReportTypeTitle(item.reportType)}\n   📎 <b>${itemLabel}:</b> <code>${escapeHtml(item.fileName)}</code> · ${count} records`;
       });
 
       await sendTelegramMessage({
