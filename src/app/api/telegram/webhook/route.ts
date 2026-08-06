@@ -1242,6 +1242,62 @@ async function getIndependentDataApprovers(senderId: string, fallbackOwnerUserId
   });
 }
 
+/**
+ * After one approver acts on a submission, notify all *other* approvers in the
+ * same workspace so they know the item is no longer pending. We send a new
+ * message rather than trying to edit theirs (we don't track their message IDs).
+ */
+async function notifyOtherApprovers({
+  actingApproverId,
+  pending,
+  actionText,
+  botToken,
+  ownerUserId,
+}: {
+  actingApproverId: string;
+  pending: { id: string; senderId: string; fileName: string; reportType: string };
+  actionText: string;
+  botToken: string | null | undefined;
+  ownerUserId: string | null;
+}) {
+  // Find all other approvers in the same workspace (excluding the submitter and the acting approver)
+  const submitter = await prisma.telegramSender.findUnique({
+    where: { id: pending.senderId },
+    select: { userId: true },
+  });
+  const resolvedOwnerUserId = submitter?.userId ?? ownerUserId;
+  if (!resolvedOwnerUserId) return;
+
+  const otherApprovers = await prisma.telegramSender.findMany({
+    where: {
+      userId: resolvedOwnerUserId,
+      isAuthorized: true,
+      isVerified: true,
+      isDataApprover: true,
+      id: { notIn: [pending.senderId, actingApproverId] },
+      telegramUserId: { not: null },
+    },
+    select: { telegramUserId: true },
+  });
+
+  const itemLabel = isTextSubmission(pending) ? 'Record' : 'File';
+  const text = [
+    `ℹ️ <b>${itemLabel} submission already handled</b>`,
+    '━━━━━━━━━━━━━━━━━━━━',
+    `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+    '',
+    actionText,
+    '',
+    'No further action is needed for this submission.',
+  ].join('\n');
+
+  await Promise.all(
+    otherApprovers.map((approver) =>
+      sendTelegramMessage({ botToken, chatId: approver.telegramUserId!, text })
+    )
+  );
+}
+
 async function deliverApprovalFile({
   pending,
   approverChatId,
@@ -2388,11 +2444,39 @@ export async function POST(req: NextRequest) {
 
         const pending = await prisma.pendingDemandImport.findUnique({
           where: { id: pendingId },
-          include: { sender: { select: { userId: true } } },
+          include: {
+            sender: { select: { userId: true } },
+            approver: { select: { displayName: true, firstName: true, email: true } },
+          },
         });
         const isBelongs = pending ? isPendingImportBelongsToApprover(pending.sender.userId, sender.userId, settings?.userId) : false;
         if (!pending || !isBelongs || pending.status !== 'pending_owner_review') {
-          await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'This submission is no longer awaiting review');
+          // Provide a context-aware message so the second approver knows who already handled this
+          if (pending && isBelongs && pending.status !== 'pending_owner_review') {
+            const handledByName = pending.approver?.displayName || pending.approver?.firstName || pending.approver?.email || 'another approver';
+            const statusLabel = pending.status === 'approved' ? `✅ Approved by ${handledByName}` : pending.status === 'rejected' ? `❌ Rejected by ${handledByName}` : 'Already handled';
+            const isText = isTextSubmission(pending);
+            const itemLabel = isText ? 'Record' : 'File';
+            await answerCallbackQuery(settings?.botToken, callbackQuery.id, `${statusLabel} — no action needed`);
+            if (chatId && messageId) {
+              await editTelegramMessage({
+                botToken: settings.botToken,
+                chatId: BigInt(chatId),
+                messageId,
+                text: [
+                  `ℹ️ <b>${itemLabel} submission already handled</b>`,
+                  '━━━━━━━━━━━━━━━━━━━━',
+                  `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+                  '',
+                  statusLabel,
+                  '',
+                  'No further action is needed for this submission.',
+                ].join('\n'),
+              });
+            }
+          } else {
+            await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'This submission is no longer awaiting review');
+          }
           return NextResponse.json({ ok: true });
         }
 
@@ -2466,6 +2550,13 @@ export async function POST(req: NextRequest) {
               ].join('\n'),
             });
           }
+          await notifyOtherApprovers({
+            actingApproverId: sender.id,
+            pending,
+            actionText: `✅ <b>Approved by:</b> ${escapeHtml(reviewerName)} — ${importedCount} records imported.`,
+            botToken: settings.botToken,
+            ownerUserId: settings.userId,
+          });
           return NextResponse.json({ ok: true });
         }
 
@@ -2549,6 +2640,13 @@ export async function POST(req: NextRequest) {
             ].join('\n'),
           });
         }
+        await notifyOtherApprovers({
+          actingApproverId: sender.id,
+          pending,
+          actionText: `✅ <b>Approved by:</b> ${escapeHtml(reviewerName)} — ${importedCount} records imported.`,
+          botToken: settings.botToken,
+          ownerUserId: settings.userId,
+        });
         return NextResponse.json({ ok: true });
       }
 
@@ -3420,6 +3518,13 @@ export async function POST(req: NextRequest) {
         botToken: settings?.botToken,
         chatId,
         text: `✅ Rejection reason sent to the staff member for <code>${escapeHtml(pending.fileName)}</code>.`,
+      });
+      await notifyOtherApprovers({
+        actingApproverId: sender.id,
+        pending,
+        actionText: `❌ <b>Rejected by:</b> ${escapeHtml(reviewerName)}.`,
+        botToken: settings?.botToken,
+        ownerUserId: settings?.userId,
       });
       return NextResponse.json({ ok: true });
     }
