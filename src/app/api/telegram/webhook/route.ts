@@ -1266,11 +1266,18 @@ async function deliverApprovalFile({
   }
 }
 
-function buildStructuredPreviewText({ fileName, kind, rowCount }: { fileName: string; kind: StructuredSubmissionKind; rowCount: number }) {
+function isTextSubmission(pending: { fileName: string; fileType?: string | null } | string) {
+  const name = typeof pending === 'string' ? pending : pending.fileName;
+  return name.toLowerCase().includes('text entry');
+}
+
+function buildStructuredPreviewText({ fileName, kind, rowCount, fileType }: { fileName: string; kind: StructuredSubmissionKind; rowCount: number; fileType?: string | null }) {
+  const isText = isTextSubmission({ fileName, fileType });
+  const itemLabel = isText ? 'Record' : 'File';
   return [
-    `📄 <b>${structuredSubmissionTitle(kind)} file preview</b>`,
+    `📄 <b>${structuredSubmissionTitle(kind)} ${itemLabel.toLowerCase()} preview</b>`,
     '━━━━━━━━━━━━━━━━━━━━',
-    `📎 <b>File:</b> <code>${escapeHtml(fileName)}</code>`,
+    `📎 <b>${itemLabel}:</b> <code>${escapeHtml(fileName)}</code>`,
     `📊 <b>Records detected:</b> <code>${rowCount}</code>`,
     '',
     'ဒီ preview မှန်တယ်ဆိုရင် <b>Confirm Import</b> ကိုနှိပ်ပါ။ Confirm ပြီးလျှင် Data Approver ရှိပါက approval စောင့်ပါမည်။',
@@ -1330,7 +1337,7 @@ async function queueStructuredSubmission({
       { text: '❌ Cancel', callback_data: `demand_import_cancel:${pending.id}` },
     ]],
   };
-  const text = buildStructuredPreviewText({ fileName, kind, rowCount });
+  const text = buildStructuredPreviewText({ fileName, kind, rowCount, fileType });
   if (progressMsgId) {
     await editTelegramMessage({ botToken, chatId, messageId: progressMsgId, text, replyMarkup });
   } else {
@@ -1879,20 +1886,24 @@ function buildDemandImportPreviewText({
   parsedDemands,
   errors,
   activeMode,
+  fileType,
 }: {
   fileName: string;
   parsedDemands: ParsedDemandRecord[];
   errors: string[];
   activeMode?: string;
+  fileType?: string | null;
 }) {
+  const isText = isTextSubmission({ fileName, fileType });
+  const itemLabel = isText ? 'Record' : 'File';
   const summary = summarizeParsedDemands(parsedDemands);
   const title = activeMode === 'customer_service'
-    ? "🎧 <b>Customer Service file preview</b>"
-    : "📄 <b>Sales & Marketing file preview</b>";
+    ? `🎧 <b>Customer Service ${itemLabel.toLowerCase()} preview</b>`
+    : `📄 <b>Sales & Marketing ${itemLabel.toLowerCase()} preview</b>`;
   const parts = [
     title,
     "━━━━━━━━━━━━━━━━━━━━",
-    `📎 <b>File:</b> <code>${escapeHtml(fileName)}</code>`,
+    `📎 <b>${itemLabel}:</b> <code>${escapeHtml(fileName)}</code>`,
     `📊 <b>Rows detected:</b> <code>${summary.total}</code>`,
     "",
     "🎯 <b>Priority summary</b>",
@@ -1932,7 +1943,7 @@ function buildDemandImportPreviewText({
 
   parts.push(
     "",
-    "ဒီ preview မှန်တယ်ဆိုရင် <b>Confirm Import</b> ကိုနှိပ်ပါ။ မမှန်ရင် <b>Cancel</b> နှိပ်ပြီး file/header ကိုပြန်စစ်ပါ။",
+    `ဒီ preview မှန်တယ်ဆိုရင် <b>Confirm Import</b> ကိုနှိပ်ပါ။ မမှန်ရင် <b>Cancel</b> နှိပ်ပြီး ${isText ? 'text data' : 'file/header'} ကိုပြန်စစ်ပါ။`,
   );
 
   return parts.join("\n");
@@ -2378,6 +2389,8 @@ export async function POST(req: NextRequest) {
         }
 
         const reviewerName = sender.displayName || sender.firstName || sender.email || 'Data approver';
+        const isText = isTextSubmission(pending);
+        const itemLabel = isText ? 'Record' : 'File';
 
         if (!isApprove) {
           await prisma.pendingDemandImport.update({
@@ -2397,7 +2410,7 @@ export async function POST(req: NextRequest) {
               text: [
                 '✍️ <b>Rejection reason required</b>',
                 '━━━━━━━━━━━━━━━━━━━━',
-                `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+                `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
                 '',
                 'Reason ကို စာတစ်စောင်အဖြစ် ရိုက်ပို့ပါ။ အဲဒီစာကို staff ဆီသို့ reject notification နှင့်အတူ ပို့ပေးပါမည်။',
                 'မပယ်ဖျက်လိုလျှင် <code>/cancel</code> ရိုက်ပို့ပါ။',
@@ -2417,9 +2430,9 @@ export async function POST(req: NextRequest) {
             botToken: settings.botToken,
             chatId: pending.chatId,
             text: [
-              '✅ <b>File submission approved and imported</b>',
+              `✅ <b>${itemLabel} submission approved and imported</b>`,
               '━━━━━━━━━━━━━━━━━━━━',
-              `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+              `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
               `📁 <b>Mode:</b> ${structuredSubmissionTitle(pending.reportType)}`,
               `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
               `👤 <b>Approved by:</b> ${escapeHtml(reviewerName)}`,
@@ -2432,9 +2445,9 @@ export async function POST(req: NextRequest) {
               chatId: BigInt(chatId),
               messageId,
               text: [
-                '✅ <b>File submission approved</b>',
+                `✅ <b>${itemLabel} submission approved</b>`,
                 '━━━━━━━━━━━━━━━━━━━━',
-                `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+                `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
                 `📁 <b>Mode:</b> ${structuredSubmissionTitle(pending.reportType)}`,
                 `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
               ].join('\n'),
@@ -2500,9 +2513,9 @@ export async function POST(req: NextRequest) {
           botToken: settings.botToken,
           chatId: pending.chatId,
           text: [
-            '✅ <b>File submission approved and imported</b>',
+            `✅ <b>${itemLabel} submission approved and imported</b>`,
             '━━━━━━━━━━━━━━━━━━━━',
-            `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+            `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
             `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
             `👤 <b>Approved by:</b> ${escapeHtml(reviewerName)}`,
           ].join('\n'),
@@ -2514,9 +2527,9 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: [
-              '✅ <b>File submission approved</b>',
+              `✅ <b>${itemLabel} submission approved</b>`,
               '━━━━━━━━━━━━━━━━━━━━',
-              `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+              `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
               `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
               '',
               `Staff member ကို approval အကြောင်းကြားပြီး dashboard ထဲသို့ data သွင်းပြီးပါပြီ။`,
@@ -2548,16 +2561,18 @@ export async function POST(req: NextRequest) {
             data: { status: 'expired' },
           });
           await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Preview expired');
+          const isText = isTextSubmission(pending);
+          const itemLabel = isText ? 'Record' : 'File';
           if (chatId && messageId) {
             await editTelegramMessage({
               botToken: settings?.botToken,
               chatId: BigInt(chatId),
               messageId,
               text: [
-                "⌛ <b>Sales & Marketing file preview expired</b>",
+                `⌛ <b>Sales & Marketing ${itemLabel.toLowerCase()} preview expired</b>`,
                 "━━━━━━━━━━━━━━━━━━━━",
-                `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
-                "ကျေးဇူးပြု၍ file ကိုပြန်ပို့ပြီး preview အသစ်လုပ်ပါ။",
+                `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+                `ကျေးဇူးပြု၍ ${isText ? 'data' : 'file'} ကိုပြန်ပို့ပြီး preview အသစ်လုပ်ပါ။`,
               ].join("\n"),
             });
           }
@@ -2576,6 +2591,8 @@ export async function POST(req: NextRequest) {
             await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'No records to import');
             return NextResponse.json({ ok: true });
           }
+          const isText = isTextSubmission(pending);
+          const itemLabel = isText ? 'Record' : 'File';
           const approvers = await getIndependentDataApprovers(pending.senderId, settings.userId);
           if (approvers.length === 0) {
             const importedCount = await importStructuredSubmission(pending, settings.userId, new Date());
@@ -2583,7 +2600,7 @@ export async function POST(req: NextRequest) {
             await answerCallbackQuery(settings?.botToken, callbackQuery.id, `Imported ${importedCount} records`);
             if (chatId && messageId) await editTelegramMessage({
               botToken: settings?.botToken, chatId: BigInt(chatId), messageId,
-              text: ['✅ <b>File imported</b>', '━━━━━━━━━━━━━━━━━━━━', `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Imported:</b> <code>${importedCount}</code> records`, '', 'Independent Data Approver မရှိသေးသဖြင့် dashboard ထဲသို့ တိုက်ရိုက်သွင်းပြီးပါပြီ။'].join('\n'),
+              text: [`✅ <b>${itemLabel} imported</b>`, '━━━━━━━━━━━━━━━━━━━━', `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Imported:</b> <code>${importedCount}</code> records`, '', 'Independent Data Approver မရှိသေးသဖြင့် dashboard ထဲသို့ တိုက်ရိုက်သွင်းပြီးပါပြီ။'].join('\n'),
             });
             return NextResponse.json({ ok: true });
           }
@@ -2592,14 +2609,14 @@ export async function POST(req: NextRequest) {
             await deliverApprovalFile({ pending, approverChatId: approver.telegramUserId!, botToken: settings.botToken });
             return sendTelegramMessage({
             botToken: settings.botToken, chatId: approver.telegramUserId!,
-            text: ['🧾 <b>Data approval required</b>', '━━━━━━━━━━━━━━━━━━━━', `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Records:</b> <code>${recordCount}</code>`, '', 'Data format ကိုစစ်ဆေးပြီး approval ပြုလုပ်ပါ။'].join('\n'),
+            text: ['🧾 <b>Data approval required</b>', '━━━━━━━━━━━━━━━━━━━━', `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Records:</b> <code>${recordCount}</code>`, '', 'Data format ကိုစစ်ဆေးပြီး approval ပြုလုပ်ပါ။'].join('\n'),
             replyMarkup: { inline_keyboard: [[{ text: '✅ Approve & Import', callback_data: `data_approval_approve:${pending.id}` }, { text: '❌ Reject', callback_data: `data_approval_reject:${pending.id}` }]] },
             });
           }));
           await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Sent for data approval');
           if (chatId && messageId) await editTelegramMessage({
             botToken: settings?.botToken, chatId: BigInt(chatId), messageId,
-            text: ['⏳ <b>File submitted for approval</b>', '━━━━━━━━━━━━━━━━━━━━', `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Records submitted:</b> <code>${recordCount}</code>`, '', 'Data Approver ဆီသို့ notification ပို့ပြီးပါပြီ။ Approve လုပ်ပြီးမှ dashboard ထဲသို့ data ဝင်ပါမည်။'].join('\n'),
+            text: [`⏳ <b>${itemLabel} submitted for approval</b>`, '━━━━━━━━━━━━━━━━━━━━', `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`, `📁 <b>Mode:</b> ${structuredSubmissionTitle(structuredKind)}`, `📊 <b>Records submitted:</b> <code>${recordCount}</code>`, '', 'Data Approver ဆီသို့ notification ပို့ပြီးပါပြီ။ Approve လုပ်ပြီးမှ dashboard ထဲသို့ data ဝင်ပါမည်။'].join('\n'),
           });
           return NextResponse.json({ ok: true });
         }
@@ -2661,15 +2678,17 @@ export async function POST(req: NextRequest) {
             }),
           ]);
           await answerCallbackQuery(settings?.botToken, callbackQuery.id, `Imported ${importedCount} records`);
+          const isText = isTextSubmission(pending);
+          const itemLabel = isText ? 'Record' : 'File';
           if (chatId && messageId) {
             await editTelegramMessage({
               botToken: settings?.botToken,
               chatId: BigInt(chatId),
               messageId,
               text: [
-                '✅ <b>File imported</b>',
+                `✅ <b>${itemLabel} imported</b>`,
                 '━━━━━━━━━━━━━━━━━━━━',
-                `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+                `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
                 `📊 <b>Imported:</b> <code>${importedCount}</code> records`,
                 '',
                 'Data Approver မသတ်မှတ်ထားသေးသဖြင့် အရင် flow အတိုင်း dashboard ထဲသို့ တိုက်ရိုက်သွင်းပြီးပါပြီ။',
@@ -2683,6 +2702,8 @@ export async function POST(req: NextRequest) {
           where: { id: pending.id },
           data: { status: 'pending_owner_review' },
         });
+        const isText = isTextSubmission(pending);
+        const itemLabel = isText ? 'Record' : 'File';
         await Promise.all(approvers.map(async (approver) => {
           await deliverApprovalFile({ pending, approverChatId: approver.telegramUserId!, botToken: settings.botToken });
           return sendTelegramMessage({
@@ -2691,7 +2712,7 @@ export async function POST(req: NextRequest) {
           text: [
             '🧾 <b>Data approval required</b>',
             '━━━━━━━━━━━━━━━━━━━━',
-            `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+            `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
             `📊 <b>Rows:</b> <code>${rows.length}</code>`,
             `📁 <b>Department:</b> ${pending.reportType === 'customer_service' ? 'Customer Service' : 'Sales & Marketing'}`,
             '',
@@ -2721,9 +2742,9 @@ export async function POST(req: NextRequest) {
             chatId: BigInt(chatId),
             messageId,
             text: [
-              "⏳ <b>File submitted for approval</b>",
+              `⏳ <b>${itemLabel} submitted for approval</b>`,
               "━━━━━━━━━━━━━━━━━━━━",
-              `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+              `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
               `📊 <b>Rows submitted:</b> <code>${rows.length}</code>`,
               "",
               "Data Approver ဆီသို့ notification ပို့ပြီးပါပြီ။ Approve လုပ်ပြီးမှ dashboard ထဲသို့ data ဝင်ပါမည်။",
@@ -2750,16 +2771,18 @@ export async function POST(req: NextRequest) {
         });
 
         await answerCallbackQuery(settings?.botToken, callbackQuery.id, 'Import cancelled');
+        const isText = isTextSubmission(pending);
+        const itemLabel = isText ? 'Record' : 'File';
         if (chatId && messageId) {
           await editTelegramMessage({
             botToken: settings?.botToken,
             chatId: BigInt(chatId),
             messageId,
             text: [
-              "❌ <b>Sales & Marketing file import cancelled</b>",
+              `❌ <b>Sales & Marketing ${itemLabel.toLowerCase()} import cancelled</b>`,
               "━━━━━━━━━━━━━━━━━━━━",
-              `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
-              "Dashboard ထဲသို့ data မသွင်းထားပါ။ File ကိုပြင်ပြီးပြန်ပို့နိုင်ပါသည်။",
+              `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+              `Dashboard ထဲသို့ data မသွင်းထားပါ။ ${isText ? 'Data' : 'File'} ကိုပြင်ပြီးပြန်ပို့နိုင်ပါသည်။`,
             ].join("\n"),
           });
         }
@@ -3350,6 +3373,8 @@ export async function POST(req: NextRequest) {
       }
 
       const reviewerName = sender.displayName || sender.firstName || sender.email || 'Data approver';
+      const isText = isTextSubmission(pending);
+      const itemLabel = isText ? 'Record' : 'File';
       await Promise.all([
         prisma.pendingDemandImport.update({
           where: { id: pending.id },
@@ -3366,15 +3391,15 @@ export async function POST(req: NextRequest) {
         botToken: settings?.botToken,
         chatId: pending.chatId,
         text: [
-          '❌ <b>File submission rejected</b>',
+          `❌ <b>${itemLabel} submission rejected</b>`,
           '━━━━━━━━━━━━━━━━━━━━',
-          `📎 <b>File:</b> <code>${escapeHtml(pending.fileName)}</code>`,
+          `📎 <b>${itemLabel}:</b> <code>${escapeHtml(pending.fileName)}</code>`,
           `👤 <b>Reviewed by:</b> ${escapeHtml(reviewerName)}`,
           '',
           '<b>Reason:</b>',
           escapeHtml(reason),
           '',
-          'Reason ကိုအခြေခံပြီး file/data format ပြင်ကာ preview အသစ်ဖြင့် ပြန်လည်ပို့ပေးပါ။',
+          `Reason ကိုအခြေခံပြီး ${isText ? 'data format' : 'file/data format'} ပြင်ကာ preview အသစ်ဖြင့် ပြန်လည်ပို့ပေးပါ။`,
         ].join('\n'),
       });
       await sendTelegramMessage({
@@ -3548,7 +3573,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      let activeMode = normalizeTelegramReportMode(updatedSender.activeReportType);
+      const activeMode = normalizeTelegramReportMode(updatedSender.activeReportType);
       if (activeMode !== updatedSender.activeReportType) {
         await prisma.telegramSender.update({ where: { id: sender.id }, data: { activeReportType: activeMode } });
       }
@@ -3702,7 +3727,7 @@ export async function POST(req: NextRequest) {
     });
 
     const isBusinessReport = message.text ? isBusinessReportText(message.text) : false;
-    let activeMode = isBusinessReport ? 'business_report' : normalizeTelegramReportMode(updatedSender.activeReportType);
+    const activeMode = isBusinessReport ? 'business_report' : normalizeTelegramReportMode(updatedSender.activeReportType);
     if (!isBusinessReport && activeMode !== updatedSender.activeReportType) {
       await prisma.telegramSender.update({ where: { id: sender.id }, data: { activeReportType: activeMode } });
     }
