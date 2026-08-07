@@ -18,6 +18,7 @@ import {
   Wallet,
   Trash2,
   ClipboardCheck,
+  Lightbulb,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -138,6 +139,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
         { title: 'Sales & Marketing', href: '/sales-marketing', icon: TrendingUp, adminOnly: false },
         { title: 'Customer Service', href: '/customer-service', icon: UserCircle, adminOnly: false },
         { title: 'Projects / Infra', href: '/projects-infra', icon: Clock, adminOnly: false },
+        { title: 'Brainstorm & Planning', href: '/planning', icon: Lightbulb, adminOnly: false },
       ],
     },
     {

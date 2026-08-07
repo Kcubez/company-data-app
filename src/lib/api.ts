@@ -961,3 +961,51 @@ export const financeEntriesApi = {
   deleteAll: (params: DateRangeParams = {}) =>
     request<{ success: boolean; deleted: number }>(`/api/finance-entries${buildDateRangeQuery(params)}`, { method: "DELETE" }),
 };
+
+// ─── Planning API ─────────────────────────────────────────────────────────────
+
+export type PlanningPriority = {
+  title: string;
+  impact: "high" | "medium" | "low";
+  rationale: string;
+  action: string;
+  actionHref: string;
+};
+
+export type PlanningStep = {
+  horizon: "Next 30 days" | "Next 60 days" | "Next 90 days";
+  goal: string;
+  actions: string[];
+};
+
+export type PlanningInsightsResponse = {
+  source: "ai" | "heuristic";
+  executiveSummary: string;
+  futureOutlook: string;
+  snapshot: {
+    periodDays: number;
+    revenue: number;
+    expenses: number;
+    profit: number;
+    margin: number;
+    demandCount: number;
+    pendingDeals: number;
+    highPriorityLeads: number;
+    receivables: number;
+    overdueDebt: number;
+    upcomingExpiries: number;
+    maintenanceProjects: number;
+    projectedRevenue30: number;
+    projectedExpenses30: number;
+    projectedProfit30: number;
+  };
+  scenarios: { name: string; revenue: number; expenses: number; profit: number; description: string }[];
+  priorities: PlanningPriority[];
+  plan: PlanningStep[];
+};
+
+export const planningApi = {
+  insights: (params: DateRangeParams = {}) =>
+    request<PlanningInsightsResponse>(`/api/planning/insights${buildDateRangeQuery(params)}`),
+};
+
