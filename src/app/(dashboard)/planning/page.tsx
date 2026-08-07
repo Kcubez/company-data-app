@@ -26,6 +26,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 function formatAmount(value: number) {
   return `${Math.round(value / 100_000) * 100_000}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -261,6 +262,7 @@ export default function PlanningPage() {
               value={`${data.snapshot.pendingDeals}`}
               detail={`${data.snapshot.highPriorityLeads} high-priority lead(s)`}
               tone="amber"
+              
             />
             <MetricCard
               icon={AlertTriangle}
@@ -268,6 +270,7 @@ export default function PlanningPage() {
               value={`${data.snapshot.upcomingExpiries}`}
               detail={`${formatAmount(data.snapshot.receivables)} MMK receivables`}
               tone="violet"
+             
             />
           </div>
 
@@ -431,12 +434,14 @@ function MetricCard({
   value,
   detail,
   tone,
+  valueClassName,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
   detail: string;
   tone: "sky" | "emerald" | "amber" | "rose" | "violet";
+  valueClassName?: string;
 }) {
   const tones = {
     sky: "bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-300",
@@ -455,8 +460,8 @@ function MetricCard({
             <Icon className="h-4 w-4" />
           </span>
         </div>
-        <p className="mt-3 text-xl font-bold tracking-tight text-foreground">{value}</p>
-        <p className="mt-1 text-[11px] text-muted-foreground">{detail}</p>
+        <p className={cn("mt-3 min-h-10 text-xl font-bold tabular-nums tracking-tight text-foreground", valueClassName)}>{value}</p>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">{detail}</p>
       </CardContent>
     </Card>
   );
