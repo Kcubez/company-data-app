@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
+  const reveal = new URL(req.url).searchParams.get("reveal") === "1";
+
   const settings = await prisma.botSettings.findUnique({
     where: { userId: session.user.id },
   });
@@ -33,8 +35,8 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     settings: {
-      botToken: maskSecret(settings.botToken),
-      geminiApiKey: maskSecret(settings.geminiApiKey),
+      botToken: reveal ? (settings.botToken ?? "") : maskSecret(settings.botToken),
+      geminiApiKey: reveal ? (settings.geminiApiKey ?? "") : maskSecret(settings.geminiApiKey),
       geminiModel: settings.geminiModel,
       isActive: settings.isActive,
       updatedAt: settings.updatedAt,

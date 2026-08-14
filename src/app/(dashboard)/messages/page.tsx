@@ -254,7 +254,7 @@ export default function MessagesPage() {
               messagesData.messages.map((message) => (
                 <div
                   key={message.id}
-                  className="group bg-muted/50 border border-border/70 rounded-lg p-4 hover:bg-muted/60 hover:border-border/50 transition-all duration-200"
+                  className="bg-muted/50 border border-border/70 rounded-lg p-4 hover:bg-muted/60 hover:border-border/50 transition-all duration-200"
                 >
                   <div className="flex items-start gap-3">
                     {/* Sender Avatar */}
@@ -366,7 +366,7 @@ export default function MessagesPage() {
                         render={
                           <button
                             type="button"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-600 dark:hover:text-red-400 dark:text-red-600 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-500/30 transition-colors"
+                            className="shrink-0 p-2 rounded-lg text-rose-600 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                             title="Delete message"
                           >
                             <Trash2 className="w-4 h-4" />

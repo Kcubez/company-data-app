@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DestructiveConfirmDialog } from '@/components/ui/destructive-confirm-dialog';
 import { AccountingRecords } from '@/components/finance/accounting-records';
+import { BusinessReportRecords } from '@/components/business-reports/business-report-records';
 import {
   Select,
   SelectContent,
@@ -611,6 +612,8 @@ function BusinessReportsPageContent() {
           </CardContent>
         </Card>
       </div>
+
+      <BusinessReportRecords dateFrom={dateFrom} dateTo={dateTo} />
 
       <AccountingRecords dateFrom={dateFrom} dateTo={dateTo} />
 

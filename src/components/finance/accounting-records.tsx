@@ -291,9 +291,8 @@ export function AccountingRecords({ dateFrom, dateTo }: { dateFrom?: string; dat
                         <td className="min-w-[180px] px-4 py-4 text-xs text-muted-foreground">{entry.notes ?? "-"}</td>
                         <td className="px-4 py-4">
                           <div className="flex justify-end gap-1">
-                            <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => openEdit(entry)}>
-                              <Pencil className="mr-1 h-3.5 w-3.5" />
-                              Edit
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => openEdit(entry)} aria-label="Edit finance record">
+                              <Pencil className="h-3.5 w-3.5" />
                             </Button>
                             <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-600" onClick={() => setDeleting(entry)} aria-label="Delete finance record">
                               <Trash2 className="h-4 w-4" />

@@ -262,7 +262,7 @@ Extract and return a JSON object with these fields:
   "customerName": string | null (client / customer name if mentioned),
   "customerPhone": string | null (client's phone number if mentioned),
   "customerCompany": string | null (client's business/company name or shop name if mentioned),
-  "serviceName": string | null (must be one of these exact values: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "AI automation book", "Prompt Packs ebook", or "Other"),
+  "serviceName": string | null (extract the service, product, or package name mentioned. Match to closest standard product if applicable, or preserve exact service name string instead of defaulting to "Other"),
   "serviceAmount": number | null (revenue / package amount from the service),
   "serviceQty": number | null (quantity sold),
   "followUpDate": string | null (next follow-up date in YYYY-MM-DD format if mentioned),
@@ -463,7 +463,7 @@ STRUCTURED_DATA:
     "customerName": string | null (customer name from 'FB account Name' or similar name columns),
     "customerPhone": string | null (customer phone number if mentioned, e.g. from 'Phone', 'ph', or contact columns),
     "customerCompany": string | null (customer business/company name or shop name if mentioned, e.g. from 'Business', 'Company', or shop columns),
-  "serviceName": string | null (must be one of these exact values: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "AI automation book", "Prompt Packs ebook", or "Other"),
+    "serviceName": string | null (extract the service, product, or package name mentioned, e.g. from 'Service Name', 'Purchased Service', 'Package', 'Product', 'ဝန်ဆောင်မှု', or 'ပစ္စည်း'. Match to standard product if applicable, or preserve exact service name string instead of defaulting to "Other"),
     "serviceAmount": number | null (revenue / package price),
     "serviceQty": number | null (quantity),
     "followUpDate": string | null (next follow-up date in YYYY-MM-DD format if mentioned, e.g. from 'Next FU Date' or similar columns),
@@ -491,18 +491,29 @@ function buildSpreadsheetExtractionPrompt(headers: unknown[], caption?: string):
 
   return `You are a business demand spreadsheet parser. Extract structured data from this sheet chunk.
 The spreadsheet has these headers: [${headerList}].
-The content may be in Burmese (Myanmar) or English or mixed.${captionNote}
+The content may be in Burmese (Myanmar), English, or mixed.${captionNote}
+
+Header Column Mapping Guide (Match any of these Burmese or English header variations):
+- customerName: 'Customer Name', 'Client', 'FB Account Name', 'Name', 'Lead Name', 'သုံးစွဲသူ', 'နာမည်', 'ဝယ်သူ', 'ဖောက်သည်'
+- customerPhone: 'Phone', 'Ph', 'Ph No', 'Tel', 'Mobile', 'Contact', 'ဖုန်း', 'ဖုန်းနံပါတ်'
+- customerCompany: 'Company', 'Business', 'Shop', 'Organization', 'Industry', 'လုပ်ငန်း', 'ကုမ္ပဏီ'
+- serviceName: 'Service Name', 'Purchased Service', 'Package', 'Product', 'Item', 'Plan', 'Interest', 'လိုချင်', 'ဝန်ဆောင်မှု', 'ပစ္စည်း'
+- serviceAmount: 'Service Amount', 'Purchase Amount', 'Price', 'Amount', 'Total', 'Revenue', 'Budget', 'ငွေပမာဏ', 'စျေး'
+- serviceQty: 'Service Qty', 'Qty', 'Quantity', 'Count', 'အရေအတွက်'
+- followUpDate: 'Follow-up Date', 'Next Follow Up', 'Next FU', 'FU Date', 'နောက်ထပ်ဆက်သွယ်ရန်'
+- note: 'Note', 'Notes', 'Remark', 'Remarks', 'Last Contact Note', 'Summary', 'Description', 'မှတ်စု', 'မှတ်ချက်'
+- createdAt: 'Date', 'Created At', 'Report Date', 'Lead Date', 'ရက်စွဲ'
 
 For each data row, extract:
-- "customerName": extract the client/customer name from 'Customer Name'.
-- "customerPhone": extract the client/customer phone number from 'Phone'.
-- "customerCompany": extract the client/customer business/company name from 'Company'.
-- "note": extract/summarize remarks from 'Note' or 'Last Contact Note'. Include CSAT/email/status details in the note if present.
-- "serviceName": extract service or package name from 'Service Name' or 'Purchased Service' (must be classified into one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "AI automation book", "Prompt Packs ebook", or "Other").
-- "serviceAmount": extract package price/amount from 'Service Amount' or 'Purchase Amount MMK'.
-- "serviceQty": quantity of services/items from 'Service Qty'.
-- "followUpDate": extract next follow-up date in YYYY-MM-DD format from 'Follow-up Date' or 'Next Follow Up'.
-- "createdAt": extract record/row date in YYYY-MM-DD format from 'Date'. If the date cell is empty, set it to null so the importer can use today's date.
+- "customerName": extract client/customer name using the header column mapping guide.
+- "customerPhone": extract client/customer phone number using the header column mapping guide.
+- "customerCompany": extract client/customer business/company name using the header column mapping guide.
+- "note": extract/summarize remarks from note/remarks/comment columns. Include CSAT/email/status details in the note if present.
+- "serviceName": extract service or package name (match to standard product if applicable, or preserve the exact service name string; do NOT default to "Other" if a specific service name is present).
+- "serviceAmount": extract package price/amount.
+- "serviceQty": quantity of services/items.
+- "followUpDate": extract next follow-up date in YYYY-MM-DD format.
+- "createdAt": extract record/row date in YYYY-MM-DD format from 'Date' / 'ရက်စွဲ'. If empty, set to null.
 
 Return your response in this exact format:
 
@@ -517,7 +528,7 @@ STRUCTURED_DATA:
     "customerName": string | null,
     "customerPhone": string | null,
     "customerCompany": string | null,
-    "serviceName": string | null (must be one of: "Website Gold Package", "Website Silver Package", "Website Diamond Package", "Messenger Sale Bot", "Telegram Sale Bot", "Genius AutoWriter", "Genius Board", "SOP Generator", "POS", "EMS", "AI for careers ebook", "AI for businesses ebook", "AI automation book", "Prompt Packs ebook", or "Other"),
+    "serviceName": string | null,
     "serviceAmount": number | null,
     "serviceQty": number | null,
     "followUpDate": string | null,

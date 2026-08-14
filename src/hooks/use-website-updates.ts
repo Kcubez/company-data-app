@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { websiteUpdatesApi, type WebsiteUpdatesParams } from "@/lib/api";
-import { clearListQueryData } from "@/lib/query-cache";
+import { websiteUpdatesApi, type WebsiteUpdate, type WebsiteUpdatesParams } from "@/lib/api";
+import { clearListQueryData, removeListItemQueryData } from "@/lib/query-cache";
 import { toast } from "sonner";
 
 function errorMessage(error: unknown, fallback: string) {
@@ -27,14 +27,32 @@ export function useUpdateWebsiteUpdate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, status, remark }: { id: string; status?: string; remark?: string | null }) =>
-      websiteUpdatesApi.update(id, { status, remark }),
+    mutationFn: ({ id, ...data }: { id: string } & Partial<Pick<WebsiteUpdate, "name" | "url" | "businessType" | "packageName" | "status" | "remark">>) =>
+      websiteUpdatesApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: websiteUpdatesKeys.all });
-      toast.success("Website update status updated successfully");
+      toast.success("Website record updated successfully");
     },
     onError: (error: unknown) => {
       toast.error(errorMessage(error, "Failed to update record"));
+    },
+  });
+}
+
+export function useDeleteWebsiteUpdate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => websiteUpdatesApi.delete(id),
+    onSuccess: (_res, id) => {
+      removeListItemQueryData(queryClient, websiteUpdatesKeys.all, "records", id);
+      queryClient.invalidateQueries({ queryKey: websiteUpdatesKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      toast.success("Website record deleted");
+    },
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to delete record"));
     },
   });
 }

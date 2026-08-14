@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { notDeleted } from "@/lib/soft-delete";
+import { notDeleted, softDeleteData } from "@/lib/soft-delete";
 import { uploadedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -70,5 +70,30 @@ export async function PATCH(
     return NextResponse.json(serializeProjectExpiration(updated as Record<string, unknown>));
   } catch {
     return NextResponse.json({ message: "Record not found or update failed" }, { status: 404 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  try {
+    const result = await prisma.projectExpiration.updateMany({
+      where: { id, ...uploadedByUserOrAdmin(session), ...notDeleted },
+      data: softDeleteData(session.user.id),
+    });
+    if (result.count === 0) {
+      return NextResponse.json({ message: "Record not found or access denied" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ message: "Record not found or delete failed" }, { status: 404 });
   }
 }

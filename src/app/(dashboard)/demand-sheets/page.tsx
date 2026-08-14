@@ -11,6 +11,7 @@ import {
   useDemandRecordStats,
   useDemandRecordRecommendations,
   useDeleteAllDemandRecords,
+  useDeleteDemandRecord,
   useUpdateDemandRecord,
 } from '@/hooks/use-demand-records';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -283,8 +284,16 @@ function DemandSheetsPageContent() {
   const [showAiInsights, setShowAiInsights] = useState(false);
   const [showAllTopServices, setShowAllTopServices] = useState(false);
   const [editingRecord, setEditingRecord] = useState<DemandRecord | null>(null);
+  const [deletingRecord, setDeletingRecord] = useState<DemandRecord | null>(null);
   const [editStatus, setEditStatus] = useState<string>('new');
   const [editNote, setEditNote] = useState<string>('');
+  const [editCustomerName, setEditCustomerName] = useState<string>('');
+  const [editCustomerPhone, setEditCustomerPhone] = useState<string>('');
+  const [editCustomerCompany, setEditCustomerCompany] = useState<string>('');
+  const [editServiceName, setEditServiceName] = useState<string>('');
+  const [editServiceAmount, setEditServiceAmount] = useState<string>('');
+  const [editServiceQty, setEditServiceQty] = useState<string>('');
+  const [editFollowUpDate, setEditFollowUpDate] = useState<string>('');
   const limit = 10;
   const insightPageSize = 5;
 
@@ -345,6 +354,7 @@ function DemandSheetsPageContent() {
   } = useDemandRecordRecommendations({ dateFrom, dateTo });
 
   const deleteAllMutation = useDeleteAllDemandRecords();
+  const deleteMutation = useDeleteDemandRecord();
   const updateMutation = useUpdateDemandRecord();
   const insightTotal = recsData?.recommendations.length || 0;
   const insightTotalPages = Math.max(1, Math.ceil(insightTotal / insightPageSize));
@@ -363,6 +373,13 @@ function DemandSheetsPageContent() {
     setEditingRecord(record);
     setEditStatus(record.status);
     setEditNote(record.note || '');
+    setEditCustomerName(record.customerName || '');
+    setEditCustomerPhone(record.customer?.phone || '');
+    setEditCustomerCompany(record.customer?.company || '');
+    setEditServiceName(record.serviceName || '');
+    setEditServiceAmount(record.serviceAmount != null ? String(record.serviceAmount) : '');
+    setEditServiceQty(record.serviceQty != null ? String(record.serviceQty) : '');
+    setEditFollowUpDate(record.followUpDate ? record.followUpDate.slice(0, 10) : '');
   };
 
   const handleSaveEdit = async () => {
@@ -371,6 +388,13 @@ function DemandSheetsPageContent() {
       id: editingRecord.id,
       status: editStatus,
       note: editNote,
+      customerName: editCustomerName.trim(),
+      customerPhone: editCustomerPhone.trim() || null,
+      customerCompany: editCustomerCompany.trim() || null,
+      serviceName: editServiceName.trim() || null,
+      serviceAmount: editServiceAmount.trim() === '' ? null : Number(editServiceAmount),
+      serviceQty: editServiceQty.trim() === '' ? undefined : Number(editServiceQty),
+      followUpDate: editFollowUpDate || null,
     });
     setEditingRecord(null);
   };
@@ -1056,7 +1080,8 @@ function DemandSheetsPageContent() {
               <div className="col-span-1">Contact</div>
               <div className="col-span-2">Service / Package</div>
               <div className="col-span-2">Follow-up</div>
-              <div className="col-span-3">Action / Notes</div>
+              <div className="col-span-2">Notes</div>
+              <div className="col-span-1 text-right">Actions</div>
             </div>
 
             {isLoading ? (
@@ -1071,7 +1096,8 @@ function DemandSheetsPageContent() {
                   <Skeleton className="col-span-1 h-5 bg-muted" />
                   <Skeleton className="col-span-2 h-5 bg-muted" />
                   <Skeleton className="col-span-2 h-5 bg-muted" />
-                  <Skeleton className="col-span-3 h-5 bg-muted" />
+                  <Skeleton className="col-span-2 h-5 bg-muted" />
+                  <Skeleton className="col-span-1 h-5 bg-muted" />
                 </div>
               ))
             ) : data?.records.length ? (
@@ -1187,30 +1213,42 @@ function DemandSheetsPageContent() {
                     )}
                   </div>
 
-                  {/* Note / Remarks */}
-                  <div className="md:col-span-3 min-w-0 flex items-start gap-2 justify-between">
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="text-[11px] leading-5 text-foreground line-clamp-2 font-medium"
-                        title={record.recommendedAction || ''}
-                      >
-                        {record.recommendedAction || 'Review and decide next action.'}
-                      </p>
-                      <p
-                        className="mt-1 text-[11px] leading-5 text-muted-foreground line-clamp-2"
-                        title={record.note}
-                      >
-                        {record.priorityReason ? `${record.priorityReason}. ` : ''}
-                        {record.note}
-                      </p>
-                    </div>
+                  {/* Notes */}
+                  <div className="md:col-span-2 min-w-0">
+                    <p
+                      className="text-[11px] leading-5 text-foreground line-clamp-2 font-medium"
+                      title={record.recommendedAction || ''}
+                    >
+                      {record.recommendedAction || 'Review and decide next action.'}
+                    </p>
+                    <p
+                      className="mt-1 text-[11px] leading-5 text-muted-foreground line-clamp-2"
+                      title={record.note}
+                    >
+                      {record.priorityReason ? `${record.priorityReason}. ` : ''}
+                      {record.note}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="md:col-span-1 flex md:justify-end gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => handleEditClick(record)}
-                      className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0 hover:bg-muted/50 rounded-lg mt-0.5 cursor-pointer transition-colors"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg cursor-pointer transition-colors"
+                      aria-label="Edit demand record"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDeletingRecord(record)}
+                      className="h-7 w-7 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                      aria-label="Delete demand record"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -1262,8 +1300,8 @@ function DemandSheetsPageContent() {
       {/* Edit Record Dialog */}
       {editingRecord && (
         <ModalPortal className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200 p-4">
-          <div className="bg-card border border-border w-full max-w-lg rounded-lg overflow-hidden shadow-lg animate-in zoom-in-95 duration-200 p-6 space-y-4 text-foreground backdrop-blur-xl">
-            <div className="flex justify-between items-center border-b border-border pb-3">
+          <div className="bg-card border border-border w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg shadow-lg animate-in zoom-in-95 duration-200 p-6 space-y-4 text-foreground backdrop-blur-xl">
+            <div className="flex justify-between items-center border-b border-border pb-3 sticky top-0 bg-card z-10">
               <div>
                 <h3 className="text-base font-bold text-foreground font-heading">Edit Demand Record</h3>
                 <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">
@@ -1280,9 +1318,67 @@ function DemandSheetsPageContent() {
               </Button>
             </div>
 
+            {/* Customer Info */}
+            <div className="space-y-3">
+              <label className="text-xs font-semibold uppercase text-muted-foreground block">Customer</label>
+              <Input
+                value={editCustomerName}
+                onChange={e => setEditCustomerName(e.target.value)}
+                placeholder="Customer name"
+                className="bg-muted/50 border-border text-foreground focus-visible:ring-blue-500 rounded-lg h-10"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  value={editCustomerPhone}
+                  onChange={e => setEditCustomerPhone(e.target.value)}
+                  placeholder="Phone number"
+                  className="bg-muted/50 border-border text-foreground focus-visible:ring-blue-500 rounded-lg h-10"
+                />
+                <Input
+                  value={editCustomerCompany}
+                  onChange={e => setEditCustomerCompany(e.target.value)}
+                  placeholder="Company / shop"
+                  className="bg-muted/50 border-border text-foreground focus-visible:ring-blue-500 rounded-lg h-10"
+                />
+              </div>
+            </div>
+
+            {/* Service Info */}
+            <div className="space-y-3">
+              <label className="text-xs font-semibold uppercase text-muted-foreground block">Service / Package</label>
+              <Input
+                value={editServiceName}
+                onChange={e => setEditServiceName(e.target.value)}
+                placeholder="Service or package name"
+                className="bg-muted/50 border-border text-foreground focus-visible:ring-blue-500 rounded-lg h-10"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <span className="text-[11px] text-muted-foreground font-medium">Amount (MMK)</span>
+                  <Input
+                    type="number"
+                    value={editServiceAmount}
+                    onChange={e => setEditServiceAmount(e.target.value)}
+                    placeholder="0"
+                    className="bg-muted/50 border-border text-foreground focus-visible:ring-blue-500 rounded-lg h-10"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <span className="text-[11px] text-muted-foreground font-medium">Qty</span>
+                  <Input
+                    type="number"
+                    value={editServiceQty}
+                    onChange={e => setEditServiceQty(e.target.value)}
+                    placeholder="0"
+                    className="bg-muted/50 border-border text-foreground focus-visible:ring-blue-500 rounded-lg h-10"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Status */}
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase  text-muted-foreground">Pipeline Status</label>
+              <label className="text-xs font-semibold uppercase text-muted-foreground">Pipeline Status</label>
               <Select value={editStatus} onValueChange={val => setEditStatus(val || 'new')}>
                 <SelectTrigger className="bg-muted/50 border-border text-foreground focus-visible:ring-blue-500 w-full rounded-lg">
                   <SelectValue />
@@ -1297,9 +1393,20 @@ function DemandSheetsPageContent() {
               </Select>
             </div>
 
+            {/* Follow-up Date */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-muted-foreground">Follow-up Date</label>
+              <Input
+                type="date"
+                value={editFollowUpDate}
+                onChange={e => setEditFollowUpDate(e.target.value)}
+                className="bg-muted/50 border-border text-foreground focus-visible:ring-blue-500 rounded-lg h-10"
+              />
+            </div>
+
             {/* Note */}
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase  text-muted-foreground">Notes / Remarks</label>
+              <label className="text-xs font-semibold uppercase text-muted-foreground">Notes / Remarks</label>
               <textarea
                 value={editNote}
                 onChange={e => setEditNote(e.target.value)}
@@ -1308,7 +1415,7 @@ function DemandSheetsPageContent() {
               />
             </div>
 
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex justify-end gap-3 pt-2 sticky bottom-0 bg-card">
               <Button
                 variant="outline"
                 onClick={() => setEditingRecord(null)}
@@ -1327,6 +1434,29 @@ function DemandSheetsPageContent() {
             </div>
           </div>
         </ModalPortal>
+      )}
+
+      {deletingRecord && (
+        <DestructiveConfirmDialog
+          title="Delete demand record?"
+          description={
+            <>
+              This moves the record for{' '}
+              <span className="font-semibold text-red-700 dark:text-red-300">
+                {deletingRecord.customerName || 'Unknown customer'}
+              </span>
+              {' '}to Trash. Admins can restore it later.
+            </>
+          }
+          confirmLabel="Delete record"
+          notice="This record can be restored from Trash"
+          isPending={deleteMutation.isPending}
+          onCancel={() => setDeletingRecord(null)}
+          onConfirm={async () => {
+            await deleteMutation.mutateAsync(deletingRecord.id);
+            setDeletingRecord(null);
+          }}
+        />
       )}
 
       {/* Delete All Confirmation Modal */}

@@ -106,9 +106,55 @@ export default function SettingsPage() {
   const [geminiApiKeyDraft, setGeminiApiKeyDraft] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
   const [showGeminiKey, setShowGeminiKey] = useState(false);
-  const botToken = botTokenDraft ?? settings?.botToken ?? '';
-  const geminiApiKey = geminiApiKeyDraft ?? settings?.geminiApiKey ?? '';
+  const [revealedSecrets, setRevealedSecrets] = useState<{ botToken: string; geminiApiKey: string } | null>(null);
+  const [revealLoading, setRevealLoading] = useState(false);
+
+  const maskedBotToken = settings?.botToken ?? '';
+  const maskedGeminiKey = settings?.geminiApiKey ?? '';
+  const botToken = botTokenDraft ?? (
+    showToken && revealedSecrets ? revealedSecrets.botToken : maskedBotToken
+  );
+  const geminiApiKey = geminiApiKeyDraft ?? (
+    showGeminiKey && revealedSecrets ? revealedSecrets.geminiApiKey : maskedGeminiKey
+  );
   const hasChanges = botTokenDraft !== null || geminiApiKeyDraft !== null;
+
+  const fetchRevealedSecrets = async () => {
+    if (revealedSecrets) return revealedSecrets;
+    setRevealLoading(true);
+    try {
+      const res = await fetch('/api/settings/bot?reveal=1');
+      if (!res.ok) throw new Error('Failed to load full credentials');
+      const data = await res.json();
+      const secrets = {
+        botToken: data.settings.botToken ?? '',
+        geminiApiKey: data.settings.geminiApiKey ?? '',
+      };
+      setRevealedSecrets(secrets);
+      return secrets;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load full credentials');
+      return null;
+    } finally {
+      setRevealLoading(false);
+    }
+  };
+
+  const toggleShowToken = async () => {
+    if (!showToken) {
+      const secrets = await fetchRevealedSecrets();
+      if (!secrets) return;
+    }
+    setShowToken((current) => !current);
+  };
+
+  const toggleShowGeminiKey = async () => {
+    if (!showGeminiKey) {
+      const secrets = await fetchRevealedSecrets();
+      if (!secrets) return;
+    }
+    setShowGeminiKey((current) => !current);
+  };
 
   const handleSave = () => {
     saveMutation.mutate(
@@ -117,12 +163,21 @@ export default function SettingsPage() {
         onSuccess: () => {
           setBotTokenDraft(null);
           setGeminiApiKeyDraft(null);
+          setRevealedSecrets(null);
+          setShowToken(false);
+          setShowGeminiKey(false);
         },
       }
     );
   };
 
-  const copyToClipboard = (text: string, label: string) => {
+  const copyToClipboard = async (kind: 'botToken' | 'geminiApiKey', label: string) => {
+    const secrets = revealedSecrets ?? await fetchRevealedSecrets();
+    if (!secrets) return;
+    const text = kind === 'botToken'
+      ? (botTokenDraft ?? secrets.botToken)
+      : (geminiApiKeyDraft ?? secrets.geminiApiKey);
+    if (!text) return;
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard`);
   };
@@ -195,15 +250,23 @@ export default function SettingsPage() {
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => setShowToken(!showToken)}
-                      className="p-1.5 rounded-md text-slate-500 hover:text-foreground hover:bg-muted/50 transition-colors"
+                      onClick={toggleShowToken}
+                      disabled={revealLoading}
+                      className="p-1.5 rounded-md text-slate-500 hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+                      aria-label={showToken ? 'Hide bot token' : 'Show bot token'}
                     >
-                      {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {revealLoading && !showToken ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : showToken ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
                     </button>
                     {botToken && (
                       <button
                         type="button"
-                        onClick={() => copyToClipboard(botToken, 'Bot token')}
+                        onClick={() => copyToClipboard('botToken', 'Bot token')}
                         className="p-1.5 rounded-md text-slate-500 hover:text-foreground hover:bg-muted/50 transition-colors"
                       >
                         <Copy className="w-4 h-4" />
@@ -212,7 +275,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  Your bot token is stored securely and never exposed in the frontend
+                  Masked by default. Click the eye icon to reveal the full token for this session.
                 </p>
               </div>
             </CardContent>
@@ -256,15 +319,23 @@ export default function SettingsPage() {
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => setShowGeminiKey(!showGeminiKey)}
-                      className="p-1.5 rounded-md text-slate-500 hover:text-foreground hover:bg-muted/50 transition-colors"
+                      onClick={toggleShowGeminiKey}
+                      disabled={revealLoading}
+                      className="p-1.5 rounded-md text-slate-500 hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+                      aria-label={showGeminiKey ? 'Hide Gemini API key' : 'Show Gemini API key'}
                     >
-                      {showGeminiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {revealLoading && !showGeminiKey ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : showGeminiKey ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
                     </button>
                     {geminiApiKey && (
                       <button
                         type="button"
-                        onClick={() => copyToClipboard(geminiApiKey, 'Gemini API key')}
+                        onClick={() => copyToClipboard('geminiApiKey', 'Gemini API key')}
                         className="p-1.5 rounded-md text-slate-500 hover:text-foreground hover:bg-muted/50 transition-colors"
                       >
                         <Copy className="w-4 h-4" />
@@ -273,7 +344,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  Telegram reports use Gemini first; if the API fails, the app falls back to local parsing.
+                  Masked by default. Click the eye icon to reveal the full API key for this session. Telegram reports use Gemini first; if the API fails, the app falls back to local parsing.
                 </p>
               </div>
             </CardContent>

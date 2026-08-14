@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectExpiriesApi, type ProjectExpiriesParams, type UpdateProjectExpiryPayload } from "@/lib/api";
-import { clearListQueryData } from "@/lib/query-cache";
+import { clearListQueryData, removeListItemQueryData } from "@/lib/query-cache";
 import { toast } from "sonner";
 
 function errorMessage(error: unknown, fallback: string) {
@@ -47,6 +47,24 @@ export function useDeleteAllProjectExpiries() {
     },
     onError: (error: unknown) => {
       toast.error(errorMessage(error, "Failed to delete records"));
+    },
+  });
+}
+
+export function useDeleteProjectExpiry() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => projectExpiriesApi.delete(id),
+    onSuccess: (_res, id) => {
+      removeListItemQueryData(queryClient, projectExpiriesKeys.all, "records", id);
+      queryClient.invalidateQueries({ queryKey: projectExpiriesKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      toast.success("Project record deleted");
+    },
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error, "Failed to delete record"));
     },
   });
 }

@@ -22,15 +22,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ message: "Record not found or access denied" }, { status: 404 });
   }
 
-  const { status, remark } = body;
+  const allowed = ["name", "url", "businessType", "packageName", "status", "remark"] as const;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = {};
+  for (const key of allowed) {
+    if (key in body) {
+      data[key] = body[key] === "" ? null : body[key];
+    }
+  }
+
+  if (data.name !== undefined && typeof data.name === "string" && !data.name.trim()) {
+    return NextResponse.json({ message: "Website name is required" }, { status: 400 });
+  }
 
   try {
     const record = await prisma.websiteUpdate.update({
       where: { id },
-      data: {
-        status: status !== undefined ? status : undefined,
-        remark: remark !== undefined ? remark : undefined,
-      },
+      data,
     });
 
     const serialized = {

@@ -6,7 +6,7 @@ import { format, differenceInDays, formatDistanceToNow } from 'date-fns';
 import { useDateFilter } from '@/hooks/use-date-filter';
 import { useProjectExpiries } from '@/hooks/use-project-expiries';
 import { ProjectExpiration, WebsiteUpdate } from '@/lib/api';
-import { useWebsiteUpdates, useUpdateWebsiteUpdate, useWebsiteUpdateRecommendations, useDeleteAllWebsiteUpdates } from '@/hooks/use-website-updates';
+import { useWebsiteUpdates, useUpdateWebsiteUpdate, useDeleteWebsiteUpdate, useWebsiteUpdateRecommendations, useDeleteAllWebsiteUpdates } from '@/hooks/use-website-updates';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -41,7 +41,7 @@ import {
   Loader2,
   Wrench,
 } from 'lucide-react';
-import { useProjectExpiryRecommendations, useDeleteAllProjectExpiries, useUpdateProjectExpiry } from '@/hooks/use-project-expiries';
+import { useProjectExpiryRecommendations, useDeleteAllProjectExpiries, useDeleteProjectExpiry, useUpdateProjectExpiry } from '@/hooks/use-project-expiries';
 
 function ProjectExpiriesPageContent() {
   const {
@@ -82,6 +82,7 @@ function ProjectExpiriesPageContent() {
   }
   // Edit state
   const [editingRecord, setEditingRecord] = useState<ProjectExpiration | null>(null);
+  const [deletingRecord, setDeletingRecord] = useState<ProjectExpiration | null>(null);
   const [editDomainExpiry, setEditDomainExpiry] = useState('');
   const [editHostingExpiry, setEditHostingExpiry] = useState('');
   const [editRemark, setEditRemark] = useState('');
@@ -104,7 +105,12 @@ function ProjectExpiriesPageContent() {
 
   // Editing state for updating status/remark of website updates
   const [editingWebsiteRecord, setEditingWebsiteRecord] = useState<WebsiteUpdate | null>(null);
-  const [editWebsiteStatus, setEditWebsiteStatus] = useState<string>('up_to_date');
+  const [deletingWebsiteRecord, setDeletingWebsiteRecord] = useState<WebsiteUpdate | null>(null);
+  const [editWebsiteName, setEditWebsiteName] = useState<string>('');
+  const [editWebsiteUrl, setEditWebsiteUrl] = useState<string>('');
+  const [editWebsiteBusinessType, setEditWebsiteBusinessType] = useState<string>('');
+  const [editWebsitePackageName, setEditWebsitePackageName] = useState<string>('');
+  const [editWebsiteStatus, setEditWebsiteStatus] = useState<WebsiteUpdate['status']>('up_to_date');
   const [editWebsiteRemark, setEditWebsiteRemark] = useState<string>('');
   const [showWebsiteDeleteConfirm, setShowWebsiteDeleteConfirm] = useState(false);
   const [lastDateFilter, setLastDateFilter] = useState(() => `${period}:${month}:${year}`);
@@ -154,6 +160,7 @@ function ProjectExpiriesPageContent() {
 
   // Website Update Hooks & Mutations
   const updateWebsiteMutation = useUpdateWebsiteUpdate();
+  const deleteWebsiteMutation = useDeleteWebsiteUpdate();
   const { data: websiteRecsData, isLoading: websiteRecsLoading, refetch: websiteRecsRefetch, isFetching: websiteRecsFetching } = useWebsiteUpdateRecommendations({ enabled: showWebsiteSuggestions, dateFrom, dateTo });
   const websiteInsightTotal = websiteRecsData?.recommendations.length || 0;
   const [lastWebsiteInsightTotal, setLastWebsiteInsightTotal] = useState(websiteInsightTotal);
@@ -177,6 +184,10 @@ function ProjectExpiriesPageContent() {
 
   const handleWebsiteEditClick = (record: WebsiteUpdate) => {
     setEditingWebsiteRecord(record);
+    setEditWebsiteName(record.name);
+    setEditWebsiteUrl(record.url || '');
+    setEditWebsiteBusinessType(record.businessType || '');
+    setEditWebsitePackageName(record.packageName || '');
     setEditWebsiteStatus(record.status);
     setEditWebsiteRemark(record.remark || '');
   };
@@ -185,13 +196,18 @@ function ProjectExpiriesPageContent() {
     if (!editingWebsiteRecord) return;
     await updateWebsiteMutation.mutateAsync({
       id: editingWebsiteRecord.id,
+      name: editWebsiteName.trim(),
+      url: editWebsiteUrl.trim() || null,
+      businessType: editWebsiteBusinessType.trim() || null,
+      packageName: editWebsitePackageName.trim() || null,
       status: editWebsiteStatus,
-      remark: editWebsiteRemark || null,
+      remark: editWebsiteRemark.trim() || null,
     });
     setEditingWebsiteRecord(null);
   };
 
   const deleteAllMutation = useDeleteAllProjectExpiries();
+  const deleteMutation = useDeleteProjectExpiry();
   const updateMutation = useUpdateProjectExpiry();
 
   const handleDeleteAll = async () => {
@@ -647,9 +663,10 @@ function ProjectExpiriesPageContent() {
               <div className="grid grid-cols-12 gap-4 border-b border-border px-6 py-4.5 text-xs font-semibold uppercase  text-slate-500 bg-muted/40">
                 <div className="col-span-2">Project Name</div>
                 <div className="col-span-2">Website URL</div>
-                <div className="col-span-3">Domain Expiry</div>
-                <div className="col-span-3">Hosting Expiry</div>
-                <div className="col-span-2">Status, Offer & Remarks</div>
+                <div className="col-span-2">Domain Expiry</div>
+                <div className="col-span-2">Hosting Expiry</div>
+                <div className="col-span-3">Status, Offer & Remarks</div>
+                <div className="col-span-1 text-right">Actions</div>
               </div>
 
               {/* Table Body */}
@@ -658,9 +675,10 @@ function ProjectExpiriesPageContent() {
                   <div key={i} className="grid grid-cols-12 gap-4 border-b border-border/70 px-6 py-5">
                     <Skeleton className="col-span-2 h-5 bg-muted" />
                     <Skeleton className="col-span-2 h-5 bg-muted" />
-                    <Skeleton className="col-span-3 h-5 bg-muted" />
-                    <Skeleton className="col-span-3 h-5 bg-muted" />
                     <Skeleton className="col-span-2 h-5 bg-muted" />
+                    <Skeleton className="col-span-2 h-5 bg-muted" />
+                    <Skeleton className="col-span-3 h-5 bg-muted" />
+                    <Skeleton className="col-span-1 h-5 bg-muted" />
                   </div>
                 ))
               ) : records.length ? (
@@ -702,7 +720,7 @@ function ProjectExpiriesPageContent() {
                       </div>
 
                       {/* Domain Expiry Details */}
-                      <div className="col-span-3 space-y-1.5">
+                      <div className="col-span-2 space-y-1.5 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${domDetails.className}`}>
                             {domDetails.label}
@@ -722,7 +740,7 @@ function ProjectExpiriesPageContent() {
                       </div>
 
                       {/* Hosting Expiry Details */}
-                      <div className="col-span-3 space-y-1.5">
+                      <div className="col-span-2 space-y-1.5 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${hostDetails.className}`}>
                             {hostDetails.label}
@@ -749,34 +767,51 @@ function ProjectExpiriesPageContent() {
                       </div>
 
                       {/* Package & Remarks */}
-                      <div className="col-span-2 min-w-0 space-y-1.5 flex items-start justify-between gap-2">
-                        <div className="flex-1 space-y-1.5 min-w-0">
-                          {record.packageName ? (
-                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 text-[10px] truncate max-w-full font-medium">
-                              Pkg: {record.packageName}
-                            </Badge>
-                          ) : (
-                            <span className="text-[10px] text-slate-600 block italic">No Package</span>
-                          )}
+                      <div className="col-span-3 min-w-0 space-y-2">
+                        {record.packageName ? (
+                          <div className="inline-flex max-w-full items-center rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[11px] font-semibold leading-snug text-blue-700 dark:text-blue-300">
+                            <span className="mr-1 shrink-0 text-[10px] font-bold uppercase tracking-wide text-blue-500/80">Package</span>
+                            <span className="break-words">{record.packageName}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-600 block italic">No package</span>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="outline" className="text-[10px] capitalize">{record.projectStatus}</Badge>
                           {record.offerExpireDate && (
-                            <p className="text-[10px] text-amber-700 dark:text-amber-400">Offer ends: {format(new Date(record.offerExpireDate), 'yyyy-MM-dd')}</p>
-                          )}
-                          {record.remark ? (
-                            <p className="text-xs text-muted-foreground truncate w-full leading-normal" title={record.remark}>
-                              {record.remark}
-                            </p>
-                          ) : (
-                            <span className="text-[10px] text-slate-600 block italic">No remarks</span>
+                            <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                              Offer ends: {format(new Date(record.offerExpireDate), 'yyyy-MM-dd')}
+                            </span>
                           )}
                         </div>
+                        {record.remark ? (
+                          <p className="text-xs leading-relaxed text-muted-foreground line-clamp-2" title={record.remark}>
+                            {record.remark}
+                          </p>
+                        ) : (
+                          <span className="text-[10px] text-slate-600 block italic">No remarks</span>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="col-span-1 flex justify-end gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => handleEditClick(record)}
-                          className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0 hover:bg-muted/50 rounded-lg mt-0.5 cursor-pointer transition-colors"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg cursor-pointer transition-colors"
+                          aria-label="Edit project record"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeletingRecord(record)}
+                          className="h-7 w-7 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                          aria-label="Delete project record"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
                     </div>
@@ -1140,14 +1175,15 @@ function ProjectExpiriesPageContent() {
                     <th className="px-6 py-4">Website Link</th>
                     <th className="px-6 py-4">Package</th>
                     <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Remarks & Actions</th>
+                    <th className="px-6 py-4">Remarks</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y-2 divide-slate-100">
                   {websiteLoading ? (
                     Array.from({ length: 5 }).map((_, index) => (
                       <tr key={index}>
-                        {Array.from({ length: 5 }).map((__, cellIndex) => (
+                        {Array.from({ length: 6 }).map((__, cellIndex) => (
                           <td key={cellIndex} className="px-6 py-4"><Skeleton className="h-4 w-24 animate-pulse" /></td>
                         ))}
                       </tr>
@@ -1206,19 +1242,33 @@ function ProjectExpiriesPageContent() {
                             </span>
                           </td>
 
-                          {/* Remarks & Actions */}
+                          {/* Remarks */}
                           <td className="px-6 py-4 max-w-xs">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="truncate flex-1 font-semibold text-slate-650" title={record.remark || undefined}>
-                                {record.remark || '—'}
-                              </div>
+                            <div className="line-clamp-2 font-semibold text-slate-650" title={record.remark || undefined}>
+                              {record.remark || '—'}
+                            </div>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="px-6 py-4">
+                            <div className="flex justify-end gap-1">
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleWebsiteEditClick(record)}
-                                className="h-8 w-8 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg shrink-0 cursor-pointer"
+                                className="h-8 w-8 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg cursor-pointer"
+                                aria-label="Edit website record"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setDeletingWebsiteRecord(record)}
+                                className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                aria-label="Delete website record"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
                               </Button>
                             </div>
                           </td>
@@ -1227,7 +1277,7 @@ function ProjectExpiriesPageContent() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={5} className="px-6 py-10 text-center text-slate-500 font-semibold">
+                      <td colSpan={6} className="px-6 py-10 text-center text-slate-500 font-semibold">
                         No website updates found.
                       </td>
                     </tr>
@@ -1386,12 +1436,53 @@ function ProjectExpiriesPageContent() {
           <div className="bg-card border border-border w-full max-w-lg rounded-lg overflow-hidden shadow-lg animate-in zoom-in-95 duration-200 p-6 space-y-4 text-foreground backdrop-blur-xl">
             <div className="flex justify-between items-center border-b border-border pb-3">
               <div>
-                <h3 className="text-base font-bold text-foreground font-heading">Manage Website Maintenance</h3>
-                <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{editingWebsiteRecord.name}</p>
+                <h3 className="text-base font-bold text-foreground font-heading">Edit Website Record</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Fix misparsed spreadsheet fields without editing Telegram.</p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setEditingWebsiteRecord(null)} className="text-muted-foreground hover:text-foreground cursor-pointer">
                 ✕
               </Button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-muted-foreground">Website / client name</label>
+              <Input
+                value={editWebsiteName}
+                onChange={(event) => setEditWebsiteName(event.target.value)}
+                placeholder="e.g. ABC Trading"
+                className="bg-muted/50 border border-border"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-muted-foreground">Website URL</label>
+              <Input
+                value={editWebsiteUrl}
+                onChange={(event) => setEditWebsiteUrl(event.target.value)}
+                placeholder="https://example.com"
+                className="bg-muted/50 border border-border"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-muted-foreground">Business type</label>
+                <Input
+                  value={editWebsiteBusinessType}
+                  onChange={(event) => setEditWebsiteBusinessType(event.target.value)}
+                  placeholder="e.g. Retail"
+                  className="bg-muted/50 border border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-muted-foreground">Package name</label>
+                <Input
+                  value={editWebsitePackageName}
+                  onChange={(event) => setEditWebsitePackageName(event.target.value)}
+                  placeholder="e.g. Standard Website"
+                  className="bg-muted/50 border border-border"
+                />
+              </div>
             </div>
 
             {/* Status Selection */}
@@ -1401,7 +1492,7 @@ function ProjectExpiriesPageContent() {
               </label>
               <Select
                 value={editWebsiteStatus}
-                onValueChange={(val) => setEditWebsiteStatus(val || 'up_to_date')}
+                onValueChange={(val) => setEditWebsiteStatus((val || 'up_to_date') as WebsiteUpdate['status'])}
               >
                 <SelectTrigger className="bg-muted/50 border border-border text-foreground focus-visible:ring-blue-500 w-full">
                   <SelectValue />
@@ -1438,7 +1529,7 @@ function ProjectExpiriesPageContent() {
               </Button>
               <Button
                 onClick={handleWebsiteSaveEdit}
-                disabled={updateWebsiteMutation.isPending}
+                disabled={updateWebsiteMutation.isPending || !editWebsiteName.trim()}
                 className="bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 cursor-pointer rounded-lg h-10 px-4"
               >
                 {updateWebsiteMutation.isPending && (
@@ -1469,6 +1560,52 @@ function ProjectExpiriesPageContent() {
           isPending={deleteWebsiteAllMutation.isPending}
           onCancel={() => setShowWebsiteDeleteConfirm(false)}
           onConfirm={handleWebsiteDeleteAll}
+        />
+      )}
+
+      {deletingRecord && (
+        <DestructiveConfirmDialog
+          title="Delete project record?"
+          description={
+            <>
+              This moves{' '}
+              <span className="font-semibold text-red-700 dark:text-red-300">
+                {deletingRecord.projectName}
+              </span>
+              {' '}to Trash. Admins can restore it later.
+            </>
+          }
+          confirmLabel="Delete record"
+          notice="This record can be restored from Trash"
+          isPending={deleteMutation.isPending}
+          onCancel={() => setDeletingRecord(null)}
+          onConfirm={async () => {
+            await deleteMutation.mutateAsync(deletingRecord.id);
+            setDeletingRecord(null);
+          }}
+        />
+      )}
+
+      {deletingWebsiteRecord && (
+        <DestructiveConfirmDialog
+          title="Delete website record?"
+          description={
+            <>
+              This moves{' '}
+              <span className="font-semibold text-red-700 dark:text-red-300">
+                {deletingWebsiteRecord.name}
+              </span>
+              {' '}to Trash. Admins can restore it later.
+            </>
+          }
+          confirmLabel="Delete record"
+          notice="This record can be restored from Trash"
+          isPending={deleteWebsiteMutation.isPending}
+          onCancel={() => setDeletingWebsiteRecord(null)}
+          onConfirm={async () => {
+            await deleteWebsiteMutation.mutateAsync(deletingWebsiteRecord.id);
+            setDeletingWebsiteRecord(null);
+          }}
         />
       )}
     </div>

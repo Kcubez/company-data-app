@@ -490,6 +490,8 @@ export const projectExpiriesApi = {
   },
   update: (id: string, data: UpdateProjectExpiryPayload) =>
     request<ProjectExpiration>(`/api/project-expiries/${id}`, { method: "PATCH", body: data }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/api/project-expiries/${id}`, { method: "DELETE" }),
   recommendations: (params: DateRangeParams = {}) =>
     request<{ recommendations: ProjectExpiryRecommendation[] }>(`/api/project-expiries/recommendations${buildDateRangeQuery(params)}`),
   deleteAll: (params: DateRangeParams = {}) =>
@@ -549,7 +551,7 @@ export const websiteUpdatesApi = {
     const qs = searchParams.toString();
     return request<WebsiteUpdatesResponse>(`/api/website-updates${qs ? `?${qs}` : ""}`);
   },
-  update: (id: string, data: { status?: string; remark?: string | null }) =>
+  update: (id: string, data: Partial<Pick<WebsiteUpdate, "name" | "url" | "businessType" | "packageName" | "status" | "remark">>) =>
     request<WebsiteUpdate>(`/api/website-updates/${id}`, { method: "PATCH", body: data }),
   delete: (id: string) =>
     request<{ success: boolean }>(`/api/website-updates/${id}`, { method: "DELETE" }),
