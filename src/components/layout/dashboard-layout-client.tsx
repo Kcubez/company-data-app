@@ -139,7 +139,6 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
         { title: 'Sales & Marketing', href: '/sales-marketing', icon: TrendingUp, adminOnly: false },
         { title: 'Customer Service', href: '/customer-service', icon: UserCircle, adminOnly: false },
         { title: 'Projects / Infra', href: '/projects-infra', icon: Clock, adminOnly: false },
-        { title: 'Brainstorm & Planning', href: '/planning', icon: Lightbulb, adminOnly: false },
       ],
     },
     {
@@ -148,6 +147,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
         { title: 'HR & Staff', href: '/hr', icon: Users, adminOnly: false },
         { title: 'Data Approvals', href: '/data-approvals', icon: ClipboardCheck, adminOnly: false },
         { title: 'Data Feed', href: '/data-feed', icon: MessageSquare, adminOnly: false },
+        { title: 'Brainstorm & Planning', href: '/planning', icon: Lightbulb, adminOnly: false },
         { title: 'Trash', href: '/trash', icon: Trash2, adminOnly: false },
       ],
     },
