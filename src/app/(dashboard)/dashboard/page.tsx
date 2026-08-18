@@ -35,6 +35,8 @@ import {
   Trophy,
   Target,
   Loader2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -411,26 +413,33 @@ function PremiumLineChart({ data, valueKey, labelKey, totalDays = 30, elapsedDay
       </svg>
 
       {/* Chart.js-style tooltip */}
-      {hoveredIndex !== null && points[hoveredIndex] && (
-        <div
-          className="absolute pointer-events-none z-20"
-          style={{
-            left: `${((points[hoveredIndex].x - paddingLeft) / plotWidth) * 100}%`,
-            top: `${Math.max(2, ((points[hoveredIndex].y - paddingTop) / plotHeight) * 65)}%`,
-            transform: 'translateX(-50%)',
-            marginLeft: `${paddingLeft / chartWidth * 100}%`,
-          }}
-        >
-          <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3 py-2 rounded-md shadow-lg backdrop-blur-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
-            <div className="font-bold mb-1">{points[hoveredIndex].label}</div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: color }} />
-              <span className="text-slate-300">{period === 'overall' ? 'Yearly' : isYearly ? 'Monthly' : 'Daily'} {seriesLabel}:</span>
-              <span className="font-semibold">{Number(points[hoveredIndex].value).toLocaleString()}</span>
+      {hoveredIndex !== null && points[hoveredIndex] && (() => {
+        const p = points[hoveredIndex];
+        const xRatio = p.x / chartWidth;
+        const yRatio = p.y / (chartHeight + 20);
+        const transformX = xRatio > 0.8 ? '-95%' : xRatio < 0.2 ? '-5%' : '-50%';
+        const transformY = yRatio < 0.28 ? '12px' : '-115%';
+
+        return (
+          <div
+            className="absolute pointer-events-none z-20"
+            style={{
+              left: `${xRatio * 100}%`,
+              top: `${yRatio * 100}%`,
+              transform: `translate(${transformX}, ${transformY})`,
+            }}
+          >
+            <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3 py-2 rounded-md shadow-lg backdrop-blur-sm whitespace-nowrap" style={{ fontFamily: "'Inter', sans-serif" }}>
+              <div className="font-bold mb-1">{p.label}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: color }} />
+                <span className="text-slate-300">{period === 'overall' ? 'Yearly' : isYearly ? 'Monthly' : 'Daily'} {seriesLabel}:</span>
+                <span className="font-semibold">{Number(p.value).toLocaleString()}</span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -574,26 +583,34 @@ function PremiumBarChart({ data, valueKey, labelKey, totalDays = 30, elapsedDays
       </svg>
 
       {/* Chart.js-style tooltip */}
-      {hoveredIndex !== null && points[hoveredIndex] && (
-        <div
-          className="absolute pointer-events-none z-20"
-          style={{
-            left: `${((points[hoveredIndex].x + barWidth / 2 - paddingLeft) / plotWidth) * 100}%`,
-            top: `${Math.max(2, ((points[hoveredIndex].y - paddingTop) / plotHeight) * 60)}%`,
-            transform: 'translateX(-50%)',
-            marginLeft: `${paddingLeft / chartWidth * 100}%`,
-          }}
-        >
-          <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3 py-2 rounded-md shadow-lg backdrop-blur-sm" style={{ fontFamily: "'Inter', sans-serif" }}>
-            <div className="font-bold mb-1">{points[hoveredIndex].label}</div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block" />
-              <span className="text-slate-300">{period === 'overall' ? 'Yearly' : isYearly ? 'Monthly' : 'Daily'} Demands:</span>
-              <span className="font-semibold">{Number(points[hoveredIndex].value).toLocaleString()}</span>
+      {hoveredIndex !== null && points[hoveredIndex] && (() => {
+        const p = points[hoveredIndex];
+        const barCenterX = p.x + barWidth / 2;
+        const xRatio = barCenterX / chartWidth;
+        const yRatio = p.y / (chartHeight + 20);
+        const transformX = xRatio > 0.8 ? '-95%' : xRatio < 0.2 ? '-5%' : '-50%';
+        const transformY = yRatio < 0.28 ? '12px' : '-115%';
+
+        return (
+          <div
+            className="absolute pointer-events-none z-20"
+            style={{
+              left: `${xRatio * 100}%`,
+              top: `${yRatio * 100}%`,
+              transform: `translate(${transformX}, ${transformY})`,
+            }}
+          >
+            <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3 py-2 rounded-md shadow-lg backdrop-blur-sm whitespace-nowrap" style={{ fontFamily: "'Inter', sans-serif" }}>
+              <div className="font-bold mb-1">{p.label}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block" />
+                <span className="text-slate-300">{period === 'overall' ? 'Yearly' : isYearly ? 'Monthly' : 'Daily'} Demands:</span>
+                <span className="font-semibold">{Number(p.value).toLocaleString()}</span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -697,7 +714,7 @@ function getPacingStatus(actual: number, expected: number, isInverse = false): {
 }
 
 function formatOverviewAmount(amount: number) {
-  return (Math.round(amount / 100_000) * 100_000).toLocaleString();
+  return Math.round(amount).toLocaleString();
 }
 
 function DashboardPageContent() {
@@ -803,6 +820,7 @@ function DashboardPageContent() {
   const queryClient = useQueryClient();
   const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
   const [isSavingTarget, setIsSavingTarget] = useState(false);
+  const [showAiSuggestions, setShowAiSuggestions] = useState(false);
   const [targetForm, setTargetForm] = useState({
     targetSalesAmount: '',
     targetExpenseAmount: '',
@@ -1121,8 +1139,28 @@ function DashboardPageContent() {
 
       {/* AI Global Overview Alerts (Relocated under KPI Cards Grid) */}
       {!recsLoading && !isLoading && stats && !(stats.actualDemandCount === 0 && stats.totalAmountSold === 0 && stats.totalCost === 0) && recsData?.recommendations && recsData.recommendations.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-          {recsData.recommendations.slice(0, 4).map((rec, i) => {
+        <section className="overflow-hidden rounded-xl border-2 border-sky-200 bg-sky-50/30 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/15">
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                <Bot className="h-4 w-4 text-sky-600" />
+                Smart Suggestions
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">Suggestions are hidden until you choose to review them.</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAiSuggestions((visible) => !visible)}
+              className="shrink-0 border-border bg-card text-foreground hover:bg-muted/50"
+            >
+              {showAiSuggestions ? 'Hide suggestions' : 'View suggestions'}
+              {showAiSuggestions ? <ChevronUp className="ml-1.5 h-4 w-4" /> : <ChevronDown className="ml-1.5 h-4 w-4" />}
+            </Button>
+          </div>
+          {showAiSuggestions && (
+            <div className="grid grid-cols-1 gap-6 border-t border-sky-200 p-5 md:grid-cols-2 dark:border-sky-900/60">
+              {recsData.recommendations.slice(0, 4).map((rec, i) => {
              const isAlert = rec.severity === 'urgent' || rec.severity === 'warning';
              const borderColor = isAlert ? 'border-red-300 dark:border-red-900/60' : 'border-emerald-300 dark:border-emerald-900/60';
              const borderLeftColor = isAlert ? 'border-l-red-500' : 'border-l-emerald-500';
@@ -1159,7 +1197,9 @@ function DashboardPageContent() {
               </div>
              );
           })}
-        </div>
+            </div>
+          )}
+        </section>
       )}
 
       {/* 2. Middle Section: Top Services & Live Intelligence */}

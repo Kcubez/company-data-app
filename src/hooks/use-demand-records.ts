@@ -27,7 +27,7 @@ export function useDemandRecordRecommendations(options: { enabled?: boolean; dat
   return useQuery({
     queryKey: ["demand-record-recommendations", options.dateFrom, options.dateTo],
     queryFn: () => demandRecordsApi.recommendations(options),
-    // AI calls are costly — fetch once on mount, then only on manual refresh.
+    // Local recommendations change only when underlying records change.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
     enabled: options.enabled ?? true,

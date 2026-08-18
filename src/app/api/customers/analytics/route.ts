@@ -75,8 +75,13 @@ export async function GET(req: NextRequest) {
   });
 
   const active = metrics.filter((customer) => customer.purchaseFrequency > 0 || customer.lifetimeValue > 0);
-  const top20 = [...active].sort((a, b) => b.totalSpend - a.totalSpend || b.lifetimeValue - a.lifetimeValue).slice(0, 20);
-  const bottom20 = [...active].sort((a, b) => a.totalSpend - b.totalSpend || a.lifetimeValue - b.lifetimeValue).slice(0, 20);
+  const topSorted = [...active].sort((a, b) => b.totalSpend - a.totalSpend || b.lifetimeValue - a.lifetimeValue);
+  const bottomSorted = [...active].sort((a, b) => a.totalSpend - b.totalSpend || a.lifetimeValue - b.lifetimeValue);
+  const top20 = topSorted.slice(0, 20);
+  const bottom20 = bottomSorted.slice(0, 20);
+  const comparisonSize = Math.min(20, Math.ceil(active.length / 2));
+  const topComparison = topSorted.slice(0, comparisonSize);
+  const bottomComparison = bottomSorted.slice(0, comparisonSize);
   const average = (items: CustomerMetric[]) => items.length ? items.reduce((sum, customer) => sum + customer.totalSpend, 0) / items.length : 0;
   const vipCount = active.filter((customer) => customer.segment === "vip").length;
   const atRisk = active.filter((customer) => customer.segment === "at_risk");
@@ -94,8 +99,8 @@ export async function GET(req: NextRequest) {
     bottom20,
     summary: {
       totalCustomers: active.length,
-      top20AverageSpend: average(top20),
-      bottom20AverageSpend: average(bottom20),
+      top20AverageSpend: average(topComparison),
+      bottom20AverageSpend: average(bottomComparison),
       averageLifetimeValue: active.length ? active.reduce((sum, customer) => sum + customer.lifetimeValue, 0) / active.length : 0,
       averagePurchaseFrequency: active.length ? active.reduce((sum, customer) => sum + customer.purchaseFrequency, 0) / active.length : 0,
       atRiskCustomers: atRisk.length,

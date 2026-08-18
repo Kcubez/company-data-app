@@ -554,7 +554,7 @@ function DemandSheetsPageContent() {
                       <Skeleton className="h-8 w-16 bg-muted" />
                     ) : (
                       <h3 className="flex items-baseline gap-1.5 whitespace-nowrap text-2xl font-black text-slate-900 tracking-tight dark:text-slate-100">
-                        <span>{(stats?.demandRevenue || 0).toLocaleString()}</span>
+                        <span>{(stats?.totalAmountSold || 0).toLocaleString()}</span>
                         <span className="text-xs font-bold text-slate-400">MMK</span>
                       </h3>
                     )}
@@ -633,7 +633,7 @@ function DemandSheetsPageContent() {
               <CardHeader className="py-4">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <CardTitle className="text-sm font-bold">AI Suggestions</CardTitle>
+                    <CardTitle className="text-sm font-bold">Smart Suggestions</CardTitle>
                     <CardDescription>Suggestions are hidden until you choose to review them.</CardDescription>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => setShowAiInsights((show) => !show)} className="cursor-pointer">
@@ -810,10 +810,10 @@ function DemandSheetsPageContent() {
                     <div>
                       <CardTitle className="text-foreground flex items-center gap-2 font-heading text-base">
                         <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-pulse" />
-                        AI Lead Insights (Smart Hotlist)
+                        Lead Insights (Smart Hotlist)
                       </CardTitle>
                       <CardDescription className="text-muted-foreground text-xs">
-                        Gemini AI-powered priority recommendations
+                        Local data-based priority recommendations
                       </CardDescription>
                     </div>
                     <Button
@@ -897,7 +897,7 @@ function DemandSheetsPageContent() {
                       <Bot className="w-8 h-8 text-slate-700 mx-auto mb-2" />
                       <p className="text-xs font-semibold text-slate-500">No actionable hotlist items</p>
                       <p className="text-[10px] text-slate-600 mt-1">
-                        Pending inquiries will trigger AI analysis
+                        Pending inquiries will trigger Smart analysis
                       </p>
                     </div>
                   )}

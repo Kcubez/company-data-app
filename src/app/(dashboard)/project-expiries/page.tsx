@@ -478,7 +478,7 @@ function ProjectExpiriesPageContent() {
       <Card className="border-2 border-sky-200 bg-sky-50/30 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/15">
         <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />AI Project Expiry Suggestions</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />Smart Project Expiry Suggestions</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">Suggestions are hidden until you choose to review them.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => setShowProjectSuggestions((visible) => !visible)} className="shrink-0 border-border bg-card text-foreground hover:bg-muted/50">
@@ -902,7 +902,7 @@ function ProjectExpiriesPageContent() {
         <Card className="border-2 border-sky-200 bg-sky-50/30 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/15">
           <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />AI Website Update Suggestions</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />Smart Website Update Suggestions</CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">Suggestions are hidden until you choose to review them.</p>
             </div>
             <Button variant="outline" size="sm" onClick={() => setShowWebsiteAlertSuggestions((visible) => !visible)} className="shrink-0 border-border bg-card text-foreground hover:bg-muted/50">
@@ -928,7 +928,7 @@ function ProjectExpiriesPageContent() {
                   <h4 className="font-bold text-slate-900 dark:text-slate-100">Website အပ်ဒိတ်လုပ်ရန် ကျန်ရှိမှု</h4>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mb-1 leading-relaxed">
-                  Website (${websiteStats.pendingUpdate}) ခုသည် နောက်ဆုံးရ အပ်ဒိတ်လုပ်ရန် ကျန်ရှိနေပါသည်။ သုံးစွဲသူအတွေ့အကြုံ ကောင်းမွန်စေရန် အမြန်ဆုံး အပ်ဒိတ်လုပ်ရန် လိုအပ်သည်။
+                  Website ({websiteStats.pendingUpdate}) ခုသည် နောက်ဆုံးရ အပ်ဒိတ်လုပ်ရန် ကျန်ရှိနေပါသည်။ သုံးစွဲသူအတွေ့အကြုံ ကောင်းမွန်စေရန် အမြန်ဆုံး အပ်ဒိတ်လုပ်ရန် လိုအပ်သည်။
                 </p>
                 <p className="text-xs font-semibold text-slate-800 dark:text-slate-300 leading-relaxed">
                   {websiteStats.pendingUpdate > 0
@@ -973,7 +973,7 @@ function ProjectExpiriesPageContent() {
                   <h4 className="font-bold text-slate-900 dark:text-slate-100">Website ပြုပြင်ထိန်းသိမ်းမှု (In Progress)</h4>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mb-1 leading-relaxed">
-                  Website (${websiteStats.inProgress}) ခုအား ပြုပြင်ထိန်းသိမ်းမှု (In Progress) လုပ်ဆောင်နေပါသည်။
+                  Website ({websiteStats.inProgress}) ခုအား ပြုပြင်ထိန်းသိမ်းမှု (In Progress) လုပ်ဆောင်နေပါသည်။
                 </p>
                 <p className="text-xs font-semibold text-slate-800 dark:text-slate-300 leading-relaxed">
                   {websiteStats.inProgress > 0
@@ -1012,7 +1012,7 @@ function ProjectExpiriesPageContent() {
                   Website Maintenance Recommendations
                 </CardTitle>
                 <CardDescription className="text-xs text-muted-foreground mt-1">
-                  AI recommendations for pending website updates and site maintenance.
+                  Local recommendations for pending website updates and site maintenance.
                 </CardDescription>
               </div>
               <Button variant="outline" size="sm" onClick={() => showWebsiteSuggestions ? setShowWebsiteSuggestions(false) : setShowWebsiteSuggestions(true)} className="bg-card border-border text-foreground hover:bg-muted/50 shrink-0 cursor-pointer h-9 px-3 rounded-lg">
@@ -1108,7 +1108,7 @@ function ProjectExpiriesPageContent() {
                 <Bot className="w-8 h-8 text-slate-450 mx-auto mb-2" />
                 <p className="text-sm font-semibold">No pending maintenance actions</p>
                 <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                  AI insights appear only for sites marked <span className="text-amber-600 font-semibold">Pending Update</span> or <span className="text-amber-600 font-semibold">In Progress</span>. Set a status via the edit button to get recommendations.
+                  Suggestions appear only for sites marked <span className="text-amber-600 font-semibold">Pending Update</span> or <span className="text-amber-600 font-semibold">In Progress</span>. Set a status via the edit button to get recommendations.
                 </p>
               </div>
             )}

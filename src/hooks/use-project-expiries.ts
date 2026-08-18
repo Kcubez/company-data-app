@@ -27,7 +27,7 @@ export function useProjectExpiryRecommendations(params: { dateFrom?: string; dat
   return useQuery({
     queryKey: projectExpiriesKeys.recommendations(params),
     queryFn: () => projectExpiriesApi.recommendations(params),
-    // AI calls are costly — fetch once on mount, then only on manual refresh.
+    // Local recommendations change only when underlying records change.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   });

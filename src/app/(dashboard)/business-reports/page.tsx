@@ -321,7 +321,7 @@ function BusinessReportsPageContent() {
   const totalRevenue = s?.totalSales ?? 0;
   const totalExpense = s?.totalBudget ?? 0;
   const profitLoss = totalRevenue - totalExpense;
-  const profitMargin = totalRevenue > 0 ? Math.round((profitLoss / totalRevenue) * 100) : 0;
+  const profitMargin = totalRevenue > 0 ? Math.round((profitLoss / totalRevenue) * 1000) / 10 : 0;
   const ownerCapital = ownerCapitalData?.summary.ownerCapital ?? 0;
   const expenseBreakdown = s?.channelPerformance?.filter((ch) => ch.budget > 0) ?? [];
   const selectedPeriodTrend = buildSelectedPeriodTrend(statsData?.dailyTrend ?? [], year, period);
@@ -517,7 +517,7 @@ function BusinessReportsPageContent() {
           <CardHeader className="py-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <CardTitle className="text-sm font-bold text-slate-900 dark:text-slate-100">AI Finance Suggestions</CardTitle>
+                <CardTitle className="text-sm font-bold text-slate-900 dark:text-slate-100">Smart Finance Suggestions</CardTitle>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Review recommendations based on the selected period.</p>
               </div>
               <Button variant="outline" size="sm" onClick={() => setShowAiInsights((show) => !show)} className="cursor-pointer">

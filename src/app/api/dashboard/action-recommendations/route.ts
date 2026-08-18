@@ -173,7 +173,59 @@ function buildHeuristicRecommendations(data: {
     });
   }
 
-  return recs;
+  const defaults: ActionRecommendation[] = [
+    {
+      area: "sales",
+      severity: data.targetSalesAmount ? "info" : "warning",
+      title: data.targetSalesAmount ? "အရောင်းပစ်မှတ်ကို နေ့စဉ်စောင့်ကြည့်ပါ" : "အရောင်းပစ်မှတ် သတ်မှတ်ရန် လိုသည်",
+      insight: data.targetSalesAmount
+        ? `လက်ရှိရောင်းရငွေ ${Math.round(data.totalSalesAmount).toLocaleString()} Ks ကို ပစ်မှတ်နှင့် နေ့စဉ်နှိုင်းယှဉ်ပြီး Sales လုပ်ဆောင်ချက်ကို ပြင်ဆင်ပါ။`
+        : "Revenue၊ Expense၊ Demand နှင့် Appointment ပစ်မှတ်များ သတ်မှတ်ထားမှ လုပ်ငန်းစွမ်းဆောင်ရည်ကို မှန်ကန်စွာ တိုင်းတာနိုင်မည်ဖြစ်သည်။",
+      action: data.targetSalesAmount ? "Sales Pipeline ကို စစ်ဆေးရန်" : "ပစ်မှတ်များ သတ်မှတ်ရန်",
+      actionType: data.targetSalesAmount ? "view_all_deals" : "set_target_modal",
+    },
+    {
+      area: "sales",
+      severity: data.highPriority > 0 ? "warning" : "info",
+      title: "High-Priority Lead များကို စီမံပါ",
+      insight: data.highPriority > 0
+        ? `High-Priority Open Lead ${data.highPriority} ခု ရှိနေသည်။ Owner နှင့် နောက်တစ်ကြိမ် Follow-up ရက်ကို တစ်ခုချင်းသတ်မှတ်ပါ။`
+        : "High-Priority Open Lead မတွေ့ရသေးပါ။ Lead အသစ်များကို Priority နှင့် Follow-up ရက် ပြည့်စုံစွာ မှတ်တမ်းတင်ပါ။",
+      action: "High-Priority Lead များ စစ်ဆေးရန်",
+      actionType: "view_all_deals",
+    },
+    {
+      area: "sales",
+      severity: data.overdue > 0 ? "urgent" : data.dueToday > 0 ? "warning" : "info",
+      title: "Follow-up အချိန်ဇယားကို ထိန်းသိမ်းပါ",
+      insight: data.overdue > 0
+        ? `သက်တမ်းကျော် Follow-up ${data.overdue} ခု ရှိနေသည်။ Lead မဆုံးရှုံးစေရန် အရင်ဆုံး ဆက်သွယ်ပါ။`
+        : data.dueToday > 0
+          ? `ယနေ့ ဆောင်ရွက်ရမည့် Follow-up ${data.dueToday} ခု ရှိသည်။ နေ့မကုန်မီ Status အပ်ဒိတ်ပါ။`
+          : "သက်တမ်းကျော် Follow-up မရှိပါ။ Lead တိုင်းအတွက် နောက်တစ်ကြိမ် ဆက်သွယ်ရမည့်ရက် ဆက်လက်သတ်မှတ်ပါ။",
+      action: "Follow-up စာရင်း စစ်ဆေးရန်",
+      actionType: data.overdue > 0 ? "view_overdue_followups" : "view_due_followups",
+    },
+    {
+      area: "marketing",
+      severity: data.missingPhone > 0 ? "warning" : "info",
+      title: "Lead Data အရည်အသွေးကို မြှင့်တင်ပါ",
+      insight: data.missingPhone > 0
+        ? `ဖုန်းနံပါတ် မပါသော Open Lead ${data.missingPhone} ခု ရှိသည်။ Sales မပို့မီ ဖုန်းနံပါတ်နှင့် လိုအပ်ချက်ကို ပြည့်စုံစွာ စုဆောင်းပါ။`
+        : "Open Lead များ၏ ဖုန်းနံပါတ် မှတ်တမ်းကောင်းနေသည်။ Lead Source နှင့် Conversion ရလဒ်ကို ဆက်လက်စောင့်ကြည့်ပါ။",
+      action: "Lead Data စစ်ဆေးရန်",
+      actionType: "view_missing_phone",
+    },
+  ];
+
+  for (const fallback of defaults) {
+    if (recs.length >= 4) break;
+    if (!recs.some((recommendation) => recommendation.actionType === fallback.actionType)) {
+      recs.push(fallback);
+    }
+  }
+
+  return recs.slice(0, 4);
 }
 
 // GET /api/dashboard/action-recommendations
@@ -287,8 +339,8 @@ export async function GET(req: NextRequest) {
         },
         where: { reportDate: { gte: periodStart, lt: periodEnd }, ...activeUploadedScope },
       }),
-      prisma.demandRecord.aggregate({
-        _sum: { serviceAmount: true },
+      prisma.demandRecord.findMany({
+        select: { serviceAmount: true, serviceQty: true },
         where: { createdAt: { gte: periodStart, lt: periodEnd }, ...demandScope },
       }),
       prisma.periodTarget.findFirst({
@@ -324,7 +376,10 @@ export async function GET(req: NextRequest) {
     const periodLabel = period === "year" ? `${year}` : `${month}/${year}`;
     const targetLabel = period === "year" ? "ကာလပစ်မှတ်" : "လစဉ် အရောင်းပစ်မှတ်";
 
-    const totalSalesAmount = (businessAgg._sum.totalSalesAmount ?? 0) + (demandAgg._sum.serviceAmount ?? 0);
+    const totalSalesAmount = (businessAgg._sum.totalSalesAmount ?? 0) + demandAgg.reduce(
+      (total, record) => total + (record.serviceAmount ?? 0) * (record.serviceQty ?? 1),
+      0,
+    );
 
     const inputData = {
       highPriority: highPriorityCount,
@@ -343,11 +398,11 @@ export async function GET(req: NextRequest) {
       elapsedRatio,
     };
 
-    if (!settings?.geminiApiKey) {
-      return NextResponse.json({ recommendations: buildHeuristicRecommendations(inputData) });
-    }
+    // Suggestions are intentionally generated from the current metrics only.
+    // This keeps the output predictable and avoids any external AI request.
+    return NextResponse.json({ recommendations: buildHeuristicRecommendations(inputData), source: "local" });
 
-    // Build Gemini prompt
+    /* Legacy Gemini implementation retained here temporarily for reference.
     const prompt = `သင်သည် မြန်မာနိုင်ငံ လုပ်ငန်းတစ်ခုအတွက် အတွေ့အကြုံရင့် Sales Operations Analyst တစ်ဦးဖြစ်သည်။ အောက်ဖော်ပြပါ real-time လုပ်ငန်းမက်ထရစ်တွေကို ခွဲခြမ်းစိတ်ဖြာပြီး ဆောင်ရွက်ရမည့်အကြံဉာဏ် ၂-၄ ခု ပေးပါ။
 
 လက်ရှိကာလ မက်ထရစ်များ (${period === "year" ? "နှစ်" : "လ"}: ${periodLabel}၊ ${elapsedDays}/${totalDaysInPeriod} ရက် ကုန်ဆုံးပြီ):
@@ -406,7 +461,7 @@ JSON Array (markdown မပါ၊ ရှင်းလင်းချက် မပ
 
     if (!Array.isArray(parsed)) throw new Error("Not an array");
 
-    return NextResponse.json({ recommendations: parsed as ActionRecommendation[] });
+    return NextResponse.json({ recommendations: parsed as ActionRecommendation[] }); */
   } catch (err) {
     console.error("Action recommendations error:", err);
     return NextResponse.json({ recommendations: [] });

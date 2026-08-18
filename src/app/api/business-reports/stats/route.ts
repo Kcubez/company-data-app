@@ -99,8 +99,8 @@ export async function GET(req: NextRequest) {
         closedDeals: true,
       },
     }),
-    prisma.demandRecord.aggregate({
-      _sum: { serviceAmount: true },
+    prisma.demandRecord.findMany({
+      select: { serviceAmount: true, serviceQty: true },
       where: demandWhere,
     }),
   ]);
@@ -108,7 +108,10 @@ export async function GET(req: NextRequest) {
   const s = totals._sum;
   const totalReports = totals._count._all;
   const totalBudget = s.marketingBudget ?? 0;
-  const demandRevenue = demandAgg._sum.serviceAmount ?? 0;
+  const demandRevenue = demandAgg.reduce(
+    (total, record) => total + (record.serviceAmount ?? 0) * (record.serviceQty ?? 1),
+    0,
+  );
   const totalSales = (s.totalSalesAmount ?? 0) + demandRevenue;
   const totalLeads = s.newLeads ?? 0;
   const totalClosed = s.closedDeals ?? 0;

@@ -61,7 +61,7 @@ export function useWebsiteUpdateRecommendations(options: { enabled?: boolean; da
   return useQuery({
     queryKey: websiteUpdatesKeys.recommendations(options),
     queryFn: () => websiteUpdatesApi.recommendations(options),
-    // AI calls are costly — fetch once on mount, then only on manual refresh.
+    // Local recommendations change only when underlying records change.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
     enabled: options.enabled ?? true,

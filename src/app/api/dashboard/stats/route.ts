@@ -112,17 +112,9 @@ export async function GET(req: NextRequest) {
   }
 
   // Quantity and Amount Aggregations
-  const [qtyAgg, amountAgg, businessAgg, highPriorityLeads, missingPhoneLeads, overdueFollowUps, demandCountPeriod] = await Promise.all([
-    prisma.demandRecord.aggregate({
-      _sum: { serviceQty: true },
-      where: { 
-        createdAt: { gte: periodStart, lt: periodEnd },
-        ...demandScope,
-        status: { in: ['closed', 'completed'] }
-      },
-    }),
-    prisma.demandRecord.aggregate({
-      _sum: { serviceAmount: true },
+  const [demandRevenueRows, businessAgg, highPriorityLeads, missingPhoneLeads, overdueFollowUps, demandCountPeriod] = await Promise.all([
+    prisma.demandRecord.findMany({
+      select: { serviceAmount: true, serviceQty: true },
       where: { 
         createdAt: { gte: periodStart, lt: periodEnd },
         ...demandScope,
@@ -141,7 +133,6 @@ export async function GET(req: NextRequest) {
       where: { 
         reportDate: { gte: periodStart, lt: periodEnd },
         ...activeUploadedScope,
-        reporterName: { not: "Daily Bot Ingestion" }
       },
     }),
     prisma.demandRecord.count({
@@ -172,8 +163,14 @@ export async function GET(req: NextRequest) {
       where: { createdAt: { gte: periodStart, lt: periodEnd }, ...demandScope },
     }),
   ]);
-  const totalQuantitySold = qtyAgg._sum.serviceQty || 0;
-  const demandRevenue = amountAgg._sum.serviceAmount || 0;
+  const totalQuantitySold = demandRevenueRows.reduce(
+    (total, record) => total + (record.serviceQty ?? 1),
+    0,
+  );
+  const demandRevenue = demandRevenueRows.reduce(
+    (total, record) => total + (record.serviceAmount ?? 0) * (record.serviceQty ?? 1),
+    0,
+  );
   const reportRevenue = businessAgg._sum.totalSalesAmount || 0;
   const totalAmountSold = reportRevenue + demandRevenue;
   const totalCost = businessAgg._sum.marketingBudget || 0;
@@ -381,7 +378,7 @@ export async function GET(req: NextRequest) {
   const [trendDemandRows, trendBusinessRows] = await Promise.all([
     prisma.demandRecord.findMany({
       where: { createdAt: { gte: periodStart, lt: periodEnd }, ...demandScope },
-      select: { createdAt: true, serviceAmount: true },
+      select: { createdAt: true, serviceAmount: true, serviceQty: true },
     }),
     prisma.businessReport.findMany({
       where: { reportDate: { gte: periodStart, lt: periodEnd }, ...activeUploadedScope },
@@ -392,7 +389,7 @@ export async function GET(req: NextRequest) {
   for (const row of trendDemandRows) {
     const bucket = trendByKey.get(trendKey(row.createdAt));
     if (bucket) {
-      bucket.revenueFromDemand += row.serviceAmount || 0;
+      bucket.revenueFromDemand += (row.serviceAmount || 0) * (row.serviceQty || 1);
       bucket.demand += 1;
     }
   }
@@ -405,7 +402,7 @@ export async function GET(req: NextRequest) {
     }
   }
   const financialTrend = trendBuckets.map((bucket) => {
-    const revenue = Math.max(bucket.revenueFromDemand, bucket.revenueFromReports);
+    const revenue = bucket.revenueFromDemand + bucket.revenueFromReports;
     return {
       label: bucket.label,
       revenue,
@@ -416,21 +413,47 @@ export async function GET(req: NextRequest) {
   });
 
   // Top Services
-  const serviceGroups = await prisma.demandRecord.groupBy({
+  const [serviceGroups, serviceRevenueRows] = await Promise.all([
+    prisma.demandRecord.groupBy({
     by: ['serviceName'],
     where: {
       serviceName: { not: null },
+      status: { in: ['closed', 'completed'] },
       createdAt: { gte: periodStart, lt: periodEnd },
       ...demandScope,
     },
     _count: { _all: true },
     _sum: { serviceQty: true, serviceAmount: true },
-  });
+    }),
+    prisma.demandRecord.findMany({
+      where: {
+        serviceName: { not: null },
+        status: { in: ['closed', 'completed'] },
+        createdAt: { gte: periodStart, lt: periodEnd },
+        ...demandScope,
+      },
+      select: { serviceName: true, serviceAmount: true, serviceQty: true },
+    }),
+  ]);
+  const revenueByService = new Map<string, number>();
+  const quantityByService = new Map<string, number>();
+  for (const row of serviceRevenueRows) {
+    if (row.serviceName) {
+      revenueByService.set(
+        row.serviceName,
+        (revenueByService.get(row.serviceName) ?? 0) + (row.serviceAmount ?? 0) * (row.serviceQty ?? 1),
+      );
+      quantityByService.set(
+        row.serviceName,
+        (quantityByService.get(row.serviceName) ?? 0) + (row.serviceQty ?? 1),
+      );
+    }
+  }
   const topProducts = serviceGroups.map(g => ({
     product: g.serviceName || 'Unknown',
     count: g._count._all,
-    totalQty: g._sum.serviceQty || 0,
-    revenue: g._sum.serviceAmount || 0,
+    totalQty: g.serviceName ? quantityByService.get(g.serviceName) ?? 0 : 0,
+    revenue: g.serviceName ? revenueByService.get(g.serviceName) ?? 0 : 0,
   })).sort((a, b) => b.revenue - a.revenue || b.count - a.count).slice(0, 5);
 
   // Due Today Follow-ups

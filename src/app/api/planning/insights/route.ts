@@ -1,8 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notDeleted } from "@/lib/soft-delete";
-import { uploadedByUserOrAdmin, senderOwnedByUserOrAdmin, ownedByUserOrAdmin } from "@/lib/tenant-scope";
-import { GoogleGenAI } from "@google/genai";
+import { uploadedByUserOrAdmin, senderOwnedByUserOrAdmin } from "@/lib/tenant-scope";
 import { NextRequest, NextResponse } from "next/server";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -15,12 +14,6 @@ type Priority = {
   actionHref: string;
 };
 
-type PlanStep = {
-  horizon: "Next 30 days" | "Next 60 days" | "Next 90 days";
-  goal: string;
-  actions: string[];
-};
-
 function number(value: unknown): number {
   if (value === null || value === undefined) return 0;
   const n = Number(value);
@@ -31,15 +24,6 @@ function safeDate(value: string | null, fallback: Date): Date {
   if (!value) return fallback;
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
-}
-
-function parseAiResult(text: string): { executiveSummary?: string; futureOutlook?: string; priorities?: Priority[]; plan?: PlanStep[] } | null {
-  try {
-    const parsed = JSON.parse(text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
 }
 
 function buildScenarios(snapshot: { projectedRevenue30: number; projectedExpenses30: number }) {
@@ -90,7 +74,7 @@ export async function GET(req: NextRequest) {
     ? demandScope
     : { ...demandScope, createdAt: { gte: start, lt: end } };
 
-  const [reports, financeEntries, demands, projects, settings] = await Promise.all([
+  const [reports, financeEntries, demands, projects] = await Promise.all([
     prisma.businessReport.findMany({
       where: reportWhere,
       select: {
@@ -114,10 +98,6 @@ export async function GET(req: NextRequest) {
       where: { ...uploadedScope },
       select: { projectStatus: true, domainExpireDate: true, hostingExpireDate: true, offerExpireDate: true },
     }),
-    prisma.botSettings.findFirst({
-      where: { isActive: true, ...ownedByUserOrAdmin(session) },
-      select: { geminiApiKey: true, geminiModel: true },
-    }),
   ]);
 
   // Determine periodDays
@@ -140,7 +120,7 @@ export async function GET(req: NextRequest) {
   const reportRevenue = reports.reduce((sum, report) => sum + number(report.totalSalesAmount), 0);
   const closedDemandRevenue = demands
     .filter((record) => ["closed", "completed"].includes(record.status))
-    .reduce((sum, record) => sum + number(record.serviceAmount), 0);
+    .reduce((sum, record) => sum + number(record.serviceAmount) * number(record.serviceQty ?? 1), 0);
   const revenue = reportRevenue + closedDemandRevenue;
   const marketingSpend = reports.reduce((sum, report) => sum + number(report.marketingBudget), 0);
   const operatingExpense = financeEntries
@@ -199,100 +179,85 @@ export async function GET(req: NextRequest) {
   const priorities: Priority[] = [];
   if (receivables > 0)
     priorities.push({
-      title: "Collect outstanding receivables",
+      title: "Receivable များ ကောက်ခံရန်",
       impact: "high",
-      rationale: `There is ${receivables.toLocaleString()} MMK awaiting collection, which can constrain cash flow.`,
-      action: "Review receivables",
+      rationale: `${receivables.toLocaleString()} MMK Receivable များ မကောက်ခံရသေးပါ။ Cash Flow ကို ထိခိုက်စေနိုင်သည်။`,
+      action: "Receivable များ စစ်ဆေးရန်",
       actionHref: "/finance?type=receivable",
     });
   if (upcomingExpiries > 0)
     priorities.push({
-      title: "Protect upcoming renewals",
+      title: "သက်တမ်းတိုးမှုများ စီမံရန်",
       impact: "high",
-      rationale: `${upcomingExpiries} domain, hosting, or offer expiry item(s) fall within the next 30 days.`,
-      action: "Review project risks",
+      rationale: `လာမည့် ၃၀ ရက်အတွင်း Domain၊ Hosting သို့မဟုတ် Offer သက်တမ်းကုန်မည့် Project ${upcomingExpiries} ခု ရှိသည်။`,
+      action: "Project Risk များ စစ်ဆေးရန်",
       actionHref: "/projects-infra",
     });
   if (pendingDeals > 0 || highPriorityLeads > 0)
     priorities.push({
-      title: "Convert the active pipeline",
+      title: "Active Pipeline ကို ပိတ်သိမ်းရန်",
       impact: pendingDeals > 8 ? "high" : "medium",
-      rationale: `${pendingDeals} open deal(s), including ${highPriorityLeads} high-priority lead(s), need a clear next action.`,
-      action: "Open sales pipeline",
+      rationale: `High-Priority Lead ${highPriorityLeads} ခုအပါအဝင် Open Deal ${pendingDeals} ခုအတွက် နောက်တစ်ဆင့် လုပ်ဆောင်ချက် သတ်မှတ်ရန်လိုသည်။`,
+      action: "Sales Pipeline ဖွင့်ရန်",
       actionHref: "/sales-marketing",
     });
   if (snapshot.margin < 20 || expenses > revenue)
     priorities.push({
-      title: "Improve margin discipline",
+      title: "Profit Margin တိုးတက်စေရန်",
       impact: "high",
-      rationale: `The current period margin is ${snapshot.margin}%. Review spend before increasing acquisition activity.`,
-      action: "Review expenses",
+      rationale: `လက်ရှိကာလ Profit Margin သည် ${snapshot.margin}% ဖြစ်သည်။ Marketing Budget တိုးမီ Expense များကို စစ်ဆေးပါ။`,
+      action: "Expense များ စစ်ဆေးရန်",
       actionHref: "/finance",
     });
   if (priorities.length === 0)
     priorities.push({
-      title: "Scale the strongest operating rhythm",
+      title: "ကောင်းမွန်သော လုပ်ငန်းလည်ပတ်မှုကို ဆက်လုပ်ရန်",
       impact: "medium",
-      rationale: "No immediate cash-flow or renewal risk was detected in the selected period.",
-      action: "Review sales performance",
+      rationale: "ရွေးချယ်ထားသောကာလတွင် Cash Flow သို့မဟုတ် Renewal အရေးပေါ်အန္တရာယ် မတွေ့ရပါ။",
+      action: "Sales Performance စစ်ဆေးရန်",
       actionHref: "/sales-marketing",
     });
 
   const fallback = {
-    executiveSummary: `Selected-period revenue is ${revenue.toLocaleString()} MMK with a ${snapshot.margin}% margin. The next 30-day base case projects ${baseProfit30.toLocaleString()} MMK profit if the current operating pace continues.`,
+    executiveSummary: `ရွေးချယ်ထားသောကာလ ဝင်ငွေသည် ${revenue.toLocaleString()} MMK နှင့် Profit Margin ${snapshot.margin}% ဖြစ်သည်။ လက်ရှိလုပ်ငန်းနှုန်းအတိုင်း ဆက်သွားလျှင် လာမည့် ၃၀ ရက်တွင် အမြတ် ${baseProfit30.toLocaleString()} MMK ရနိုင်မည်ဟု ခန့်မှန်းထားသည်။`,
     futureOutlook:
       baseProfit30 >= 0
-        ? "The base case is positive, but collecting open receivables and converting active deals will determine whether growth is sustainable."
-        : "The current pace projects a loss. Prioritise cash collection, conversion, and expense control before adding more spend.",
+        ? "အခြေခံခန့်မှန်းချက်သည် ကောင်းမွန်သော်လည်း Receivable ကောက်ခံခြင်းနှင့် Active Deal များ ပိတ်သိမ်းခြင်းက တိုးတက်မှုကို ဆုံးဖြတ်မည်ဖြစ်သည်။"
+        : "လက်ရှိလုပ်ငန်းနှုန်းအရ အရှုံးဖြစ်နိုင်သည်။ Marketing Budget မတိုးမီ Cash Collection၊ Conversion နှင့် Expense Control ကို ဦးစားပေးပါ။",
     priorities: priorities.slice(0, 3),
     plan: [
       {
         horizon: "Next 30 days" as const,
-        goal: "Stabilise cash and pipeline",
+        goal: "Cash Flow နှင့် Sales Pipeline တည်ငြိမ်စေရန်",
         actions: [
-          "Assign every pending deal a next follow-up date.",
-          "Collect or schedule all outstanding receivables.",
-          "Confirm renewal ownership for expiring projects.",
+          "Pending Deal တိုင်းအတွက် နောက်တစ်ကြိမ် Follow-up ရက် သတ်မှတ်ပါ။",
+          "ကျန်ရှိနေသော Receivable များကို ကောက်ခံရန် သို့မဟုတ် ရက်ချိန်းသတ်မှတ်ပါ။",
+          "သက်တမ်းကုန်မည့် Project များအတွက် တာဝန်ရှိသူကို အတည်ပြုပါ။",
         ],
       },
       {
         horizon: "Next 60 days" as const,
-        goal: "Improve repeatable conversion",
+        goal: "ထပ်တလဲလဲ အသုံးချနိုင်သော Conversion တိုးတက်စေရန်",
         actions: [
-          "Compare lead sources against closed revenue.",
-          "Standardise a follow-up playbook for high-priority leads.",
-          "Review salary, COGS, and operating expenses against revenue.",
+          "Lead Source များကို Closed Revenue နှင့် နှိုင်းယှဉ်ပါ။",
+          "High-Priority Lead များအတွက် Follow-up Playbook ကို စံသတ်မှတ်ပါ။",
+          "Salary, COGS နှင့် Operating Expense များကို Revenue နှင့် နှိုင်းယှဉ်စစ်ဆေးပါ။",
         ],
       },
       {
         horizon: "Next 90 days" as const,
-        goal: "Plan measured growth",
+        goal: "ထိန်းချုပ်ထားသော တိုးတက်မှု စီမံရန်",
         actions: [
-          "Set a realistic quarterly revenue and margin target.",
-          "Invest only in channels with proven conversion.",
-          "Move stable projects into a scheduled maintenance plan.",
+          "လက်တွေ့ကျသော Quarterly Revenue နှင့် Margin Target သတ်မှတ်ပါ။",
+          "Conversion သက်သေပြပြီးသော Channel များတွင်သာ Budget ထည့်ပါ။",
+          "တည်ငြိမ်သော Project များကို Scheduled Maintenance Plan ထဲ ထည့်ပါ။",
         ],
       },
     ],
   };
 
-  if (!settings?.geminiApiKey) {
-    return NextResponse.json({ snapshot, scenarios: buildScenarios(snapshot), ...fallback, source: "heuristic" });
-  }
+  // Planning is deliberately calculated from the approved operational data.
+  // It does not call an external AI service.
+  return NextResponse.json({ snapshot, scenarios: buildScenarios(snapshot), ...fallback, source: "local" });
 
-  try {
-    const prompt = `You are a practical business planning analyst. Use this approved operational snapshot to produce a concise future-condition analysis. Write every explanation, rationale, and action in Burmese (Myanmar language). Keep titles short. Do not invent facts. Return ONLY JSON matching this exact shape:\n{ "executiveSummary": string, "futureOutlook": string, "priorities": [{"title": string, "impact": "high"|"medium"|"low", "rationale": string, "action": string, "actionHref": string}], "plan": [{"horizon":"Next 30 days"|"Next 60 days"|"Next 90 days", "goal":string, "actions":[string,string,string]}] }\nAllowed actionHref values: /finance, /finance?type=receivable, /sales-marketing, /customer-service, /projects-infra. Max 3 priorities.\nSnapshot: ${JSON.stringify(snapshot)}`;
-    const genAI = new GoogleGenAI({ apiKey: settings.geminiApiKey });
-    const response = await genAI.models.generateContent({
-      model: settings.geminiModel || "gemini-2.0-flash-lite",
-      contents: prompt,
-    });
-    const ai = response.text ? parseAiResult(response.text) : null;
-    if (!ai?.executiveSummary || !ai.futureOutlook || !Array.isArray(ai.priorities) || !Array.isArray(ai.plan))
-      throw new Error("Invalid planning response");
-    return NextResponse.json({ snapshot, scenarios: buildScenarios(snapshot), ...ai, source: "ai" });
-  } catch (error) {
-    console.error("Planning insight generation failed:", error);
-    return NextResponse.json({ snapshot, scenarios: buildScenarios(snapshot), ...fallback, source: "heuristic" });
-  }
 }

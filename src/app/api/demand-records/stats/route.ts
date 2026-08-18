@@ -28,6 +28,17 @@ export async function GET(req: NextRequest) {
     if (dateFrom) rangeWhere.createdAt.gte = new Date(dateFrom);
     if (dateTo) rangeWhere.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
   }
+  const soldServiceWhere: Prisma.DemandRecordWhereInput = {
+    serviceName: { not: null },
+    status: { in: ['closed', 'completed'] },
+    ...senderOwnedByUserOrAdmin(session),
+    ...notDeleted,
+  };
+  if (dateFrom || dateTo) {
+    soldServiceWhere.createdAt = {};
+    if (dateFrom) soldServiceWhere.createdAt.gte = new Date(dateFrom);
+    if (dateTo) soldServiceWhere.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+  }
 
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -57,15 +68,13 @@ export async function GET(req: NextRequest) {
     priorityGroups,
     analysisRecords,
     uniqueCustomerRows,
+    serviceRevenueRows,
   ] = await Promise.all([
     prisma.demandRecord.count({ where: rangeWhere }),
     prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday }, ...senderOwnedByUserOrAdmin(session), ...notDeleted } }),
     prisma.demandRecord.groupBy({
       by: ['serviceName'],
-      where: {
-        serviceName: { not: null },
-        ...rangeWhere,
-      },
+      where: soldServiceWhere,
       _count: { _all: true },
       _sum: {
         serviceQty: true,
@@ -109,15 +118,34 @@ export async function GET(req: NextRequest) {
       select: { customerId: true },
       distinct: ['customerId'],
     }),
+    prisma.demandRecord.findMany({
+      where: soldServiceWhere,
+      select: { serviceName: true, serviceAmount: true, serviceQty: true },
+    }),
   ]);
+
+  const revenueByService = new Map<string, number>();
+  const quantityByService = new Map<string, number>();
+  for (const record of serviceRevenueRows) {
+    if (record.serviceName) {
+      revenueByService.set(
+        record.serviceName,
+        (revenueByService.get(record.serviceName) ?? 0) + (record.serviceAmount ?? 0) * (record.serviceQty ?? 1),
+      );
+      quantityByService.set(
+        record.serviceName,
+        (quantityByService.get(record.serviceName) ?? 0) + (record.serviceQty ?? 1),
+      );
+    }
+  }
 
   const serviceStatsMap = new Map<string, { count: number; totalQty: number; revenue: number }>();
   for (const row of serviceGroups) {
     if (row.serviceName) {
       serviceStatsMap.set(row.serviceName, {
         count: row._count._all,
-        totalQty: row._sum.serviceQty || 0,
-        revenue: row._sum.serviceAmount || 0,
+        totalQty: quantityByService.get(row.serviceName) ?? 0,
+        revenue: revenueByService.get(row.serviceName) ?? 0,
       });
     }
   }

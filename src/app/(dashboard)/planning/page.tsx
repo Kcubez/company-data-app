@@ -202,7 +202,7 @@ export default function PlanningPage() {
               <BrainCircuit className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-foreground">AI Operational Intelligence</h2>
+              <h2 className="text-base font-bold text-foreground">Smart Operational Intelligence</h2>
               <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
                 Synthesizing approved operational, financial, and pipeline data into forward-looking scenarios and Burmese-language priority plans.
               </p>

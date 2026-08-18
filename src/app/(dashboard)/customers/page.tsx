@@ -633,7 +633,7 @@ function CustomersPageContent() {
       <Card className="border-2 border-sky-200 bg-sky-50/30 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/15">
         <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />AI Customer Behavior Analysis</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />Customer Behavior Analysis</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">Analyzes customer behavior and provides insights into customer actions.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => setShowBehaviorAnalysis((visible) => !visible)} className="shrink-0 border-border bg-card text-foreground hover:bg-muted/50">
@@ -656,7 +656,7 @@ function CustomersPageContent() {
       <Card className="border-2 border-sky-200 bg-sky-50/30 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/15">
         <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />AI Customer Suggestions</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm font-bold text-foreground"><Bot className="h-4 w-4 text-sky-600" />Smart Customer Suggestions</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">Suggestions are hidden until you choose to review them.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => setShowAiSuggestions((visible) => !visible)} className="shrink-0 border-border bg-card text-foreground hover:bg-muted/50">
@@ -683,17 +683,22 @@ function CustomersPageContent() {
                 actionType: "view_overdue"
               };
 
-              const csat = {
-                type: "csat",
-                severity: "success",
-                title: "ဝန်ဆောင်မှု စိတ်ကျေနပ်မှုရလဒ် (CSAT)",
-                message: "ယခုအပတ်အတွင်း သုံးစွဲသူစိတ်ကျေနပ်မှု (CSAT Score) သည် ၉၆% အထိ ရှိခဲ့ပြီး သတ်မှတ်ချက်ထက် ကျော်လွန်အောင်မြင်ခဲ့သည်။",
-                recommendedAction: "ဝန်ဆောင်မှုပေးရသည့်ကြာချိန်များသည် SLA သတ်မှတ်ချက် ဘောင်အတွင်း ကောင်းမွန်စွာ တည်ရှိနေပါသည်။",
-                action: "Overview သွားရန်",
-                actionType: "general_dashboard"
+              const atRiskCustomers = customerAnalytics?.summary.atRiskCustomers ?? 0;
+              const customerHealth = {
+                type: "customer_health",
+                severity: atRiskCustomers > 0 ? "warning" : "success",
+                title: atRiskCustomers > 0 ? "ပြန်လည်ဆက်သွယ်ရန် Customer များရှိသည်" : "Customer ဝယ်ယူမှုအခြေအနေ ကောင်းမွန်သည်",
+                message: atRiskCustomers > 0
+                  ? `ဝယ်ယူမှုမှတ်တမ်းရှိသော်လည်း ရက် ၉၀ ကျော် လှုပ်ရှားမှုမရှိသော Customer ${atRiskCustomers} ဦး ရှိသည်။`
+                  : "လက်ရှိ Customer ဝယ်ယူမှုမှတ်တမ်းများအရ ရက် ၉၀ ကျော် လှုပ်ရှားမှုမရှိသော Customer မတွေ့ရပါ။",
+                recommendedAction: atRiskCustomers > 0
+                  ? "ပြန်လည်ဝယ်ယူမှုရရှိစေရန် Follow-up ဆက်သွယ်ပြီး သင့်တော်သော Offer ကို ပေးပို့ပါ။"
+                  : "Customer ဝယ်ယူမှုနှုန်းနှင့် Lifetime Value ကို ဆက်လက်စောင့်ကြည့်ပါ။",
+                action: "Customer စာရင်း စစ်ဆေးရန်",
+                actionType: "view_customer_health"
               };
 
-              return [followUp, csat].map((insight) => {
+              return [followUp, customerHealth].map((insight) => {
                 const isUrgent = insight.severity === 'urgent';
                 const isWarning = insight.severity === 'warning';
                 const isSuccess = insight.severity === 'success';
@@ -738,6 +743,8 @@ function CustomersPageContent() {
                                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                               } else if (insight.actionType === 'general_dashboard') {
                                 router.push('/dashboard');
+                              } else if (insight.actionType === 'view_customer_health') {
+                                document.getElementById('customer-value-frequency')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                               } else {
                                 const el = document.getElementById('demand-leads-section');
                                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
