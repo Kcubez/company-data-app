@@ -108,11 +108,39 @@ function FinanceKpiCard({
 }
 
 
+function getDonutSlicePath(
+  cx: number,
+  cy: number,
+  rInner: number,
+  rOuter: number,
+  startAngle: number,
+  endAngle: number,
+) {
+  const angleDiff = endAngle - startAngle;
+  if (angleDiff >= 2 * Math.PI - 0.001) {
+    return `M ${cx} ${cy - rOuter} A ${rOuter} ${rOuter} 0 1 1 ${cx} ${cy + rOuter} A ${rOuter} ${rOuter} 0 1 1 ${cx} ${cy - rOuter} M ${cx} ${cy - rInner} A ${rInner} ${rInner} 0 1 0 ${cx} ${cy + rInner} A ${rInner} ${rInner} 0 1 0 ${cx} ${cy - rInner} Z`;
+  }
+  const x1 = cx + rOuter * Math.cos(startAngle);
+  const y1 = cy + rOuter * Math.sin(startAngle);
+  const x2 = cx + rOuter * Math.cos(endAngle);
+  const y2 = cy + rOuter * Math.sin(endAngle);
+
+  const x3 = cx + rInner * Math.cos(endAngle);
+  const y3 = cy + rInner * Math.sin(endAngle);
+  const x4 = cx + rInner * Math.cos(startAngle);
+  const y4 = cy + rInner * Math.sin(startAngle);
+
+  const largeArc = angleDiff > Math.PI ? 1 : 0;
+
+  return `M ${x1} ${y1} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x2} ${y2} L ${x3} ${y3} A ${rInner} ${rInner} 0 ${largeArc} 0 ${x4} ${y4} Z`;
+}
+
 function RevenueExpenseTimeline({
   trendData,
 }: {
   trendData: { label: string; revenue: number; expense: number }[];
 }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const maxVal = Math.max(...trendData.flatMap((item) => [item.revenue, item.expense]), 1);
   const maxMillions = Math.max(1, maxVal / 1_000_000);
   const axisMax = Math.ceil(maxMillions * 10) / 10;
@@ -123,8 +151,10 @@ function RevenueExpenseTimeline({
   const paddingTop = 24;
   const paddingBottom = 48;
   const innerHeight = height - paddingTop - paddingBottom;
+  const plotWidth = width - paddingLeft - paddingRight;
+
   const pointFor = (value: number, index: number) => {
-    const x = paddingLeft + (trendData.length <= 1 ? 0 : (index / (trendData.length - 1)) * (width - paddingLeft - paddingRight));
+    const x = paddingLeft + (trendData.length <= 1 ? 0 : (index / (trendData.length - 1)) * plotWidth);
     const y = paddingTop + innerHeight - ((value / 1_000_000) / axisMax) * innerHeight;
     return `${x},${y}`;
   };
@@ -139,6 +169,14 @@ function RevenueExpenseTimeline({
 
   if (!trendData.length) return null;
 
+  const pointsWithCoords = trendData.map((item, index) => {
+    const [revenueX, revenueY] = pointFor(item.revenue, index).split(',').map(Number);
+    const [, expenseY] = pointFor(item.expense, index).split(',').map(Number);
+    return { ...item, index, x: revenueX, revenueY, expenseY };
+  });
+
+  const slotWidth = trendData.length <= 1 ? plotWidth : plotWidth / (trendData.length - 1);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-center gap-6 text-sm font-semibold text-slate-600">
@@ -151,7 +189,7 @@ function RevenueExpenseTimeline({
           Expense
         </span>
       </div>
-      <div className="relative h-[21rem] w-full sm:h-[23rem]">
+      <div className="relative h-[21rem] w-full sm:h-[23rem] select-none">
         <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Revenue and expense timeline">
           {ticks.map((tick) => (
             <g key={tick.value}>
@@ -165,22 +203,113 @@ function RevenueExpenseTimeline({
           <line x1={paddingLeft} x2={width - paddingRight} y1={height - paddingBottom} y2={height - paddingBottom} stroke="#cbd5e1" strokeWidth="1.5" />
           <polyline points={revenuePoints} fill="none" stroke="#0ea5e9" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
           <polyline points={expensePoints} fill="none" stroke="#ef4444" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-          {trendData.map((item, index) => {
-            const [revenueX, revenueY] = pointFor(item.revenue, index).split(',').map(Number);
-            const [expenseX, expenseY] = pointFor(item.expense, index).split(',').map(Number);
+
+          {/* Guideline when hovering */}
+          {hoveredIndex !== null && pointsWithCoords[hoveredIndex] && (
+            <line
+              x1={pointsWithCoords[hoveredIndex].x}
+              y1={paddingTop}
+              x2={pointsWithCoords[hoveredIndex].x}
+              y2={height - paddingBottom}
+              stroke="#94a3b8"
+              strokeWidth="1.5"
+              strokeDasharray="4 4"
+            />
+          )}
+
+          {pointsWithCoords.map((item, index) => {
+            const isHovered = hoveredIndex === index;
             return (
               <g key={item.label}>
-                <circle cx={revenueX} cy={revenueY} r="4" fill="#0ea5e9" stroke="white" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-                <circle cx={expenseX} cy={expenseY} r="4" fill="#ef4444" stroke="white" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+                <circle
+                  cx={item.x}
+                  cy={item.revenueY}
+                  r={isHovered ? 6 : 4}
+                  fill="#0ea5e9"
+                  stroke="white"
+                  strokeWidth={isHovered ? 3 : 2}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <circle
+                  cx={item.x}
+                  cy={item.expenseY}
+                  r={isHovered ? 6 : 4}
+                  fill="#ef4444"
+                  stroke="white"
+                  strokeWidth={isHovered ? 3 : 2}
+                  vectorEffect="non-scaling-stroke"
+                />
                 {(index === 0 || index === trendData.length - 1 || index % labelStep === 0) && (
-                  <text x={revenueX} y={height - 14} textAnchor="middle" className="fill-slate-500 text-[13px] font-semibold">
+                  <text x={item.x} y={height - 14} textAnchor="middle" className={`text-[13px] font-semibold ${isHovered ? 'fill-slate-900 dark:fill-white font-bold' : 'fill-slate-500'}`}>
                     {item.label}
                   </text>
                 )}
               </g>
             );
           })}
+
+          {/* Hit detection zones */}
+          {pointsWithCoords.map((p, idx) => (
+            <rect
+              key={`zone-${idx}`}
+              x={p.x - slotWidth / 2}
+              y={paddingTop}
+              width={slotWidth}
+              height={innerHeight}
+              fill="transparent"
+              className="cursor-pointer"
+              onMouseEnter={() => setHoveredIndex(idx)}
+              onMouseLeave={() => setHoveredIndex(null)}
+            />
+          ))}
         </svg>
+
+        {/* Hover Tooltip */}
+        {hoveredIndex !== null && pointsWithCoords[hoveredIndex] && (() => {
+          const p = pointsWithCoords[hoveredIndex];
+          const xRatio = p.x / width;
+          const minY = Math.min(p.revenueY, p.expenseY);
+          const yRatio = minY / height;
+          const transformX = xRatio > 0.8 ? '-95%' : xRatio < 0.2 ? '-5%' : '-50%';
+          const transformY = yRatio < 0.28 ? '12px' : '-115%';
+
+          return (
+            <div
+              className="absolute pointer-events-none z-20 transition-all duration-75"
+              style={{
+                left: `${xRatio * 100}%`,
+                top: `${yRatio * 100}%`,
+                transform: `translate(${transformX}, ${transformY})`,
+              }}
+            >
+              <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3.5 py-2.5 rounded-lg shadow-xl backdrop-blur-sm whitespace-nowrap border border-slate-700/50" style={{ fontFamily: "'Inter', sans-serif" }}>
+                <div className="font-bold mb-1.5 text-slate-200 border-b border-slate-700/60 pb-1">{p.label}</div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block" />
+                      <span className="text-slate-300">Revenue:</span>
+                    </div>
+                    <span className="font-bold text-sky-400">{fmt(p.revenue)} MMK</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
+                      <span className="text-slate-300">Expense:</span>
+                    </div>
+                    <span className="font-bold text-red-400">{fmt(p.expense)} MMK</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-700/40 text-[10px]">
+                    <span className="text-slate-400">Net:</span>
+                    <span className={`font-semibold ${p.revenue - p.expense >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {p.revenue - p.expense >= 0 ? '+' : ''}{fmt(p.revenue - p.expense)} MMK
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -236,44 +365,144 @@ function ExpenseDonutChart({
 }: {
   items: { channel: string; budget: number }[];
 }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const total = items.reduce((sum, item) => sum + item.budget, 0);
-  const gradient = items.map((item, index) => {
-    const color = CHANNEL_COLORS[financeLabel(item.channel)] ?? '#64748B';
-    const start = total > 0
-      ? items.slice(0, index).reduce((sum, previous) => sum + (previous.budget / total) * 100, 0)
+
+  const cx = 120;
+  const cy = 120;
+  const rInner = 68;
+  const rOuter = 108;
+
+  const slices = items.map((item, index) => {
+    const label = financeLabel(item.channel);
+    const color = CHANNEL_COLORS[label] ?? '#64748B';
+    const pct = total > 0 ? item.budget / total : 0;
+    const startPct = total > 0
+      ? items.slice(0, index).reduce((sum, prev) => sum + prev.budget / total, 0)
       : 0;
-    const pct = total > 0 ? (item.budget / total) * 100 : 0;
-    return `${color} ${start}% ${start + pct}%`;
-  }).join(', ');
+    const startAngle = startPct * 2 * Math.PI - Math.PI / 2;
+    const endAngle = (startPct + pct) * 2 * Math.PI - Math.PI / 2;
+    const midAngle = (startAngle + endAngle) / 2;
+
+    const isHovered = hoveredIndex === index;
+    const currentROuter = isHovered ? rOuter + 4 : rOuter;
+    const currentRInner = isHovered ? rInner - 2 : rInner;
+
+    const tooltipX = cx + ((rInner + rOuter) / 2) * Math.cos(midAngle);
+    const tooltipY = cy + ((rInner + rOuter) / 2) * Math.sin(midAngle);
+
+    const path = getDonutSlicePath(cx, cy, currentRInner, currentROuter, startAngle, endAngle);
+
+    return {
+      ...item,
+      label,
+      color,
+      pct: total > 0 ? Math.round((item.budget / total) * 100) : 0,
+      tooltipX,
+      tooltipY,
+      path,
+      index,
+    };
+  });
+
+  const activeItem = hoveredIndex !== null ? slices[hoveredIndex] : null;
 
   return (
     <div className="grid min-h-72 grid-cols-1 items-center gap-8 md:grid-cols-[minmax(15rem,0.8fr)_minmax(0,1.2fr)]">
-      <div className="flex justify-center md:justify-end">
-        <div
-          className="relative h-60 w-60 rounded-full shadow-sm"
-          style={{ background: `conic-gradient(${gradient})` }}
-          aria-label="Expense breakdown donut chart"
-        >
-          <div className="absolute inset-[3.75rem] flex flex-col items-center justify-center rounded-full bg-card px-2 text-center shadow-inner">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Total expense</span>
-            <span className="mt-1 text-sm font-black tracking-tight text-slate-900 dark:text-slate-100">{fmt(total)}</span>
-            <span className="text-[10px] font-semibold text-slate-500">MMK</span>
+      <div className="relative flex justify-center md:justify-end select-none">
+        <div className="relative h-60 w-60">
+          <svg
+            viewBox="0 0 240 240"
+            className="h-full w-full overflow-visible"
+            role="img"
+            aria-label="Expense breakdown donut chart"
+          >
+            {total === 0 ? (
+              <circle cx={cx} cy={cy} r={rOuter} fill="#e2e8f0" />
+            ) : (
+              slices.map((slice) => {
+                const isHovered = hoveredIndex === slice.index;
+                const isDimmed = hoveredIndex !== null && !isHovered;
+                return (
+                  <path
+                    key={slice.channel}
+                    d={slice.path}
+                    fill={slice.color}
+                    className="cursor-pointer transition-all duration-200"
+                    opacity={isDimmed ? 0.55 : 1}
+                    stroke={isHovered ? 'white' : 'transparent'}
+                    strokeWidth={isHovered ? 2 : 0}
+                    onMouseEnter={() => setHoveredIndex(slice.index)}
+                    onMouseLeave={() => setHoveredIndex(null)}
+                  />
+                );
+              })
+            )}
+          </svg>
+
+          {/* Center Content */}
+          <div className="pointer-events-none absolute inset-[3.75rem] flex flex-col items-center justify-center rounded-full bg-card px-2 text-center shadow-inner transition-all duration-150">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 truncate max-w-[100px]">
+              {activeItem ? activeItem.label : 'Total expense'}
+            </span>
+            <span className="mt-0.5 text-sm font-black tracking-tight text-slate-900 dark:text-slate-100">
+              {fmt(activeItem ? activeItem.budget : total)}
+            </span>
+            <span className="text-[10px] font-semibold text-slate-500">
+              {activeItem ? `${activeItem.pct}% of total` : 'MMK'}
+            </span>
           </div>
+
+          {/* Floating Tooltip */}
+          {activeItem && (() => {
+            const xRatio = activeItem.tooltipX / 240;
+            const yRatio = activeItem.tooltipY / 240;
+            const transformX = xRatio > 0.65 ? '-95%' : xRatio < 0.35 ? '-5%' : '-50%';
+            const transformY = yRatio < 0.35 ? '8px' : '-115%';
+
+            return (
+              <div
+                className="absolute pointer-events-none z-20 transition-all duration-75"
+                style={{
+                  left: `${xRatio * 100}%`,
+                  top: `${yRatio * 100}%`,
+                  transform: `translate(${transformX}, ${transformY})`,
+                }}
+              >
+                <div className="bg-slate-800/95 dark:bg-slate-900/95 text-white text-[11px] px-3 py-2 rounded-lg shadow-xl backdrop-blur-sm whitespace-nowrap border border-slate-700/50" style={{ fontFamily: "'Inter', sans-serif" }}>
+                  <div className="flex items-center gap-1.5 font-bold mb-1 text-slate-200">
+                    <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: activeItem.color }} />
+                    <span>{activeItem.label}</span>
+                  </div>
+                  <div className="text-slate-300">
+                    <span className="font-bold text-white">{fmt(activeItem.budget)} MMK</span> ({activeItem.pct}%)
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
+
+      {/* Breakdown Legend / List */}
       <div className="w-full divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50/50 dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950/30">
-        {items.map((item) => {
-          const label = financeLabel(item.channel);
-          const color = CHANNEL_COLORS[label] ?? '#64748B';
-          const pct = total > 0 ? Math.round((item.budget / total) * 100) : 0;
+        {slices.map((item) => {
+          const isHovered = hoveredIndex === item.index;
           return (
-            <div key={item.channel} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 py-2.5">
+            <div
+              key={item.channel}
+              className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 py-2.5 cursor-pointer transition-colors duration-150 ${
+                isHovered ? 'bg-slate-200/60 dark:bg-slate-800/60 rounded-md' : 'hover:bg-slate-100/50 dark:hover:bg-slate-900/40'
+              }`}
+              onMouseEnter={() => setHoveredIndex(item.index)}
+              onMouseLeave={() => setHoveredIndex(null)}
+            >
               <span className="flex min-w-0 items-center gap-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                <span className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white shadow-sm dark:ring-slate-950" style={{ background: color }} />
-                <span className="truncate">{label}</span>
+                <span className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white shadow-sm dark:ring-slate-950" style={{ background: item.color }} />
+                <span className="truncate">{item.label}</span>
               </span>
               <span className="ml-auto whitespace-nowrap text-right text-xs font-bold text-slate-600 dark:text-slate-300">
-                {fmt(item.budget)} MMK <span className="font-medium text-slate-500">({pct}%)</span>
+                {fmt(item.budget)} MMK <span className="font-medium text-slate-500">({item.pct}%)</span>
               </span>
             </div>
           );
