@@ -80,6 +80,8 @@ export async function GET(req: NextRequest) {
     uniqueCustomerRows,
     serviceRevenueRows,
     totalPurchaseRecords,
+    uniquePurchaseCustomerRows,
+    pendingPurchaseRecords,
   ] = await Promise.all([
     prisma.demandRecord.count({ where: rangeWhere }),
     prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday }, ...senderOwnedByUserOrAdmin(session), ...notDeleted } }),
@@ -134,6 +136,14 @@ export async function GET(req: NextRequest) {
       select: { serviceName: true, serviceAmount: true, serviceQty: true },
     }),
     prisma.demandRecord.count({ where: servicePurchaseWhere }),
+    prisma.demandRecord.findMany({
+      where: { customerId: { not: null }, ...servicePurchaseWhere },
+      select: { customerId: true },
+      distinct: ['customerId'],
+    }),
+    prisma.demandRecord.count({
+      where: { ...servicePurchaseWhere, status: { notIn: ['closed', 'completed'] } },
+    }),
   ]);
 
   const revenueByService = new Map<string, number>();
@@ -215,6 +225,8 @@ export async function GET(req: NextRequest) {
     totalRecords,
     todayRecords,
     totalPurchaseRecords,
+    uniquePurchaseCustomers: uniquePurchaseCustomerRows.length,
+    pendingPurchaseRecords,
     services: servicesStats,
     priority,
     insights: buildBusinessInsights(insightRecords),

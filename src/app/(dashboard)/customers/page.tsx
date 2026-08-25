@@ -85,7 +85,7 @@ const leadStatusColors: Record<string, string> = {
   closed: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
 };
 
-function useCustomers(params: { search?: string; page?: number; limit?: number; status?: string; dateFrom?: string; dateTo?: string } = {}) {
+function useCustomers(params: { search?: string; page?: number; limit?: number; status?: string; dateFrom?: string; dateTo?: string; reportType?: string } = {}) {
   return useQuery({
     queryKey: ['customers', params],
     queryFn: () => customersApi.list(params),
@@ -127,7 +127,7 @@ function CustomersPageContent() {
   const [debouncedCustomerSearch, setDebouncedCustomerSearch] = useState(initialCustomerSearch);
   const [customerPage, setCustomerPage] = useState(1);
 
-  // Demand Leads Pagination and Search
+  // Purchase Records Pagination and Search
   const [demandSearch, setDemandSearch] = useState(initialDemandSearch);
   const [debouncedDemandSearch, setDebouncedDemandSearch] = useState(initialDemandSearch);
   const [followUpFilter, setFollowUpFilter] = useState<string>(initialFollowUpStatus);
@@ -233,6 +233,7 @@ function CustomersPageContent() {
     limit: PAGE_SIZE,
     dateFrom,
     dateTo,
+    reportType: 'customer_service',
   });
 
   const { data: demandStats, isLoading: demandStatsLoading } = useDemandRecordStats({ dateFrom, dateTo });
@@ -245,6 +246,7 @@ function CustomersPageContent() {
     dateFrom,
     dateTo,
     followUpStatus: followUpFilter === 'all' ? undefined : followUpFilter,
+    reportType: 'customer_service',
   });
 
   const { data: dashboardStats } = useQuery({
@@ -367,6 +369,7 @@ function CustomersPageContent() {
       priority: leadForm.priority as "high" | "medium" | "low",
       status: leadForm.status,
       note: leadForm.note.trim() || "",
+      reportType: "customer_service",
     };
     if (editingLead) {
       await updateLeadMutation.mutateAsync({
@@ -438,10 +441,9 @@ function CustomersPageContent() {
   };
 
   // Calculations for metric cards
-  const totalDemandRecords = demandStats?.totalRecords ?? 0;
   const totalPurchaseRecords = demandStats?.totalPurchaseRecords ?? 0;
-  const highPotential = demandStats?.priority.high ?? 0;
-  const totalCustomers = demandStats?.uniqueCustomers ?? customerData?.total ?? 0;
+  const pendingPurchaseRecords = demandStats?.pendingPurchaseRecords ?? 0;
+  const purchaseCustomers = demandStats?.uniquePurchaseCustomers ?? customerData?.total ?? 0;
   const avgSpending = dashboardStats?.totalCustomers > 0 
     ? (dashboardStats?.totalAmountSold / dashboardStats?.totalCustomers) 
     : 0;
@@ -577,8 +579,8 @@ function CustomersPageContent() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
           { label: 'Purchase Records', value: totalPurchaseRecords, color: 'text-slate-900 dark:text-slate-100', loading: demandStatsLoading, icon: MessageSquare, accent: 'border-l-4 border-l-slate-500' },
-          { label: 'High Potential (HPS)', value: highPotential, color: 'text-blue-600 dark:text-blue-400', loading: demandStatsLoading, accent: 'border-l-4 border-l-blue-500', icon: AlertTriangle },
-          { label: 'Total Customers', value: totalCustomers, color: 'text-emerald-600 dark:text-emerald-400', loading: customerLoading, accent: 'border-l-4 border-l-emerald-500', icon: Users },
+          { label: 'Pending Purchases', value: pendingPurchaseRecords, color: 'text-blue-600 dark:text-blue-400', loading: demandStatsLoading, accent: 'border-l-4 border-l-blue-500', icon: AlertTriangle },
+          { label: 'Purchase Customers', value: purchaseCustomers, color: 'text-emerald-600 dark:text-emerald-400', loading: demandStatsLoading, accent: 'border-l-4 border-l-emerald-500', icon: Users },
           { label: 'Avg Spending Value', value: avgSpending, displayVal: Math.round(avgSpending).toLocaleString(), suffix: 'MMK', color: 'text-slate-900 dark:text-slate-100', loading: !dashboardStats, icon: DollarSign, accent: 'border-l-4 border-l-amber-500' },
         ].map((item) => {
           const Icon = item.icon;
@@ -664,7 +666,7 @@ function CustomersPageContent() {
             {showAiSuggestions ? 'Hide suggestions' : 'View suggestions'}
           </Button>
         </CardContent>
-        {showAiSuggestions && totalDemandRecords > 0 && (
+        {showAiSuggestions && totalPurchaseRecords > 0 && (
           <CardContent className="border-t border-sky-200 p-5 dark:border-sky-900/60">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {demandStatsLoading ? (
@@ -803,13 +805,13 @@ function CustomersPageContent() {
         </div>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px] text-sm">
+            <table className="w-full min-w-[850px] text-sm">
               <thead className="bg-slate-50 dark:bg-slate-900/60 text-xs uppercase text-slate-500 border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="px-6 py-4 text-left font-extrabold">Customer Name</th>
                   <th className="px-6 py-4 text-left font-extrabold">Company</th>
                   <th className="px-6 py-4 text-left font-extrabold">Purchased Service</th>
-                  <th className="px-6 py-4 text-right font-extrabold">Amount Paid (MMK)</th>
+                  <th className="px-6 py-4 text-right font-extrabold">Purchase Amount (MMK)</th>
                   <th className="px-6 py-4 text-center font-extrabold">Status</th>
                   <th className="px-6 py-4 text-center font-extrabold">Actions</th>
                 </tr>
@@ -858,16 +860,32 @@ function CustomersPageContent() {
                           {amountPaid.toLocaleString()}
                         </td>
                         <td className="px-6 py-4 text-center">
-                          <Badge variant="outline" className={`text-[10px] font-extrabold uppercase px-2 py-0.5 ${statusColors[customer.status] || statusColors.active}`}>
-                            {customer.status}
-                          </Badge>
+                          {latestRecord ? (
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] font-extrabold uppercase px-2 py-0.5 ${
+                                latestRecord.status === 'closed' || latestRecord.status === 'completed'
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300'
+                                  : latestRecord.status === 'pending'
+                                  ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'
+                                  : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300'
+                              }`}
+                            >
+                              {latestRecord.status}
+                            </Badge>
+                          ) : '-'}
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => openEditCustomer(customer)}
+                              onClick={() => latestRecord && openEditLead({
+                                ...latestRecord,
+                                customerName: latestRecord.customerName || customer.name,
+                                customer: { ...customer, demandRecords: undefined },
+                              })}
+                              aria-label={`Edit purchase record for ${customer.name}`}
                               className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-md cursor-pointer"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
@@ -933,11 +951,11 @@ function CustomersPageContent() {
         )}
       </Card>
 
-      {/* 2. Demand Leads Data Card */}
+      {/* 2. Purchase Records Data Card */}
       <Card id="demand-leads-section" className="bg-card border-2 border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <CardTitle className="text-lg font-extrabold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
-            2. Demand Leads Data
+            2. Purchase Records Data
           </CardTitle>
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
             <Select value={followUpFilter} onValueChange={(val) => setFollowUpFilter(val || 'all')}>
@@ -953,7 +971,7 @@ function CustomersPageContent() {
             <div className="relative flex-1 sm:flex-initial">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
-                placeholder="Search leads..."
+                placeholder="Search purchase records..."
                 value={demandSearch}
                 onChange={(e) => setDemandSearch(e.target.value)}
                 className="pl-9 bg-muted/50 border-border text-foreground placeholder:text-muted-foreground w-full sm:w-60 focus-visible:ring-ring"
@@ -964,7 +982,7 @@ function CustomersPageContent() {
               className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 h-10 text-xs font-bold transition-all shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4 mr-1.5" />
-              Add Lead
+              Add Purchase
             </Button>
           </div>
         </div>
@@ -973,10 +991,10 @@ function CustomersPageContent() {
             <table className="w-full min-w-[850px] text-sm">
               <thead className="bg-slate-50 dark:bg-slate-900/60 text-xs uppercase text-slate-500 border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th className="px-6 py-4 text-left font-extrabold">Date</th>
-                  <th className="px-6 py-4 text-left font-extrabold">Lead Name</th>
+                  <th className="px-6 py-4 text-left font-extrabold">Purchase Date</th>
+                  <th className="px-6 py-4 text-left font-extrabold">Customer Name</th>
                   <th className="px-6 py-4 text-left font-extrabold">Source Channel</th>
-                  <th className="px-6 py-4 text-left font-extrabold">Interest / Inquiry</th>
+                  <th className="px-6 py-4 text-left font-extrabold">Purchased Service</th>
                   <th className="px-6 py-4 text-left font-extrabold">Contact</th>
                   <th className="px-6 py-4 text-center font-extrabold">Potential</th>
                   <th className="px-6 py-4 text-center font-extrabold">Status</th>
@@ -1004,8 +1022,10 @@ function CustomersPageContent() {
 
                     return (
                       <tr key={lead.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-900/40 align-middle">
-                        <td className="px-6 py-4 font-mono text-xs text-slate-600 dark:text-slate-400">
-                          {format(new Date(lead.createdAt), 'yyyy-MM-dd')}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-600 dark:text-slate-400">
+                          <time dateTime={lead.createdAt}>
+                            {format(new Date(lead.createdAt), 'd MMM yyyy')}
+                          </time>
                         </td>
                         <td className="px-6 py-4 font-bold text-slate-900 dark:text-slate-100">
                           {lead.customerId ? (
@@ -1067,7 +1087,7 @@ function CustomersPageContent() {
                 ) : (
                   <tr>
                     <td colSpan={8} className="px-6 py-12 text-center text-sm text-slate-500">
-                      No demand leads found.
+                      No purchase records found.
                     </td>
                   </tr>
                 )}
@@ -1076,7 +1096,7 @@ function CustomersPageContent() {
           </div>
         </CardContent>
 
-        {/* Lead Pagination Footer */}
+        {/* Purchase Records Pagination Footer */}
         {demandData && demandData.totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 bg-card/20 px-6 py-4">
             <div className="text-xs text-muted-foreground font-mono">
@@ -1228,7 +1248,7 @@ function CustomersPageContent() {
           <form onSubmit={handleSaveLead} className="bg-card border border-border w-full max-w-lg rounded-lg overflow-hidden shadow-lg animate-in zoom-in-95 duration-200 text-foreground">
             <div className="flex justify-between items-center border-b border-border p-6 pb-4">
               <h3 className="text-lg font-bold text-foreground">
-                {editingLead ? 'Edit Demand Lead' : 'Add New Demand Lead'}
+                {editingLead ? 'Edit Purchase Record' : 'Add Purchase Record'}
               </h3>
               <button
                 type="button"
@@ -1245,7 +1265,7 @@ function CustomersPageContent() {
             <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5 col-span-2">
-                  <label className="text-xs font-semibold uppercase text-muted-foreground">Lead Name / Client Name *</label>
+                  <label className="text-xs font-semibold uppercase text-muted-foreground">Customer Name *</label>
                   <Input
                     required
                     value={leadForm.customerName}
@@ -1273,7 +1293,7 @@ function CustomersPageContent() {
                   />
                 </div>
                 <div className="space-y-1.5 col-span-2">
-                  <label className="text-xs font-semibold uppercase text-muted-foreground">Requested Service / Interest</label>
+                  <label className="text-xs font-semibold uppercase text-muted-foreground">Purchased Service</label>
                   <Input
                     value={leadForm.serviceName}
                     onChange={(e) => setLeadForm({ ...leadForm, serviceName: e.target.value })}
@@ -1282,7 +1302,7 @@ function CustomersPageContent() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase text-muted-foreground">Price Amount (Ks)</label>
+                  <label className="text-xs font-semibold uppercase text-muted-foreground">Purchase Amount (Ks)</label>
                   <Input
                     type="number"
                     value={leadForm.serviceAmount}
@@ -1323,17 +1343,16 @@ function CustomersPageContent() {
                   </select>
                 </div>
                 <div className="space-y-1.5 col-span-2">
-                  <label className="text-xs font-semibold uppercase text-muted-foreground">Lead Stage / Status</label>
+                  <label className="text-xs font-semibold uppercase text-muted-foreground">Purchase Status</label>
                   <select
                     value={leadForm.status}
                     onChange={(e) => setLeadForm({ ...leadForm, status: e.target.value })}
                     className="w-full h-10 bg-muted border border-border rounded-lg px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
-                    <option value="new">New Lead</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="quoted">Quoted</option>
-                    <option value="pending">Pending Handoff</option>
-                    <option value="closed">Closed Deal</option>
+                    <option value="new">New Purchase</option>
+                    <option value="pending">Pending</option>
+                    <option value="closed">Closed</option>
+                    <option value="completed">Completed</option>
                   </select>
                 </div>
               </div>
@@ -1368,7 +1387,7 @@ function CustomersPageContent() {
                 {(createLeadMutation.isPending || updateLeadMutation.isPending) && (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin shrink-0" />
                 )}
-                Save Lead
+                Save Purchase
               </Button>
             </div>
           </form>

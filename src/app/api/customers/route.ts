@@ -18,22 +18,32 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
   const status = searchParams.get("status") || "";
+  const reportType = searchParams.get("reportType") || "";
+  const recordReportType = reportType === "demand_report" || reportType === "customer_service"
+    ? reportType
+    : null;
 
   const where: Prisma.CustomerWhereInput = { ...customerOwnedByUserOrAdmin(session), ...notDeleted };
   const conditions: Prisma.CustomerWhereInput[] = [];
 
   if (status) where.status = status;
-  if (dateFrom || dateTo) {
+  if (recordReportType) {
     const rangeCondition: Record<string, Date> = {};
     if (dateFrom) rangeCondition.gte = new Date(dateFrom);
     if (dateTo) rangeCondition.lte = new Date(dateTo + "T23:59:59.999Z");
-    
+    conditions.push({
+      demandRecords: { some: { reportType: recordReportType, createdAt: rangeCondition, ...notDeleted } },
+    });
+  } else if (dateFrom || dateTo) {
+    const rangeCondition: Record<string, Date> = {};
+    if (dateFrom) rangeCondition.gte = new Date(dateFrom);
+    if (dateTo) rangeCondition.lte = new Date(dateTo + "T23:59:59.999Z");
     conditions.push({
       OR: [
         { createdAt: rangeCondition },
         { demandRecords: { some: { createdAt: rangeCondition, ...notDeleted } } },
-        { activities: { some: { createdAt: rangeCondition } } }
-      ]
+        { activities: { some: { createdAt: rangeCondition } } },
+      ],
     });
   }
   if (search) {
@@ -62,16 +72,38 @@ export async function GET(req: NextRequest) {
           take: 1,
         },
         demandRecords: {
-          where: notDeleted,
+          where: {
+            ...notDeleted,
+            ...(recordReportType ? { reportType: recordReportType } : {}),
+            ...(dateFrom || dateTo ? {
+              createdAt: {
+                ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+                ...(dateTo ? { lte: new Date(dateTo + "T23:59:59.999Z") } : {}),
+              },
+            } : {}),
+          },
           select: {
             id: true,
+            customerName: true,
             serviceName: true,
             serviceAmount: true,
+            serviceQty: true,
             status: true,
-          }
+            priority: true,
+            note: true,
+            followUpDate: true,
+          },
+          orderBy: { createdAt: "desc" },
         },
         _count: {
-          select: { demandRecords: { where: notDeleted } },
+          select: {
+            demandRecords: {
+              where: {
+                ...notDeleted,
+                ...(recordReportType ? { reportType: recordReportType } : {}),
+              },
+            },
+          },
         },
       },
       orderBy: { updatedAt: "desc" },

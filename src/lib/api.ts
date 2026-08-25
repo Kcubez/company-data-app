@@ -308,6 +308,8 @@ export type DemandRecordStats = {
   totalRecords: number;
   todayRecords: number;
   totalPurchaseRecords: number;
+  uniquePurchaseCustomers: number;
+  pendingPurchaseRecords: number;
   uniqueCustomers: number;
   services: ServiceStat[];
   priority: {
@@ -338,6 +340,7 @@ export type DemandRecordsParams = {
   dateTo?: string;
   followUpStatus?: string;
   missingField?: string;
+  reportType?: string;
 };
 
 export type AIRecommendation = {
@@ -387,6 +390,7 @@ export const demandRecordsApi = {
     if (params.dateTo) searchParams.set("dateTo", params.dateTo);
     if (params.followUpStatus) searchParams.set("followUpStatus", params.followUpStatus);
     if (params.missingField) searchParams.set("missingField", params.missingField);
+    if (params.reportType) searchParams.set("reportType", params.reportType);
     const qs = searchParams.toString();
     return request<DemandRecordsResponse>(`/api/demand-records${qs ? `?${qs}` : ""}`);
   },
@@ -629,6 +633,7 @@ export type CustomersParams = {
   status?: string;
   dateFrom?: string;
   dateTo?: string;
+  reportType?: string;
 };
 
 export const customersApi = {
@@ -640,6 +645,7 @@ export const customersApi = {
     if (params.status) searchParams.set("status", params.status);
     if (params.dateFrom) searchParams.set("dateFrom", params.dateFrom);
     if (params.dateTo) searchParams.set("dateTo", params.dateTo);
+    if (params.reportType) searchParams.set("reportType", params.reportType);
     const qs = searchParams.toString();
     return request<CustomersResponse>(`/api/customers${qs ? `?${qs}` : ""}`);
   },
@@ -1011,4 +1017,3 @@ export const planningApi = {
   insights: (params: DateRangeParams = {}) =>
     request<PlanningInsightsResponse>(`/api/planning/insights${buildDateRangeQuery(params)}`),
 };
-

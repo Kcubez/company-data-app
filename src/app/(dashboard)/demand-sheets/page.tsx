@@ -344,6 +344,7 @@ function DemandSheetsPageContent() {
   const initialCategory = searchParams.get('category') || 'all';
   const initialPriority = searchParams.get('priority') || 'all';
   const initialMissingField = searchParams.get('missingField') || '';
+  const initialFollowUpStatus = searchParams.get('followUpStatus') || 'all';
 
   const [search, setSearch] = useState(initialSearch);
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
@@ -351,9 +352,12 @@ function DemandSheetsPageContent() {
   const [categoryFilter, setCategoryFilter] = useState<string>(initialCategory);
   const [priorityFilter, setPriorityFilter] = useState<string>(initialPriority);
   const [missingField, setMissingField] = useState<string>(initialMissingField);
+  const [followUpFilter, setFollowUpFilter] = useState<'all' | 'overdue' | 'due'>(
+    initialFollowUpStatus === 'overdue' || initialFollowUpStatus === 'due' ? initialFollowUpStatus : 'all',
+  );
   const [page, setPage] = useState(1);
   const [lastUrlFilters, setLastUrlFilters] = useState(
-    () => `${initialPriority}:${initialStatus}:${initialCategory}:${initialSearch}:${initialMissingField}`,
+    () => `${initialPriority}:${initialStatus}:${initialCategory}:${initialSearch}:${initialMissingField}:${initialFollowUpStatus}`,
   );
   const [insightPage, setInsightPage] = useState(1);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -378,7 +382,8 @@ function DemandSheetsPageContent() {
   const urlCategory = searchParams.get('category') || 'all';
   const urlSearch = searchParams.get('search') || '';
   const urlMissingField = searchParams.get('missingField') || '';
-  const urlFilters = `${urlPriority}:${urlStatus}:${urlCategory}:${urlSearch}:${urlMissingField}`;
+  const urlFollowUpStatus = searchParams.get('followUpStatus') || 'all';
+  const urlFilters = `${urlPriority}:${urlStatus}:${urlCategory}:${urlSearch}:${urlMissingField}:${urlFollowUpStatus}`;
   if (lastUrlFilters !== urlFilters) {
     setLastUrlFilters(urlFilters);
     setPriorityFilter(urlPriority);
@@ -387,6 +392,7 @@ function DemandSheetsPageContent() {
     setSearch(urlSearch);
     setDebouncedSearch(urlSearch);
     setMissingField(urlMissingField);
+    setFollowUpFilter(urlFollowUpStatus === 'overdue' || urlFollowUpStatus === 'due' ? urlFollowUpStatus : 'all');
     setPage(1);
   }
 
@@ -394,7 +400,8 @@ function DemandSheetsPageContent() {
     const priority = searchParams.get('priority');
     const missing = searchParams.get('missingField');
     const searchVal = searchParams.get('search');
-    if ((priority && priority !== 'all') || missing || searchVal) {
+    const followUpStatus = searchParams.get('followUpStatus');
+    if ((priority && priority !== 'all') || missing || searchVal || followUpStatus) {
       const timer = setTimeout(() => {
         const element = document.getElementById('report-table-section');
         if (element) {
@@ -485,12 +492,15 @@ function DemandSheetsPageContent() {
     dateFrom,
     dateTo,
     missingField: missingField || undefined,
+    followUpStatus: followUpFilter === 'all' ? undefined : followUpFilter,
+    reportType: 'demand_report',
   });
   const { data: chartRecordsData, isLoading: chartRecordsLoading } = useDemandRecords({
     page: 1,
     limit: 100,
     dateFrom,
     dateTo,
+    reportType: 'demand_report',
   });
   const monthlyDemandData = (() => {
     const now = new Date();
@@ -755,9 +765,9 @@ function DemandSheetsPageContent() {
                             } else if (insight.actionType === 'view_missing_phone') {
                               router.push('/sales-marketing?missingField=phone#report-table-section');
                             } else if (insight.actionType === 'view_overdue') {
-                              router.push('/customer-service?followUpStatus=overdue#demand-leads-section');
+                              router.push('/sales-marketing?followUpStatus=overdue#report-table-section');
                             } else if (insight.actionType === 'view_due_today') {
-                              router.push('/customer-service?followUpStatus=due#demand-leads-section');
+                              router.push('/sales-marketing?followUpStatus=due#report-table-section');
                             } else {
                               const el = document.getElementById('report-table-section');
                               if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1114,6 +1124,27 @@ function DemandSheetsPageContent() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div>
+                  <Select
+                    value={followUpFilter}
+                    onValueChange={(value) => {
+                      if (value === 'all' || value === 'overdue' || value === 'due') {
+                        setFollowUpFilter(value);
+                        setPage(1);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="bg-muted/40 border-border text-foreground min-w-32.5 rounded-lg h-10">
+                      <span>{followUpFilter === 'overdue' ? 'Overdue Follow-ups' : followUpFilter === 'due' ? 'Due Today' : 'All Follow-ups'}</span>
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border text-foreground rounded-lg">
+                      <SelectItem value="all">All Follow-ups</SelectItem>
+                      <SelectItem value="overdue">Overdue Follow-ups</SelectItem>
+                      <SelectItem value="due">Due Today</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {/* Active filter badges */}
@@ -1150,7 +1181,7 @@ function DemandSheetsPageContent() {
           {/* Report Records Table */}
           <div id="report-table-section" className="overflow-hidden rounded-lg border border-border bg-card/20 backdrop-blur-md shadow-sm">
             <div className="hidden md:grid grid-cols-12 gap-3 border-b border-border px-6 py-4.5 text-xs font-semibold uppercase  text-slate-500 bg-muted/40">
-              <div className="col-span-1">Date</div>
+              <div className="col-span-1">Lead Date</div>
               <div className="col-span-2">Customer</div>
               <div className="col-span-1">Priority</div>
               <div className="col-span-1">Contact</div>
@@ -1183,8 +1214,10 @@ function DemandSheetsPageContent() {
                   className="grid grid-cols-1 gap-2.5 border-b border-border px-6 py-5 last:border-0 md:grid-cols-12 md:items-start md:gap-3 hover:bg-card/20 transition-all duration-200"
                 >
                   {/* Date Column */}
-                  <div className="md:col-span-1 text-xs text-muted-foreground font-mono font-medium">
-                    {format(new Date(record.createdAt), 'yyyy-MM-dd')}
+                  <div className="md:col-span-1 whitespace-nowrap text-xs font-semibold text-muted-foreground">
+                    <time dateTime={record.createdAt}>
+                      {format(new Date(record.createdAt), 'd MMM yyyy')}
+                    </time>
                   </div>
 
                   {/* Customer Column */}

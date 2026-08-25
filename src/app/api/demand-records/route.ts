@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
   const dateTo = searchParams.get("dateTo") || "";
   const followUpStatus = searchParams.get("followUpStatus") || "";
   const missingField = searchParams.get("missingField") || "";
+  const reportType = searchParams.get("reportType") || "";
 
   const where: Prisma.DemandRecordWhereInput = { ...senderOwnedByUserOrAdmin(session), ...notDeleted };
 
@@ -63,6 +64,9 @@ export async function GET(req: NextRequest) {
   if (priority) where.priority = priority;
   if (followUpStatus) where.followUpStatus = followUpStatus;
   if (missingField) where.missingFields = { has: missingField };
+  if (reportType === "demand_report" || reportType === "customer_service") {
+    where.reportType = reportType;
+  }
 
   if (dateFrom || dateTo) {
     where.createdAt = {};
@@ -151,7 +155,9 @@ export async function POST(req: NextRequest) {
     priority = "medium",
     status = "new",
     note = "",
+    reportType = "demand_report",
   } = body;
+  const normalizedReportType = reportType === "customer_service" ? "customer_service" : "demand_report";
 
   // 1. Resolve or create customer if raw name is provided
   let customerId: string | null = null;
@@ -245,6 +251,7 @@ export async function POST(req: NextRequest) {
       senderId: sender.id,
       customerId,
       customerName,
+      reportType: normalizedReportType,
       category: "general",
       status,
       note,
