@@ -439,6 +439,7 @@ function CustomersPageContent() {
 
   // Calculations for metric cards
   const totalDemandRecords = demandStats?.totalRecords ?? 0;
+  const totalPurchaseRecords = demandStats?.totalPurchaseRecords ?? 0;
   const highPotential = demandStats?.priority.high ?? 0;
   const totalCustomers = demandStats?.uniqueCustomers ?? customerData?.total ?? 0;
   const avgSpending = dashboardStats?.totalCustomers > 0 
@@ -575,7 +576,7 @@ function CustomersPageContent() {
       {/* Metrics Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Demands', value: totalDemandRecords, color: 'text-slate-900 dark:text-slate-100', loading: demandStatsLoading, icon: MessageSquare, accent: 'border-l-4 border-l-slate-500' },
+          { label: 'Purchase Records', value: totalPurchaseRecords, color: 'text-slate-900 dark:text-slate-100', loading: demandStatsLoading, icon: MessageSquare, accent: 'border-l-4 border-l-slate-500' },
           { label: 'High Potential (HPS)', value: highPotential, color: 'text-blue-600 dark:text-blue-400', loading: demandStatsLoading, accent: 'border-l-4 border-l-blue-500', icon: AlertTriangle },
           { label: 'Total Customers', value: totalCustomers, color: 'text-emerald-600 dark:text-emerald-400', loading: customerLoading, accent: 'border-l-4 border-l-emerald-500', icon: Users },
           { label: 'Avg Spending Value', value: avgSpending, displayVal: Math.round(avgSpending).toLocaleString(), suffix: 'MMK', color: 'text-slate-900 dark:text-slate-100', loading: !dashboardStats, icon: DollarSign, accent: 'border-l-4 border-l-amber-500' },

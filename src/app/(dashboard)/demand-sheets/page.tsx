@@ -667,12 +667,12 @@ function DemandSheetsPageContent() {
               <CardContent className="p-6 flex flex-col justify-center h-32">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Demands</p>
-                    {statsLoading ? (
+                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Demand Leads</p>
+                    {statsLoading || demandStatsLoading ? (
                       <Skeleton className="h-8 w-16 bg-muted" />
                     ) : (
                       <h3 className="flex items-baseline gap-1.5 whitespace-nowrap text-2xl font-black text-slate-900 tracking-tight dark:text-slate-100">
-                        <span>{(stats?.actualDemandCount ?? 0).toLocaleString()}</span>
+                        <span>{(demandStats?.totalRecords ?? 0).toLocaleString()}</span>
                       </h3>
                     )}
                   </div>

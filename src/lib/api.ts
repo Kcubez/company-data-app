@@ -307,6 +307,7 @@ export type ServiceStat = {
 export type DemandRecordStats = {
   totalRecords: number;
   todayRecords: number;
+  totalPurchaseRecords: number;
   uniqueCustomers: number;
   services: ServiceStat[];
   priority: {

@@ -1433,7 +1433,7 @@ async function importStructuredSubmission(pending: { reportType: string; parsedR
     });
     const businessCreates = financeRecords.filter((rec) => normalizeFinanceEntryType(rec) !== 'owner_capital').map((rec) => {
       const isIncome = rec.type.toLowerCase() === 'income'; const recordDate = rec.date || fallbackDate;
-      return { uploadedByUserId: ownerUserId, reportDate: recordDate, senderId: pending.senderId, messageId: pending.messageId, marketingBudget: isIncome ? 0 : rec.amount, marketingChannel: rec.category || 'Service', notes: `${rec.description} (Ref: ${rec.reference}, Method: ${rec.paymentMethod}). ${rec.notes || ''}`, totalSalesAmount: isIncome ? rec.amount : 0, newLeads: isIncome ? 0 : (rec.category === 'Marketing' ? 1 : 0), closedDeals: isIncome ? 1 : 0, totalDemandCount: 1, reporterName: 'Telegram Upload', createdAt: recordDate };
+      return { uploadedByUserId: ownerUserId, reportDate: recordDate, senderId: pending.senderId, messageId: pending.messageId, marketingBudget: isIncome ? 0 : rec.amount, marketingChannel: rec.category || 'Service', notes: `${rec.description} (Ref: ${rec.reference}, Method: ${rec.paymentMethod}). ${rec.notes || ''}`, totalSalesAmount: isIncome ? rec.amount : 0, newLeads: isIncome ? 0 : (rec.category === 'Marketing' ? 1 : 0), closedDeals: isIncome ? 1 : 0, totalDemandCount: null, reporterName: 'Telegram Upload', createdAt: recordDate };
     });
     const accountingCreates = financeRecords.map((rec) => {
       const noteParts = [rec.notes, rec.paymentMethod ? `Method: ${rec.paymentMethod}` : '', rec.reference ? `Reference: ${rec.reference}` : '', rec.accountingSection ? `Section: ${rec.accountingSection}` : ''].filter(Boolean);

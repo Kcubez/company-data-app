@@ -39,6 +39,16 @@ export async function GET(req: NextRequest) {
     if (dateFrom) soldServiceWhere.createdAt.gte = new Date(dateFrom);
     if (dateTo) soldServiceWhere.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
   }
+  const servicePurchaseWhere: Prisma.DemandRecordWhereInput = {
+    reportType: "customer_service",
+    ...senderOwnedByUserOrAdmin(session),
+    ...notDeleted,
+  };
+  if (dateFrom || dateTo) {
+    servicePurchaseWhere.createdAt = {};
+    if (dateFrom) servicePurchaseWhere.createdAt.gte = new Date(dateFrom);
+    if (dateTo) servicePurchaseWhere.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+  }
 
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -69,6 +79,7 @@ export async function GET(req: NextRequest) {
     analysisRecords,
     uniqueCustomerRows,
     serviceRevenueRows,
+    totalPurchaseRecords,
   ] = await Promise.all([
     prisma.demandRecord.count({ where: rangeWhere }),
     prisma.demandRecord.count({ where: { createdAt: { gte: startOfToday }, ...senderOwnedByUserOrAdmin(session), ...notDeleted } }),
@@ -122,6 +133,7 @@ export async function GET(req: NextRequest) {
       where: soldServiceWhere,
       select: { serviceName: true, serviceAmount: true, serviceQty: true },
     }),
+    prisma.demandRecord.count({ where: servicePurchaseWhere }),
   ]);
 
   const revenueByService = new Map<string, number>();
@@ -202,6 +214,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     totalRecords,
     todayRecords,
+    totalPurchaseRecords,
     services: servicesStats,
     priority,
     insights: buildBusinessInsights(insightRecords),

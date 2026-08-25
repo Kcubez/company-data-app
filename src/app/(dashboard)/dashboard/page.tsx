@@ -1082,7 +1082,7 @@ function DashboardPageContent() {
           {/* Row 2 */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <ProgressCard
-              title="Demand (Messages)"
+              title="Demand Leads"
               statusLabel={demandPacing.label}
               statusColor={demandPacing.color}
               value={demandValue.toLocaleString()}

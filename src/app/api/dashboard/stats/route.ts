@@ -160,7 +160,7 @@ export async function GET(req: NextRequest) {
       },
     }),
     prisma.demandRecord.count({
-      where: { createdAt: { gte: periodStart, lt: periodEnd }, ...demandScope },
+      where: { createdAt: { gte: periodStart, lt: periodEnd }, reportType: "demand_report", ...demandScope },
     }),
   ]);
   const totalQuantitySold = demandRevenueRows.reduce(
@@ -211,7 +211,7 @@ export async function GET(req: NextRequest) {
     elapsedDays = 0;
   }
 
-  const actualDemandCount = Math.max(demandCountPeriod, businessAgg._sum.totalDemandCount || 0);
+  const actualDemandCount = demandCountPeriod;
   const actualAppointments = businessAgg._sum.appointmentsMade || 0;
   const closedDeals = businessAgg._sum.closedDeals || 0;
   const appointmentConversionRate = actualDemandCount > 0 ? (actualAppointments / actualDemandCount) * 100 : null;
@@ -259,7 +259,7 @@ export async function GET(req: NextRequest) {
     alerts.push({
       type: 'demand_target',
       status: 'warning',
-      message: `Demand messages (leads) count is behind pacing target (${elapsedDays} of ${totalDaysInPeriod} days elapsed).`,
+      message: `Demand leads count is behind pacing target (${elapsedDays} of ${totalDaysInPeriod} days elapsed).`,
       actual: actualDemandCount,
       expected: expectedDemandCount!,
       target: targetDemandCount,
@@ -377,12 +377,12 @@ export async function GET(req: NextRequest) {
 
   const [trendDemandRows, trendBusinessRows] = await Promise.all([
     prisma.demandRecord.findMany({
-      where: { createdAt: { gte: periodStart, lt: periodEnd }, ...demandScope },
+      where: { createdAt: { gte: periodStart, lt: periodEnd }, reportType: "demand_report", ...demandScope },
       select: { createdAt: true, serviceAmount: true, serviceQty: true },
     }),
     prisma.businessReport.findMany({
       where: { reportDate: { gte: periodStart, lt: periodEnd }, ...activeUploadedScope },
-      select: { reportDate: true, totalSalesAmount: true, marketingBudget: true, totalDemandCount: true },
+      select: { reportDate: true, totalSalesAmount: true, marketingBudget: true },
     }),
   ]);
 
@@ -398,7 +398,6 @@ export async function GET(req: NextRequest) {
     if (bucket) {
       bucket.revenueFromReports += row.totalSalesAmount || 0;
       bucket.expense += row.marketingBudget || 0;
-      bucket.demand += row.totalDemandCount || 0;
     }
   }
   const financialTrend = trendBuckets.map((bucket) => {
