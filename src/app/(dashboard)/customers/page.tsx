@@ -81,7 +81,7 @@ const leadStatusColors: Record<string, string> = {
   new: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   contacted: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
   quoted: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
-  pending: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20',
+  pending: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900',
   closed: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
 };
 
